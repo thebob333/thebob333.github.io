@@ -97,7 +97,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
     }
     if (editing) {
       persist(blocks.map(b => b.id === editing.id ? { ...b, ...form } as RepeatableBlock : b));
-      toast.success('Template updated');
+      toast.success('Routine updated');
     } else {
       persist([...blocks, {
         id: generateId(),
@@ -110,7 +110,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
         customDays: form.customDays || [],
         enabled: true,
       }]);
-      toast.success('Template created');
+      toast.success('Routine created', { description: 'It will appear on your Plan on the days you picked.' });
     }
     setDialogOpen(false);
   };
@@ -143,16 +143,16 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Repeat className="h-4 w-4 text-secondary" />
-          <span className="font-gothic text-sm gradient-alien-text">Repeatable Templates</span>
+          <span className="text-sm font-semibold">Routines</span>
         </div>
-        <Button variant="ghost" size="sm" className="text-xs font-medieval gap-1" onClick={openNew}>
-          <Plus className="h-3 w-3" /> New Template
+        <Button variant="ghost" size="sm" className="h-9 text-xs gap-1" onClick={openNew}>
+          <Plus className="h-3.5 w-3.5" /> New routine
         </Button>
       </div>
 
       {blocks.length === 0 ? (
         <p className="text-[11px] font-medieval text-muted-foreground italic">
-          No templates yet. Create one to auto-populate your daily schedule.
+          No routines yet. Add one (like “Gym 7–8 AM on weekdays”) and it fills in your Plan automatically.
         </p>
       ) : (
         <div className="space-y-1.5">
@@ -201,7 +201,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
           <DialogHeader>
             <DialogTitle className="font-gothic gradient-alien-text flex items-center gap-2">
               <Repeat className="h-5 w-5 text-secondary" />
-              {editing ? 'Edit Template' : 'New Repeatable Block'}
+              {editing ? 'Edit routine' : 'New routine'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 relative z-10">
@@ -299,7 +299,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
               </div>
             )}
             <Button onClick={handleSave} className="w-full gradient-alien text-primary-foreground font-gothic">
-              {editing ? '⚔ Update Template' : '⚔ Create Template'}
+              {editing ? 'Save routine' : 'Create routine'}
             </Button>
           </div>
         </DialogContent>

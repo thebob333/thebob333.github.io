@@ -1,19 +1,12 @@
-import { Home, Calendar, Target, Users, Dumbbell } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { NAV_ITEMS, isNavActive } from "./nav";
 
-const tabs = [
-  { title: "Home", url: "/", icon: Home },
-  { title: "Program", url: "/program", icon: Calendar },
-  { title: "Goals", url: "/goals", icon: Target },
-  { title: "People", url: "/people", icon: Users },
-  { title: "Gym", url: "/workouts", icon: Dumbbell },
-];
+const tabs = NAV_ITEMS;
 
 export function MobileTabBar() {
   const location = useLocation();
-  const isActive = (path: string) =>
-    path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+  const isActive = (path: string) => isNavActive(location.pathname, path);
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border safe-area-bottom">
@@ -26,6 +19,7 @@ export function MobileTabBar() {
               to={tab.url}
               end={tab.url === "/"}
               className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors"
+              aria-current={active ? "page" : undefined}
               activeClassName=""
             >
               <div

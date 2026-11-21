@@ -1,5 +1,6 @@
 import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 import { ENERGY_LEVELS } from '@/lib/people';
+import { PageHeader } from '@/components/app/PageHeader';
 import { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -340,57 +341,54 @@ export default function PeoplePage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">People</h1>
-          <p className="text-muted-foreground mt-0.5 text-xs md:text-sm">Track relationships · Stay connected</p>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="flex border border-border rounded-lg overflow-hidden">
-            <button
-              onClick={() => setView('list')}
-              className={`p-1.5 transition-colors ${view === 'list' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
+      <PageHeader
+        title="People"
+        subtitle="Stay close to the people who matter"
+        actions={
+          <>
+            <Button
+              onClick={() => {
+                if (isContactPickerSupported()) handleImportFromPhone();
+                else fileInputRef.current?.click();
+              }}
+              size="icon"
+              variant="outline"
+              className="h-10 w-10"
+              aria-label="Import contacts"
+              title="Import contacts (.vcf)"
             >
-              <List className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setView('circle')}
-              className={`p-1.5 transition-colors ${view === 'circle' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
-            >
-              <CircleDot className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setView('insights')}
-              className={`p-1.5 transition-colors ${view === 'insights' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent'}`}
-            >
-              <BarChart3 className="h-4 w-4" />
-            </button>
-          </div>
-          <Button
-            onClick={() => {
-              if (isContactPickerSupported()) {
-                handleImportFromPhone();
-              } else {
-                fileInputRef.current?.click();
-              }
-            }}
-            size="sm"
-            variant="outline"
-            className="gap-1.5"
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button onClick={openNew} className="h-10 gap-1.5 font-semibold">
+              <Plus className="h-4 w-4" /> Add
+            </Button>
+          </>
+        }
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".vcf,.vcard,text/vcard,text/x-vcard"
+        className="hidden"
+        onChange={handleVcfFileChange}
+      />
+      {/* Labelled view switcher — clearer than three bare icons */}
+      <div role="tablist" aria-label="People views" className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
+        {([
+          { id: 'list', label: 'List', icon: List },
+          { id: 'circle', label: 'Inner circle', icon: CircleDot },
+          { id: 'insights', label: 'Insights', icon: BarChart3 },
+        ] as const).map(v => (
+          <button
+            key={v.id}
+            role="tab"
+            aria-selected={view === v.id}
+            onClick={() => setView(v.id)}
+            className={`flex h-9 items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-colors ${view === v.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
           >
-            <Download className="h-4 w-4" /> <span className="hidden sm:inline">Import</span>
-          </Button>
-          <Button onClick={openNew} size="sm" className="gap-1.5">
-            <Plus className="h-4 w-4" /> <span className="hidden sm:inline">Add</span>
-          </Button>
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".vcf,.vcard"
-          className="hidden"
-          onChange={handleVcfFileChange}
-        />
+            <v.icon className="h-4 w-4" /> {v.label}
+          </button>
+        ))}
       </div>
 
       {/* Search & Filter (list view only) */}

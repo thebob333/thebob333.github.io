@@ -19,6 +19,7 @@ import { Plus, ChevronDown, ChevronRight, Trash2, Target, Copy, Sparkles, Clock,
 import { toast } from 'sonner';
 import { ProgressRing } from '@/components/ProgressRing';
 import { WeeklyFocus, FocusStar } from '@/components/WeeklyFocus';
+import { PageHeader } from '@/components/app/PageHeader';
 
 import { parseGoalPlan, applyPlanToGoal, type ParseResult } from '@/lib/goal-plan-parser';
 import type { EffortLevel, HabitEvolution } from '@/types/goals';
@@ -453,71 +454,70 @@ RULES:
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between relative z-10">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Goals</h1>
-          <p className="text-muted-foreground mt-0.5 text-xs md:text-sm">
+      <PageHeader
+        title="Goals"
+        subtitle={
+          <>
             {activeGoals.length} goal{activeGoals.length !== 1 ? 's' : ''} active
             {archivedGoals.length > 0 && (
               <button onClick={() => setShowArchived(!showArchived)} className="ml-2 text-primary hover:underline">
                 {showArchived ? 'Hide' : 'Show'} {archivedGoals.length} archived
               </button>
             )}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {templates.length > 0 && (
-            <Button variant="outline" onClick={() => setShowTemplates(true)}>
-              <Bookmark className="h-4 w-4 mr-2" /> Templates
-            </Button>
-          )}
-          <Dialog open={showNewGoal} onOpenChange={setShowNewGoal}>
-            <DialogTrigger asChild>
-              <Button className="font-semibold">
-                <Plus className="h-4 w-4 mr-2" /> New Goal
+          </>
+        }
+        actions={
+          <>
+            {templates.length > 0 && (
+              <Button variant="outline" size="icon" className="h-10 w-10 sm:w-auto sm:px-3" onClick={() => setShowTemplates(true)} aria-label="Blueprints">
+                <Bookmark className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">Blueprints</span>
               </Button>
-            </DialogTrigger>
+            )}
+            <Button className="h-10 font-semibold" onClick={() => setShowNewGoal(true)}>
+              <Plus className="h-4 w-4 mr-1" /> New Goal
+            </Button>
+          </>
+        }
+      />
+      <Dialog open={showNewGoal} onOpenChange={setShowNewGoal}>
           <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="text-xl font-bold">Create New Goal</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 mt-4">
-              <div>
-                <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Goal Title</label>
-                <Input value={newGoal.title} onChange={e => setNewGoal({ ...newGoal, title: e.target.value })} placeholder="e.g., Learn Spanish" className="mt-1" />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Description</label>
-                <Textarea value={newGoal.description} onChange={e => setNewGoal({ ...newGoal, description: e.target.value })} placeholder="What does this goal involve?" className="mt-1" />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">End Goal Vision</label>
-                <Textarea value={newGoal.endGoal} onChange={e => setNewGoal({ ...newGoal, endGoal: e.target.value })} placeholder="What does success look like?" className="mt-1" />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Deadline</label>
-                <Input type="date" value={newGoal.deadline} onChange={e => setNewGoal({ ...newGoal, deadline: e.target.value })} className="mt-1" />
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Domain (optional)</label>
-                <Select value={newGoal.domain} onValueChange={v => setNewGoal({ ...newGoal, domain: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Auto-detected by AI" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PHYSICAL">Physical</SelectItem>
-                    <SelectItem value="CREATIVE">Creative</SelectItem>
-                    <SelectItem value="PROFESSIONAL">Professional</SelectItem>
-                    <SelectItem value="INTELLECTUAL">Intellectual</SelectItem>
-                    <SelectItem value="LIFESTYLE">Lifestyle</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleCreateGoal} className="w-full font-semibold">Create Goal</Button>
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Create New Goal</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-4">
+            <div>
+              <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Goal Title</label>
+              <Input value={newGoal.title} onChange={e => setNewGoal({ ...newGoal, title: e.target.value })} placeholder="e.g., Learn Spanish" className="mt-1" />
             </div>
-          </DialogContent>
-        </Dialog>
-        </div>
-      </div>
+            <div>
+              <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Description</label>
+              <Textarea value={newGoal.description} onChange={e => setNewGoal({ ...newGoal, description: e.target.value })} placeholder="What does this goal involve?" className="mt-1" />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">End Goal Vision</label>
+              <Textarea value={newGoal.endGoal} onChange={e => setNewGoal({ ...newGoal, endGoal: e.target.value })} placeholder="What does success look like?" className="mt-1" />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Deadline</label>
+              <Input type="date" value={newGoal.deadline} onChange={e => setNewGoal({ ...newGoal, deadline: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Domain (optional)</label>
+              <Select value={newGoal.domain} onValueChange={v => setNewGoal({ ...newGoal, domain: v })}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Choose a domain" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PHYSICAL">Physical</SelectItem>
+                  <SelectItem value="CREATIVE">Creative</SelectItem>
+                  <SelectItem value="PROFESSIONAL">Professional</SelectItem>
+                  <SelectItem value="INTELLECTUAL">Intellectual</SelectItem>
+                  <SelectItem value="LIFESTYLE">Lifestyle</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={handleCreateGoal} className="w-full font-semibold">Create Goal</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Weekly Focus */}
       <WeeklyFocus goals={goals} />
@@ -632,8 +632,8 @@ RULES:
                       <Button size="sm" variant="outline" onClick={() => { cloneGoal(goal.id); toast.success('Goal cloned!'); }}>
                         <Copy className="h-3 w-3 mr-1" /> Clone
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => { saveAsTemplate(goal.id); toast.success('Saved as template!'); }}>
-                        <Bookmark className="h-3 w-3 mr-1" /> Template
+                      <Button size="sm" variant="outline" onClick={() => { saveAsTemplate(goal.id); toast.success('Saved as a blueprint', { description: 'Reuse it any time from Blueprints.' }); }}>
+                        <Bookmark className="h-3 w-3 mr-1" /> Blueprint
                       </Button>
                       <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { archiveGoal(goal.id); toast.success(goal.archived ? 'Goal restored!' : 'Goal archived!'); }}>
                         <Archive className="h-3 w-3 mr-1" /> {goal.archived ? 'Restore' : 'Archive'}
@@ -1043,12 +1043,12 @@ RULES:
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <Bookmark className="h-5 w-5 text-violet" /> Goal Templates
+              <Bookmark className="h-5 w-5 text-violet" /> Goal Blueprints
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 mt-2 max-h-[60vh] overflow-auto">
             {templates.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">No templates yet. Save a goal as a template to get started.</p>
+              <p className="text-sm text-muted-foreground text-center py-4">No blueprints yet. Save a goal as a blueprint to reuse its plan.</p>
             ) : (
               templates.map(tmpl => (
                 <div key={tmpl.id} className="border border-border rounded-lg p-3 space-y-2">
@@ -1061,13 +1061,13 @@ RULES:
                       <Button size="sm" onClick={() => {
                         createFromTemplate(tmpl);
                         setShowTemplates(false);
-                        toast.success('Goal created from template!');
+                        toast.success('Goal created from blueprint!');
                       }}>
                         <Plus className="h-3 w-3 mr-1" /> Use
                       </Button>
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
                         deleteTemplate(tmpl.id);
-                        toast.success('Template deleted');
+                        toast.success('Blueprint deleted');
                       }}>
                         <Trash2 className="h-3 w-3" />
                       </Button>

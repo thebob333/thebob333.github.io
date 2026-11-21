@@ -11,15 +11,18 @@ import { getDaysRemaining } from '@/types/goals';
 import { stores } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
-import { useWeeklyPlan, type DayPlan } from '@/hooks/useWeeklyPlan';
+import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
+import { activeWorkoutActions } from '@/hooks/useWorkouts';
+import { getExerciseLabel } from '@/types/workout';
 import { toDateKey, parseDateKey } from '@/lib/dates';
 import {
-  Calendar, Dumbbell, X, Settings2, ChevronLeft, ChevronRight, Repeat, Flame, CheckCircle2
+  Calendar, Dumbbell, X, Settings2, Settings, ChevronLeft, ChevronRight, Repeat, Flame, CheckCircle2
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import DailyTimeBlocks from '@/components/DailyTimeBlocks';
+import { CheckRow, StreakBadge } from '@/components/today/HabitCheckRow';
 import RepeatableBlockManager from '@/components/RepeatableBlockManager';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -46,18 +49,6 @@ function getWeekDays(monday: Date): Date[] {
     return d;
   });
 }
-const SPLIT_OPTIONS: SplitDay[] = ['push', 'pull', 'legs', 'upper', 'lower', 'rest'];
-const ALL_EXERCISES: CompoundExercise[] = ['squat', 'deadlift', 'bench_press', 'overhead_press', 'barbell_row', 'pull_up'];
-
-const SPLIT_EXERCISE_SUGGESTIONS: Record<SplitDay, CompoundExercise[]> = {
-  push: ['bench_press', 'overhead_press'],
-  pull: ['barbell_row', 'pull_up', 'deadlift'],
-  legs: ['squat', 'deadlift'],
-  upper: ['bench_press', 'overhead_press', 'barbell_row', 'pull_up'],
-  lower: ['squat', 'deadlift'],
-  rest: [],
-};
-
 const SPLIT_COLORS: Record<SplitDay, string> = {
   push: 'bg-primary/10 text-primary border-primary/20',
   pull: 'bg-teal/10 text-teal border-teal/20',
@@ -84,7 +75,9 @@ interface FlatTodo {
 export default function ProgramPage() {
   const { goals, toggleToDo } = useGoals();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
-  const { days: plan, updateDays } = useWeeklyPlan();
+  const { days: plan } = useWeeklyPlan();
+  const navigate = useNavigate();
+  const customExercises = useStore(stores.CUSTOM_EXERCISES);
   const timeBlocks = useStore(stores.TIME_BLOCKS);
   const assignedTodoIds = useMemo(() => {
     const ids = new Set<string>();
@@ -100,7 +93,6 @@ export default function ProgramPage() {
   const selectedDayIdx = (selectedDate.getDay() + 6) % 7; // 0=Mon
   const isToday = isSameDay(selectedDate, today);
   const selectedDateKey = toDateKey(selectedDate);
-  const [showSettings, setShowSettings] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showHabits, setShowHabits] = useState<boolean | null>(null); // null = auto (<=5 expanded)
 
@@ -182,29 +174,11 @@ export default function ProgramPage() {
     return states;
   }, [allTodos]);
 
-  // All plan edits are immutable and saved immediately.
-  const updateDay = (idx: number, field: Partial<DayPlan>) => {
-    updateDays(days => days.map((d, i) => {
-      if (i !== idx) return d;
-      const next = { ...d, ...field };
-      if (field.splitDay) {
-        next.exercises = field.splitDay === 'rest' ? [] : [...(SPLIT_EXERCISE_SUGGESTIONS[field.splitDay] || [])];
-      }
-      return next;
-    }));
-    toast.success('Split saved');
-  };
-
-  const addExercise = (dayIdx: number, exercise: CompoundExercise) => {
-    updateDays(days => days.map((d, i) =>
-      i === dayIdx && !d.exercises.includes(exercise) ? { ...d, exercises: [...d.exercises, exercise] } : d,
-    ));
-  };
-
-  const removeExercise = (dayIdx: number, exercise: string) => {
-    updateDays(days => days.map((d, i) =>
-      i === dayIdx ? { ...d, exercises: d.exercises.filter(e => e !== exercise) } : d,
-    ));
+  /** Open Gym with this day's planned exercises already filled in. */
+  const startWorkout = () => {
+    activeWorkoutActions.load(currentPlan.splitDay, []);
+    currentPlan.exercises.forEach(ex => activeWorkoutActions.addExercise(ex, customExercises));
+    navigate('/gym');
   };
 
   const goDay = (dir: -1 | 1) => {
@@ -333,10 +307,10 @@ export default function ProgramPage() {
           )}
           <div className="ml-auto flex gap-2">
             <Button variant="ghost" size="sm" className="text-xs gap-1.5" onClick={() => setShowTemplates(!showTemplates)}>
-              <Repeat className="h-3.5 w-3.5" /> Templates
+              <Repeat className="h-3.5 w-3.5" /> Routines
             </Button>
-            <Button variant="ghost" size="sm" className="text-xs gap-1.5" onClick={() => setShowSettings(!showSettings)}>
-              <Settings2 className="h-3.5 w-3.5" /> Edit Split
+            <Button asChild variant="ghost" size="sm" className="text-xs gap-1.5">
+              <Link to="/gym"><Settings2 className="h-3.5 w-3.5" /> Edit split</Link>
             </Button>
           </div>
         </div>
@@ -346,78 +320,26 @@ export default function ProgramPage() {
       <div className="flex gap-2 mb-2 md:hidden">
         <Button
           variant={showTemplates ? "default" : "outline"}
-          size="sm"
-          className="flex-1 text-xs gap-1.5 h-9"
-          onClick={() => { setShowTemplates(!showTemplates); setShowSettings(false); }}
+          className="flex-1 text-sm gap-1.5 h-10"
+          onClick={() => setShowTemplates(!showTemplates)}
         >
-          <Repeat className="h-3.5 w-3.5" /> Templates
+          <Repeat className="h-4 w-4" /> Routines
         </Button>
-        <Button
-          variant={showSettings ? "default" : "outline"}
-          size="sm"
-          className="flex-1 text-xs gap-1.5 h-9"
-          onClick={() => { setShowSettings(!showSettings); setShowTemplates(false); }}
-        >
-          <Settings2 className="h-3.5 w-3.5" /> Edit Split
-        </Button>
-        {currentPlan.splitDay !== 'rest' && (
-          <Link to="/workouts" className="flex-1">
-            <Button size="sm" className="w-full font-semibold h-9 text-xs">
-              Workout
-            </Button>
-          </Link>
+        {currentPlan.splitDay !== 'rest' ? (
+          <Button className="flex-1 font-semibold h-10 text-sm capitalize gap-1.5" onClick={startWorkout}>
+            <Dumbbell className="h-4 w-4" /> {currentPlan.splitDay} workout
+          </Button>
+        ) : (
+          <Button asChild variant="outline" className="flex-1 h-10 text-sm text-muted-foreground">
+            <Link to="/gym">Rest day · edit split</Link>
+          </Button>
         )}
+        <Button asChild variant="ghost" size="icon" className="h-10 w-10 text-muted-foreground" aria-label="Settings">
+          <Link to="/settings"><Settings className="h-5 w-5" /></Link>
+        </Button>
       </div>
 
       {/* SETTINGS / TEMPLATES PANELS */}
-      <AnimatePresence>
-        {showSettings && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="flex-shrink-0 overflow-hidden mb-2"
-          >
-            <div className="border border-border rounded-xl p-3 bg-card shadow-sm space-y-3">
-              <div className="flex items-center gap-2">
-                <Select value={currentPlan.splitDay} onValueChange={(v) => updateDay(selectedDayIdx, { splitDay: v as SplitDay })}>
-                  <SelectTrigger className="flex-1 h-10 text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SPLIT_OPTIONS.map(s => (
-                      <SelectItem key={s} value={s} className="capitalize text-sm">{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select onValueChange={(v) => addExercise(selectedDayIdx, v as CompoundExercise)}>
-                  <SelectTrigger className="flex-1 h-10 text-sm">
-                    <SelectValue placeholder="+ Exercise" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ALL_EXERCISES.filter(e => !currentPlan.exercises.includes(e)).map(ex => (
-                      <SelectItem key={ex} value={ex} className="text-sm">{EXERCISE_LABELS[ex]}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {currentPlan.exercises.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {currentPlan.exercises.map(ex => (
-                    <Badge key={ex} variant="outline" className="text-sm py-1 px-2.5 group">
-                      {EXERCISE_LABELS[ex]}
-                      <button onClick={() => removeExercise(selectedDayIdx, ex)} className="ml-1.5 opacity-50 group-hover:opacity-100">
-                        <X className="h-3.5 w-3.5" />
-                      </button>
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       <AnimatePresence>
         {showTemplates && (
           <motion.div
@@ -489,31 +411,16 @@ export default function ProgramPage() {
                     })}
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                  {filteredHabits.map(({ habit, completed, streak, goalTitle }) => (
-                    <div
+                <div className="max-h-[30vh] divide-y divide-border/60 overflow-y-auto">
+                  {filteredHabits.map(({ habit, completed, streak, goalTitle, taskTitle }) => (
+                    <CheckRow
                       key={habit.id}
-                      className="flex items-center gap-1.5 min-w-0 select-none"
-                      onPointerDown={() => {
-                        longPressTimer.current = setTimeout(() => setLongPressHabit(habit.id), 400);
-                      }}
-                      onPointerUp={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
-                      onPointerLeave={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
-                    >
-                      <Checkbox
-                        checked={completed}
-                        onCheckedChange={() => toggleCheckIn(habit.id)}
-                        className="h-3.5 w-3.5 border-amber data-[state=checked]:bg-amber data-[state=checked]:border-amber flex-shrink-0"
-                      />
-                      <span className={`text-xs truncate ${completed ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
-                        {habit.title}
-                      </span>
-                      {streak > 0 && (
-                        <span className="text-[9px] font-medium text-amber flex items-center gap-0.5 flex-shrink-0 ml-auto">
-                          <Flame className="h-2.5 w-2.5" />{streak}
-                        </span>
-                      )}
-                    </div>
+                      done={completed}
+                      title={habit.target ? `${habit.title} · ${habit.target}` : habit.title}
+                      context={`${goalTitle} · ${taskTitle}`}
+                      right={<StreakBadge days={streak} />}
+                      onToggle={() => toggleCheckIn(habit.id)}
+                    />
                   ))}
                 </div>
                 {/* Long-press detail popover */}
@@ -587,11 +494,9 @@ export default function ProgramPage() {
       {/* Desktop workout button */}
       {currentPlan.splitDay !== 'rest' && (
         <div className="hidden md:block flex-shrink-0 pt-3">
-          <Link to="/workouts">
-            <Button className="w-full font-bold text-base py-4">
-              Start {currentPlan.splitDay} Workout
-            </Button>
-          </Link>
+          <Button className="w-full font-bold text-base py-4 capitalize" onClick={startWorkout}>
+            Start {currentPlan.splitDay} workout
+          </Button>
         </div>
       )}
     </div>

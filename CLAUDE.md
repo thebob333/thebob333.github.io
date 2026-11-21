@@ -71,7 +71,9 @@ All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/s
 
 ### Routing & Layout
 
-`src/App.tsx` defines routes. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile). Pages are in `src/pages/`.
+`src/App.tsx` defines routes: Today `/` (`Index.tsx`), Plan `/plan` (`Program.tsx`), Goals `/goals`, People `/people`, Gym `/gym` (`Workouts.tsx`), Settings `/settings`. Old `/program` and `/workouts` redirect. Tab/sidebar labels come from `src/components/layout/nav.ts`. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile) plus a per-route error boundary. Every page starts with `PageHeader` (`src/components/app/PageHeader.tsx`), which carries the Settings gear on phones.
+
+Naming: goal templates are **Blueprints**, repeatable Plan blocks are **Routines**, workout templates are **Saved workouts**. The weekly training split is edited in Gym (`WeeklySplitEditor`). Habits are always shown with their goal/task (`CheckRow` in `src/components/today/`).
 
 ### UI
 

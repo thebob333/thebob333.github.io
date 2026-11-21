@@ -11,6 +11,7 @@ import { useSettings } from '@/hooks/useSettings';
 import { BUILT_IN_EXERCISE_IDS, EXERCISE_LABELS, CompoundExercise, CustomExercise } from '@/types/workout';
 import { getStandard } from '@/lib/strength-standards';
 import { DataCard } from '@/components/settings/DataCard';
+import { PageHeader } from '@/components/app/PageHeader';
 
 const MIN_BODYWEIGHT = 50;
 const MAX_BODYWEIGHT = 700;
@@ -47,10 +48,7 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground">Settings</h1>
-        <p className="text-muted-foreground mt-0.5 text-xs md:text-sm">Data management & customization</p>
-      </div>
+      <PageHeader title="Settings" subtitle="Your data, body metrics and preferences" back />
 
       {/* Body Metrics */}
       <Card className="shadow-sm">

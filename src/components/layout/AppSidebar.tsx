@@ -1,5 +1,5 @@
-import { Target, Dumbbell, Home, Settings, Calendar, Users } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
+import { NAV_ITEMS, SETTINGS_ITEM, isNavActive } from "./nav";
 import { useLocation } from "react-router-dom";
 import {
   Sidebar,
@@ -14,20 +14,13 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
-const navItems = [
-  { title: "Home", url: "/", icon: Home },
-  { title: "Program", url: "/program", icon: Calendar },
-  { title: "Goals", url: "/goals", icon: Target },
-  { title: "People", url: "/people", icon: Users },
-  { title: "Workouts", url: "/workouts", icon: Dumbbell },
-  { title: "Settings", url: "/settings", icon: Settings },
-];
+const navItems = [...NAV_ITEMS, SETTINGS_ITEM];
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
-  const isActive = (path: string) => path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
+  const isActive = (path: string) => isNavActive(location.pathname, path);
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border bg-sidebar">

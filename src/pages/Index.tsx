@@ -1,59 +1,60 @@
-import { useGoals } from '@/hooks/useGoals';
-import { useWorkouts } from '@/hooks/useWorkouts';
-import { useHabits } from '@/hooks/useHabits';
-import { getPersonalRecords, getWeeklyVolume } from '@/lib/progressive-overload';
-import { EXERCISE_LABELS, getExerciseLabel, isBodyweightExercise } from '@/types/workout';
-import { useActiveWorkout, activeWorkoutActions } from '@/hooks/useWorkouts';
-import { calculateGoalProgress, getDaysRemaining, getUrgencyColor } from '@/types/goals';
-import { checkAchievements } from '@/lib/achievements';
-import { getTodaysHabits } from '@/lib/habits';
-import { Target, Dumbbell, Trophy, TrendingUp, Settings, Moon, Flame, CheckCircle2, ChevronRight, Clock, AlertCircle } from 'lucide-react';
+import { useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BodyDiagram } from '@/components/BodyDiagram';
-import { stores } from '@/lib/storage';
+import { motion } from 'framer-motion';
+import { Target, Dumbbell, Trophy, TrendingUp, Moon, ChevronRight, Play } from 'lucide-react';
+import { useGoals } from '@/hooks/useGoals';
+import { useWorkouts, useActiveWorkout, activeWorkoutActions } from '@/hooks/useWorkouts';
+import { useHabits } from '@/hooks/useHabits';
 import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
-import { dayOfWeek, startOfWeekKey } from '@/lib/dates';
-import { Badge } from '@/components/ui/badge';
+import { useSettings } from '@/hooks/useSettings';
+import { getPersonalRecords, getWeeklyVolume } from '@/lib/progressive-overload';
+import { getExerciseLabel, isBodyweightExercise } from '@/types/workout';
+import { calculateGoalProgress, getDaysRemaining } from '@/types/goals';
+import { checkAchievements } from '@/lib/achievements';
+import { getTodaysHabits } from '@/lib/habits';
+import { flattenTodos } from '@/lib/goal-tree';
+import { stores } from '@/lib/storage';
+import { dayOfWeek, parseDateKey, startOfWeekKey } from '@/lib/dates';
+import { BodyDiagram } from '@/components/BodyDiagram';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ProgressRing';
 import { HabitHeatmap } from '@/components/HabitHeatmap';
-import { useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { WeeklyFocus } from '@/components/WeeklyFocus';
+import { AmbientSound } from '@/components/AmbientSound';
+import { PageHeader } from '@/components/app/PageHeader';
+import { TodayChecklist, type ChecklistTodo } from '@/components/today/TodayChecklist';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 function getGreeting(): string {
   const h = new Date().getHours();
+  if (h < 5) return 'Up late';
   if (h < 12) return 'Good morning';
   if (h < 17) return 'Good afternoon';
   return 'Good evening';
 }
 
+const fade = (delay: number) => ({ initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { delay, duration: 0.25 } });
+
 export default function Index() {
   const { goals, toggleToDo } = useGoals();
   const { sessions } = useWorkouts();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
+  const { settings } = useSettings();
   const today = useTodayKey();
-  const customExercises = useStore(stores.CUSTOM_EXERCISES);
-  const prs = useMemo(
-    () => getPersonalRecords(sessions, id => isBodyweightExercise(id, customExercises)),
-    [sessions, customExercises],
-  );
-  const activeWorkout = useActiveWorkout();
   const navigate = useNavigate();
-  const settings = useStore(stores.SETTINGS);
-  const weeklyVolume = useMemo(() => getWeeklyVolume(sessions), [sessions]);
-  const latestVolume = weeklyVolume[weeklyVolume.length - 1]?.volume || 0;
+  const customExercises = useStore(stores.CUSTOM_EXERCISES);
+  const activeWorkout = useActiveWorkout();
+  const hasActiveWorkout = !!activeWorkout && activeWorkout.exercises.length > 0;
+
+  // ─── Achievements (persisted once earned, so unlock dates are real) ───
   const unlockedAchievements = useStore(stores.ACHIEVEMENTS);
   const { all: achievements, newlyUnlocked } = useMemo(
     () => checkAchievements(sessions, unlockedAchievements),
     [sessions, unlockedAchievements],
   );
-  const unlockedCount = achievements.filter(a => a.unlocked).length;
-  // Persist newly earned badges once, so their unlock date is real.
   useEffect(() => {
     if (newlyUnlocked.length === 0) return;
     const at = new Date().toISOString();
@@ -63,262 +64,149 @@ export default function Index() {
       return add.length ? [...prev, ...add] : prev;
     });
   }, [newlyUnlocked]);
+
+  // ─── Today's checklist ───
   const todaysHabits = useMemo(() => getTodaysHabits(goals, habitLogs, today), [goals, habitLogs, today]);
-  const habitsCompleted = todaysHabits.filter(h => h.completed).length;
+  const checklistTodos = useMemo<ChecklistTodo[]>(() =>
+    flattenTodos(goals)
+      .filter(({ todo }) => !todo.done)
+      .map(({ todo, goal, phase, task }) => ({
+        todoId: todo.id, title: todo.title, goalId: goal.id, goalTitle: goal.title,
+        phaseId: phase.id, taskId: task.id, taskTitle: task.title,
+        days: getDaysRemaining(todo.deadline, today),
+      }))
+      .filter(t => t.days !== null && t.days <= 7)
+      .sort((a, b) => a.days - b.days),
+  [goals, today]);
 
-  const dueSoonTodos = useMemo(() => {
-    const todos: { todoId: string; title: string; goalId: string; goalTitle: string; phaseId: string; taskId: string; days: number }[] = [];
-    goals.forEach(g => {
-      if (g.archived) return;
-      g.phases.forEach(p => {
-        p.tasks.forEach(t => {
-          (t.todos ?? []).forEach(td => {
-            if (td.done) return;
-            const days = getDaysRemaining(td.deadline, today);
-            if (days !== null && days <= 7) {
-              todos.push({ todoId: td.id, title: td.title, goalId: g.id, goalTitle: g.title, phaseId: p.id, taskId: t.id, days });
-            }
-          });
-        });
-      });
-    });
-    return todos.sort((a, b) => a.days - b.days).slice(0, 5);
-  }, [goals, today]);
-
+  // ─── Workout ───
   const { days: planDays } = useWeeklyPlan();
   const hasPlan = useStore(stores.WEEKLY_PLAN) !== null;
-  const todayPlan = hasPlan ? planDays[(dayOfWeek(today) + 6) % 7] : null;
-
-  const activeGoals = goals.filter(g => !g.archived);
-  const latestWeek = weeklyVolume[weeklyVolume.length - 1]?.week;
-  const volumeIsThisWeek = latestWeek && latestWeek >= startOfWeekKey(today, 0);
-  const stats = [
-    { icon: Target, value: activeGoals.length, label: 'Goals' },
-    { icon: Dumbbell, value: sessions.length, label: 'Sessions' },
-    { icon: Trophy, value: `${unlockedCount}/${achievements.length}`, label: 'Badges' },
-    {
-      icon: TrendingUp,
-      value: volumeIsThisWeek ? (latestVolume >= 10000 ? `${Math.round(latestVolume / 1000)}k` : latestVolume.toLocaleString()) : '0',
-      label: 'Lbs / wk',
-    },
-  ];
-
-  /** Start today's planned workout with every exercise prefilled. */
+  const todayIdx = (dayOfWeek(today) + 6) % 7;
+  const todayPlan = hasPlan ? planDays[todayIdx] : null;
   const startTodaysWorkout = () => {
-    if (activeWorkout && activeWorkout.exercises.length > 0) {
-      navigate('/workouts');
-      return;
+    if (!hasActiveWorkout) {
+      activeWorkoutActions.load(todayPlan?.splitDay ?? 'push', []);
+      (todayPlan?.exercises ?? []).forEach(ex => activeWorkoutActions.addExercise(ex, customExercises));
     }
-    activeWorkoutActions.load(todayPlan?.splitDay ?? 'push', []);
-    (todayPlan?.exercises ?? []).forEach(ex => activeWorkoutActions.addExercise(ex, customExercises));
-    navigate('/workouts');
+    navigate('/gym');
   };
 
-  return (
-    <div className="max-w-lg mx-auto px-4 pb-8 space-y-6">
-      {/* Greeting Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between pt-2 relative z-10"
-      >
-        <div>
-          <h1 className="text-xl font-semibold text-foreground tracking-tight">{getGreeting()}</h1>
-          <p className="text-xs text-muted-foreground uppercase tracking-widest mt-0.5">TELOS</p>
-        </div>
-        <Link to="/settings">
-          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-foreground">
-            <Settings className="h-5 w-5" />
-          </Button>
-        </Link>
-      </motion.div>
+  // ─── Stats ───
+  const prs = useMemo(
+    () => getPersonalRecords(sessions, id => isBodyweightExercise(id, customExercises)),
+    [sessions, customExercises],
+  );
+  const weeklyVolume = useMemo(() => getWeeklyVolume(sessions), [sessions]);
+  const thisWeek = startOfWeekKey(today, 0);
+  const volumeThisWeek = weeklyVolume.find(w => w.week === thisWeek)?.volume ?? 0;
+  const activeGoals = goals.filter(g => !g.archived);
+  const unlockedCount = achievements.filter(a => a.unlocked).length;
+  const stats = [
+    { icon: Target, value: activeGoals.length, label: 'Goals', to: '/goals' },
+    { icon: Dumbbell, value: sessions.length, label: 'Sessions', to: '/gym' },
+    { icon: Trophy, value: `${unlockedCount}/${achievements.length}`, label: 'Badges', to: '/gym' },
+    { icon: TrendingUp, value: volumeThisWeek >= 10000 ? `${Math.round(volumeThisWeek / 1000)}k` : volumeThisWeek.toLocaleString(), label: 'Lbs this wk', to: '/gym' },
+  ];
 
-      {/* Welcome Card (empty state) */}
-      {goals.length === 0 && sessions.length === 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-          <div className="rounded-xl bg-card border border-border p-5 shadow-sm text-center space-y-3">
-            <Target className="h-8 w-8 mx-auto text-primary" />
-            <div>
-              <h2 className="text-lg font-semibold text-foreground">Welcome to TELOS</h2>
-              <p className="text-sm text-muted-foreground mt-1">Start by creating a goal or setting up your weekly program.</p>
-            </div>
-            <div className="flex gap-2 justify-center">
-              <Link to="/goals">
-                <Button size="sm" className="font-semibold">Create a Goal</Button>
-              </Link>
-              <Link to="/program">
-                <Button size="sm" variant="outline">Set Up Program</Button>
-              </Link>
-            </div>
+  const dateLabel = parseDateKey(today).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const isNew = goals.length === 0 && sessions.length === 0;
+
+  return (
+    <div className="mx-auto max-w-lg space-y-5 pb-8">
+      <PageHeader
+        eyebrow={dateLabel}
+        title={getGreeting()}
+        actions={settings.ambientSoundEnabled ? <span className="md:hidden"><AmbientSound enabled /></span> : undefined}
+      />
+
+      {/* First run */}
+      {isNew && (
+        <motion.div {...fade(0.03)} className="rounded-2xl border bg-card p-5 text-center shadow-sm">
+          <Target className="mx-auto h-8 w-8 text-primary" />
+          <h2 className="mt-2 text-lg font-semibold">Welcome to TELOS</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Set a goal and TELOS turns it into daily habits and to-dos you can check off right here.</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <Button asChild className="h-11 font-semibold"><Link to="/goals">Create a goal</Link></Button>
+            <Button asChild variant="outline" className="h-11"><Link to="/gym">Set up training</Link></Button>
           </div>
         </motion.div>
       )}
 
       {/* Workout in progress */}
-      {activeWorkout && activeWorkout.exercises.length > 0 && (
-        <Link to="/workouts" className="block">
-          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-sm flex items-center gap-3">
-            <Dumbbell className="h-5 w-5 text-primary shrink-0" />
+      {hasActiveWorkout && (
+        <motion.div {...fade(0.03)}>
+          <Link to="/gym" className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-4 shadow-sm">
+            <Dumbbell className="h-5 w-5 shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-foreground">Workout in progress</p>
-              <p className="text-xs text-muted-foreground truncate">
+              <p className="text-sm font-semibold">Workout in progress</p>
+              <p className="truncate text-xs text-muted-foreground">
                 {activeWorkout.exercises.map(e => getExerciseLabel(e.exercise, customExercises)).join(' · ')}
               </p>
             </div>
             <span className="text-sm font-semibold text-primary">Resume</span>
-          </div>
-        </Link>
+          </Link>
+        </motion.div>
       )}
 
-      {/* Today's Workout Card */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-        {todayPlan && todayPlan.splitDay !== 'rest' ? (
-          <div className="rounded-xl bg-card border border-border p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                  Today — {DAYS[(dayOfWeek(today) + 6) % 7]}
-                </p>
-                <p className="text-lg font-semibold text-foreground capitalize mt-0.5">{todayPlan.splitDay} Day</p>
-              </div>
-              <Button size="sm" className="bg-primary text-primary-foreground font-semibold h-10 px-4" onClick={startTodaysWorkout}>
-                {activeWorkout && activeWorkout.exercises.length > 0 ? 'Resume' : 'Start'}
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {todayPlan.exercises.map((ex: string) => (
-                <Badge key={ex} variant="secondary" className="text-xs font-medium">
-                  {getExerciseLabel(ex, customExercises)}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        ) : todayPlan?.splitDay === 'rest' ? (
-          <div className="rounded-xl bg-card border border-border p-4 flex items-center gap-3 shadow-sm">
-            <Moon className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="text-sm font-medium text-foreground">Rest Day</p>
-              <p className="text-xs text-muted-foreground">Recovery is part of the process</p>
-            </div>
-          </div>
-        ) : (
-          <Link to="/program">
-            <div className="rounded-xl border border-dashed border-border p-4 text-center hover:border-primary/50 transition-colors">
-              <p className="text-sm text-muted-foreground">No program set up</p>
-              <p className="text-xs text-primary mt-1 font-medium">Set up your program →</p>
-            </div>
-          </Link>
-        )}
+      {/* One checklist for everything due today */}
+      <motion.div {...fade(0.06)}>
+        <TodayChecklist
+          habits={todaysHabits}
+          todos={checklistTodos}
+          onToggleHabit={id => toggleCheckIn(id)}
+          onToggleTodo={t => toggleToDo(t.goalId, t.phaseId, t.taskId, t.todoId)}
+        />
       </motion.div>
 
-      {/* Stats Strip */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="flex gap-2"
-      >
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="flex-1 flex flex-col items-center gap-1 rounded-xl bg-card border border-border py-3 px-2 shadow-sm"
-          >
-            <stat.icon className="h-4 w-4 text-primary" />
-            <span className="text-lg font-bold text-foreground leading-none">{stat.value}</span>
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{stat.label}</span>
-          </div>
-        ))}
-      </motion.div>
-
-      {/* Today's Habits */}
-      {todaysHabits.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <div className="rounded-xl bg-card border border-border p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Today's Habits</p>
-                <p className="text-sm font-medium text-foreground mt-0.5">
-                  {habitsCompleted}/{todaysHabits.length} completed
-                </p>
+      {/* Today's workout */}
+      {!hasActiveWorkout && (
+        <motion.div {...fade(0.09)}>
+          {todayPlan && todayPlan.splitDay !== 'rest' ? (
+            <div className="rounded-2xl border bg-card p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wider text-muted-foreground">Training · {DAYS[todayIdx]}</p>
+                  <p className="mt-0.5 text-lg font-semibold capitalize">{todayPlan.splitDay} day</p>
+                </div>
+                <Button className="h-11 px-5 font-semibold" onClick={startTodaysWorkout}>
+                  <Play className="mr-1.5 h-4 w-4" /> Start
+                </Button>
               </div>
-              {habitsCompleted === todaysHabits.length && todaysHabits.length > 0 && (
-                <CheckCircle2 className="h-5 w-5 text-teal" />
+              {todayPlan.exercises.length > 0 && (
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {todayPlan.exercises.map(ex => getExerciseLabel(ex, customExercises)).join(' · ')}
+                </p>
               )}
             </div>
-            <div className="space-y-2">
-              {todaysHabits.map(({ habit, goalTitle, completed, streak }) => (
-                <div key={habit.id} className="flex items-center gap-2.5">
-                  <Checkbox
-                    checked={completed}
-                    onCheckedChange={() => toggleCheckIn(habit.id)}
-                    className="border-amber data-[state=checked]:bg-amber data-[state=checked]:border-amber"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className={`text-sm ${completed ? 'text-muted-foreground line-through' : ''}`}>
-                      {habit.title}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground ml-1.5">{goalTitle}</span>
-                  </div>
-                  {streak > 0 && (
-                    <span className="text-[10px] font-medium text-amber flex items-center gap-0.5 flex-shrink-0">
-                      <Flame className="h-3 w-3" />{streak}d
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* Habit Heatmap */}
-      {todaysHabits.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }}>
-          <HabitHeatmap goals={goals} logs={habitLogs} />
-        </motion.div>
-      )}
-
-      {/* Due Soon */}
-      {dueSoonTodos.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.19 }}>
-          <div className="rounded-xl bg-card border border-border p-4 shadow-sm">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-destructive" />
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Due Soon</p>
+          ) : todayPlan?.splitDay === 'rest' ? (
+            <div className="flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm">
+              <Moon className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Rest day</p>
+                <p className="text-xs text-muted-foreground">Recovery is part of the process.</p>
               </div>
-              <Link to="/program" className="text-[10px] text-primary font-medium hover:underline">
-                View Program
-              </Link>
             </div>
-            <div className="space-y-2">
-              {dueSoonTodos.map((todo) => (
-                <div key={todo.todoId} className="flex items-center gap-2.5">
-                  <Checkbox
-                    onCheckedChange={() => toggleToDo(todo.goalId, todo.phaseId, todo.taskId, todo.todoId)}
-                    className="border-border"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <span className="text-sm">{todo.title}</span>
-                    <span className="text-[10px] text-muted-foreground ml-1.5">{todo.goalTitle}</span>
-                  </div>
-                  <span className={`text-[10px] font-medium flex items-center gap-0.5 flex-shrink-0 ${getUrgencyColor(todo.days)}`}>
-                    <Clock className="h-3 w-3" />
-                    {todo.days < 0 ? `${Math.abs(todo.days)}d over` : todo.days === 0 ? 'today' : `${todo.days}d left`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          ) : !isNew ? (
+            <Link to="/gym" className="block rounded-2xl border border-dashed p-4 text-center">
+              <p className="text-sm text-muted-foreground">No training split yet</p>
+              <p className="mt-1 text-xs font-medium text-primary">Set up your week in Gym →</p>
+            </Link>
+          ) : null}
         </motion.div>
       )}
 
-      {/* Goal Progress Cards */}
+      {/* Weekly focus */}
+      <motion.div {...fade(0.12)}>
+        <WeeklyFocus goals={goals} />
+      </motion.div>
+
+      {/* Goals */}
       {activeGoals.length > 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-muted-foreground uppercase tracking-wider">Goals</p>
-            <Link to="/goals" className="text-xs text-primary font-medium flex items-center gap-0.5 hover:underline">
+        <motion.div {...fade(0.15)}>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs uppercase tracking-wider text-muted-foreground">Goals</p>
+            <Link to="/goals" className="flex h-8 items-center gap-0.5 text-xs font-medium text-primary">
               View all <ChevronRight className="h-3 w-3" />
             </Link>
           </div>
@@ -326,16 +214,15 @@ export default function Index() {
             {activeGoals.slice(0, 4).map(goal => {
               const progress = calculateGoalProgress(goal);
               return (
-                <Link key={goal.id} to="/goals">
-                  <div className="rounded-xl bg-card border border-border p-3 shadow-sm flex items-center gap-3 hover:bg-accent/30 transition-colors">
-                    <ProgressRing value={progress} size={36} strokeWidth={3} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{goal.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {goal.phases.length} phase{goal.phases.length !== 1 ? 's' : ''} — {progress}%
-                      </p>
-                    </div>
+                <Link key={goal.id} to="/goals" className="flex items-center gap-3 rounded-2xl border bg-card p-3 shadow-sm transition-colors active:bg-accent/40">
+                  <ProgressRing value={progress} size={36} strokeWidth={3} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{goal.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {goal.phases.length} phase{goal.phases.length !== 1 ? 's' : ''} · {progress}%
+                    </p>
                   </div>
+                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
                 </Link>
               );
             })}
@@ -343,19 +230,37 @@ export default function Index() {
         </motion.div>
       )}
 
-      {/* Body Diagram — only once there's something to show */}
+      {/* Stats */}
+      {!isNew && (
+        <motion.div {...fade(0.18)} className="grid grid-cols-4 gap-2">
+          {stats.map(stat => (
+            <Link key={stat.label} to={stat.to} className="flex flex-col items-center gap-1 rounded-xl border bg-card px-1 py-3 shadow-sm">
+              <stat.icon className="h-4 w-4 text-primary" />
+              <span className="text-lg font-bold leading-none">{stat.value}</span>
+              <span className="text-center text-[11px] leading-tight text-muted-foreground">{stat.label}</span>
+            </Link>
+          ))}
+        </motion.div>
+      )}
+
+      {/* Habit history */}
+      {todaysHabits.length > 0 && (
+        <motion.div {...fade(0.2)}>
+          <HabitHeatmap goals={goals} logs={habitLogs} />
+        </motion.div>
+      )}
+
+      {/* Strength map */}
       {sessions.length > 0 ? (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+        <motion.div {...fade(0.22)}>
           <BodyDiagram prs={prs} customExercises={customExercises} bodyweight={settings.bodyweight} goldTargets={settings.goldTargets} />
         </motion.div>
-      ) : (
-        <Link to="/workouts" className="block">
-          <div className="rounded-xl border border-dashed border-border p-4 text-center">
-            <p className="text-sm text-muted-foreground">Your strength map fills in as you log workouts</p>
-            <p className="text-xs text-primary mt-1 font-medium">Log your first session →</p>
-          </div>
+      ) : !isNew ? (
+        <Link to="/gym" className="block rounded-2xl border border-dashed p-4 text-center">
+          <p className="text-sm text-muted-foreground">Your strength map fills in as you log workouts</p>
+          <p className="mt-1 text-xs font-medium text-primary">Log your first session →</p>
         </Link>
-      )}
+      ) : null}
     </div>
   );
 }

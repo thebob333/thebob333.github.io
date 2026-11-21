@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageTransition } from "@/components/PageTransition";
@@ -24,8 +24,11 @@ function AnimatedRoutes() {
         <Routes location={location}>
           <Route path="/" element={<Index />} />
           <Route path="/goals" element={<Goals />} />
-          <Route path="/workouts" element={<Workouts />} />
-          <Route path="/program" element={<Program />} />
+          <Route path="/gym" element={<Workouts />} />
+          <Route path="/plan" element={<Program />} />
+          {/* Old addresses keep working (bookmarks, home-screen shortcuts). */}
+          <Route path="/workouts" element={<Navigate to="/gym" replace />} />
+          <Route path="/program" element={<Navigate to="/plan" replace />} />
           <Route path="/people" element={<People />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />

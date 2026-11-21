@@ -16,6 +16,8 @@ import { Dumbbell, TrendingUp, Trophy, Timer, Plus, Trash2, ArrowUp, ArrowDown, 
 import { toast } from 'sonner';
 import { stores, generateId, WorkoutTemplate } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
+import { PageHeader } from '@/components/app/PageHeader';
+import { WeeklySplitEditor } from '@/components/gym/WeeklySplitEditor';
 
 const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
   barbell: 'Barbell', dumbbell: 'Dumbbell', cable: 'Cable',
@@ -220,6 +222,7 @@ RULES:
   // The workout in progress is saved continuously, so leaving the page or
   // closing the app never loses it.
   const active = useActiveWorkout();
+  const [tab, setTab] = useState('session');
   const splitDay = (active?.splitDay ?? 'push') as SplitDay;
   const sessionExercises = active?.exercises ?? [];
   const sessionNotes = active?.notes ?? '';
@@ -296,20 +299,31 @@ RULES:
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground">Workouts</h1>
-        <p className="text-muted-foreground mt-0.5 text-xs md:text-sm">Progressive overload · Compound-first</p>
-      </div>
+      <PageHeader title="Gym" subtitle="Log lifts · the app plans your next session" />
 
-      <Tabs defaultValue="session" className="space-y-4">
-        <TabsList className="w-full overflow-x-auto no-scrollbar flex justify-start">
-          <TabsTrigger value="session" className="text-xs px-2.5">Log Session</TabsTrigger>
-          <TabsTrigger value="templates" className="text-xs px-2.5">Templates</TabsTrigger>
-          <TabsTrigger value="history" className="text-xs px-2.5">History</TabsTrigger>
-          <TabsTrigger value="progress" className="text-xs px-2.5">Progress</TabsTrigger>
-          <TabsTrigger value="prs" className="text-xs px-2.5">PRs</TabsTrigger>
-          <TabsTrigger value="config" className="text-xs px-2.5">Config</TabsTrigger>
+      <Tabs value={tab} onValueChange={setTab} className="space-y-4">
+        {/* Two rows of clearly labelled tabs instead of a hidden sideways-scrolling strip */}
+        <TabsList className="grid h-auto w-full grid-cols-4 gap-1 p-1">
+          <TabsTrigger value="session" className="h-9 text-xs">Log</TabsTrigger>
+          <TabsTrigger value="split" className="h-9 text-xs">Split</TabsTrigger>
+          <TabsTrigger value="templates" className="h-9 text-xs">Saved</TabsTrigger>
+          <TabsTrigger value="history" className="h-9 text-xs">History</TabsTrigger>
+          <TabsTrigger value="progress" className="h-9 text-xs">Progress</TabsTrigger>
+          <TabsTrigger value="prs" className="h-9 text-xs">PRs</TabsTrigger>
+          <TabsTrigger value="config" className="col-span-2 h-9 text-xs">Exercises & targets</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="split" className="space-y-4">
+          <WeeklySplitEditor
+            customExercises={activeCustom}
+            onStartDay={(splitDay, exercises) => {
+              activeWorkoutActions.load(splitDay, []);
+              exercises.forEach(ex => activeWorkoutActions.addExercise(ex, customExercises));
+              setTab('session');
+              toast.success(`${splitDay.charAt(0).toUpperCase() + splitDay.slice(1)} day loaded`);
+            }}
+          />
+        </TabsContent>
 
         {/* LOG SESSION TAB */}
         <TabsContent value="session" className="space-y-4">
@@ -469,8 +483,8 @@ RULES:
             <Card className="border-dashed border-2 border-primary/20">
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <Save className="h-16 w-16 text-primary/30 mb-4" />
-                <p className="text-muted-foreground text-lg">No templates yet</p>
-                <p className="text-xs text-muted-foreground mt-1">Log a session and save it as a template</p>
+                <p className="text-muted-foreground text-lg">No saved workouts yet</p>
+                <p className="text-xs text-muted-foreground mt-1">Build a workout on the Log tab and tap Save</p>
               </CardContent>
             </Card>
           ) : (
@@ -483,8 +497,8 @@ RULES:
                       <Badge variant="outline" className="text-xs capitalize mt-1">{t.splitDay}</Badge>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" onClick={() => loadFromTemplate(t)} className="text-xs font-semibold">
-                        Quick Start
+                      <Button size="sm" onClick={() => { loadFromTemplate(t); setTab('session'); }} className="h-9 text-xs font-semibold">
+                        Start
                       </Button>
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteTemplate(t.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
