@@ -8,10 +8,11 @@ import { useGoals } from '@/hooks/useGoals';
 import { useHabits } from '@/hooks/useHabits';
 import { getTodaysHabits } from '@/lib/habits';
 import { getDaysRemaining } from '@/types/goals';
-import {
-  loadWeeklyPlan, saveWeeklyPlan, generateId,
-  loadTimeBlocks, loadContacts, Contact,
-} from '@/lib/storage';
+import { stores } from '@/lib/storage';
+import { useStore } from '@/hooks/useStore';
+import { useTodayKey } from '@/hooks/useToday';
+import { useWeeklyPlan, type DayPlan } from '@/hooks/useWeeklyPlan';
+import { toDateKey, parseDateKey } from '@/lib/dates';
 import {
   Calendar, Dumbbell, X, Settings2, ChevronLeft, ChevronRight, Repeat, Flame, CheckCircle2
 } from 'lucide-react';
@@ -32,10 +33,6 @@ function getMonday(d: Date): Date {
   const diff = day === 0 ? -6 : 1 - day;
   date.setDate(date.getDate() + diff);
   return date;
-}
-
-function toDateKey(d: Date): string {
-  return d.toISOString().split('T')[0];
 }
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -70,12 +67,6 @@ const SPLIT_COLORS: Record<SplitDay, string> = {
   rest: 'bg-muted text-muted-foreground border-muted',
 };
 
-interface DayPlan {
-  day: string;
-  splitDay: SplitDay;
-  exercises: CompoundExercise[];
-}
-
 interface FlatTodo {
   todoId: string;
   todoTitle: string;
@@ -93,18 +84,16 @@ interface FlatTodo {
 export default function ProgramPage() {
   const { goals, toggleToDo } = useGoals();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
-  const [plan, setPlan] = useState<DayPlan[]>(() => {
-    const saved = loadWeeklyPlan();
-    if (saved) return saved.days;
-    return DAYS.map(day => ({ day, splitDay: 'rest' as SplitDay, exercises: [] }));
-  });
-  const [assignedTodoIds, setAssignedTodoIds] = useState<Set<string>>(() => {
+  const { days: plan, updateDays } = useWeeklyPlan();
+  const timeBlocks = useStore(stores.TIME_BLOCKS);
+  const assignedTodoIds = useMemo(() => {
     const ids = new Set<string>();
-    loadTimeBlocks().forEach(b => { if (b.todoId) ids.add(b.todoId); });
+    timeBlocks.forEach(b => { if (b.todoId) ids.add(b.todoId); });
     return ids;
-  });
-  const [contacts] = useState<Contact[]>(() => loadContacts());
-  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  }, [timeBlocks]);
+  const contacts = useStore(stores.CONTACTS);
+  const todayKey = useTodayKey();
+  const today = useMemo(() => parseDateKey(todayKey), [todayKey]);
   const [selectedDate, setSelectedDate] = useState(() => new Date(today));
   const [weekStart, setWeekStart] = useState(() => getMonday(today));
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
@@ -134,7 +123,7 @@ export default function ProgramPage() {
     return todos;
   }, [goals]);
 
-  const todaysHabits = useMemo(() => getTodaysHabits(goals, habitLogs), [goals, habitLogs]);
+  const todaysHabits = useMemo(() => getTodaysHabits(goals, habitLogs, todayKey), [goals, habitLogs, todayKey]);
   const habitsCompleted = todaysHabits.filter(h => h.completed).length;
   const habitsExpanded = showHabits === null ? todaysHabits.length <= 5 : showHabits;
 
@@ -172,29 +161,20 @@ export default function ProgramPage() {
   }, [todaysHabits, habitGoalFilter]);
   const filteredCompleted = filteredHabits.filter(h => h.completed).length;
 
-  const pendingTodos = allTodos.filter(t => !t.done);
-  const backlog = pendingTodos
-    .filter(t => !assignedTodoIds.has(t.todoId))
+  const backlog = useMemo(() => allTodos
+    .filter(t => !t.done && !assignedTodoIds.has(t.todoId))
     .sort((a, b) => {
-      const daysA = getDaysRemaining(a.deadline);
-      const daysB = getDaysRemaining(b.deadline);
+      const daysA = getDaysRemaining(a.deadline, todayKey);
+      const daysB = getDaysRemaining(b.deadline, todayKey);
       if (daysA !== null && daysB !== null) return daysA - daysB;
       if (daysA !== null) return -1;
       if (daysB !== null) return 1;
       return 0;
-    });
+    }), [allTodos, assignedTodoIds, todayKey]);
 
   const handleToggleTodo = useCallback((todo: FlatTodo) => {
     toggleToDo(todo.goalId, todo.phaseId, todo.taskId, todo.todoId);
   }, [toggleToDo]);
-
-  const handleTodoLinked = useCallback((todoId: string) => {
-    setAssignedTodoIds(prev => new Set([...prev, todoId]));
-  }, []);
-
-  const handleTodoUnlinked = useCallback((todoId: string) => {
-    setAssignedTodoIds(prev => { const next = new Set(prev); next.delete(todoId); return next; });
-  }, []);
 
   const todoStates = useMemo(() => {
     const states: Record<string, boolean> = {};
@@ -202,35 +182,29 @@ export default function ProgramPage() {
     return states;
   }, [allTodos]);
 
-  const savePlan = (updated: DayPlan[]) => {
-    setPlan(updated);
-    saveWeeklyPlan({ id: generateId(), name: 'My Program', days: updated });
-    toast.success('Saved!');
-  };
-
+  // All plan edits are immutable and saved immediately.
   const updateDay = (idx: number, field: Partial<DayPlan>) => {
-    const updated = [...plan];
-    updated[idx] = { ...updated[idx], ...field };
-    if (field.splitDay && field.splitDay !== 'rest') {
-      updated[idx].exercises = SPLIT_EXERCISE_SUGGESTIONS[field.splitDay] || [];
-    }
-    if (field.splitDay === 'rest') updated[idx].exercises = [];
-    setPlan(updated);
-    savePlan(updated);
+    updateDays(days => days.map((d, i) => {
+      if (i !== idx) return d;
+      const next = { ...d, ...field };
+      if (field.splitDay) {
+        next.exercises = field.splitDay === 'rest' ? [] : [...(SPLIT_EXERCISE_SUGGESTIONS[field.splitDay] || [])];
+      }
+      return next;
+    }));
+    toast.success('Split saved');
   };
 
   const addExercise = (dayIdx: number, exercise: CompoundExercise) => {
-    const updated = [...plan];
-    if (!updated[dayIdx].exercises.includes(exercise)) {
-      updated[dayIdx].exercises = [...updated[dayIdx].exercises, exercise];
-      setPlan(updated);
-    }
+    updateDays(days => days.map((d, i) =>
+      i === dayIdx && !d.exercises.includes(exercise) ? { ...d, exercises: [...d.exercises, exercise] } : d,
+    ));
   };
 
-  const removeExercise = (dayIdx: number, exercise: CompoundExercise) => {
-    const updated = [...plan];
-    updated[dayIdx].exercises = updated[dayIdx].exercises.filter(e => e !== exercise);
-    setPlan(updated);
+  const removeExercise = (dayIdx: number, exercise: string) => {
+    updateDays(days => days.map((d, i) =>
+      i === dayIdx ? { ...d, exercises: d.exercises.filter(e => e !== exercise) } : d,
+    ));
   };
 
   const goDay = (dir: -1 | 1) => {
@@ -607,8 +581,6 @@ export default function ProgramPage() {
           }))}
           deadlineTodos={deadlineTodosForDay}
           todoStates={todoStates}
-          onTodoLinked={handleTodoLinked}
-          onTodoUnlinked={handleTodoUnlinked}
         />
       </div>
 

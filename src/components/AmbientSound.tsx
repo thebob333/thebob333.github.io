@@ -38,7 +38,7 @@ function createFireSound(ctx: AudioContext): { start: () => void; stop: () => vo
 
   return {
     start: () => source.start(),
-    stop: () => { try { source.stop(); } catch {} },
+    stop: () => { try { source.stop(); } catch { /* already stopped */ } },
   };
 }
 

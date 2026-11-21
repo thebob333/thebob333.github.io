@@ -1,3 +1,5 @@
+import { dateKeyOf, daysBetween, todayKey, type DateKey } from '@/lib/dates';
+
 export type Status = 'not_started' | 'in_progress' | 'complete';
 export type GoalDomain = 'PHYSICAL' | 'CREATIVE' | 'PROFESSIONAL' | 'INTELLECTUAL' | 'LIFESTYLE';
 export type EffortLevel = 'LOW' | 'MED' | 'HIGH';
@@ -5,9 +7,10 @@ export type HabitEvolution = 'NEW' | 'CARRY' | 'INCREASE' | 'REPLACE';
 
 export interface HabitLog {
   habitId: string;
-  date: string; // ISO date string YYYY-MM-DD
+  date: string; // local calendar day, YYYY-MM-DD
   completed: boolean;
   value?: number; // optional numeric tracking (e.g. grams of protein, minutes)
+  at?: string; // ISO timestamp of the check-in (lets future fixes re-key dates exactly)
 }
 
 export interface ToDo {
@@ -76,39 +79,40 @@ export interface Goal {
 }
 
 export function calculateTaskProgress(task: Task): number {
-  if (task.todos.length === 0) return task.status === 'complete' ? 100 : 0;
-  const done = task.todos.filter(t => t.done).length;
-  return Math.round((done / task.todos.length) * 100);
+  const todos = task.todos ?? [];
+  if (todos.length === 0) return task.status === 'complete' ? 100 : 0;
+  const done = todos.filter(t => t.done).length;
+  return Math.round((done / todos.length) * 100);
 }
 
 export function calculatePhaseProgress(phase: Phase): number {
-  if (phase.tasks.length === 0) return 0;
-  const total = phase.tasks.reduce((sum, t) => sum + calculateTaskProgress(t), 0);
-  return Math.round(total / phase.tasks.length);
+  const tasks = phase.tasks ?? [];
+  if (tasks.length === 0) return 0;
+  const total = tasks.reduce((sum, t) => sum + calculateTaskProgress(t), 0);
+  return Math.round(total / tasks.length);
 }
 
 export function calculateGoalProgress(goal: Goal): number {
-  if (goal.phases.length === 0) return 0;
-  const total = goal.phases.reduce((sum, p) => sum + calculatePhaseProgress(p), 0);
-  return Math.round(total / goal.phases.length);
+  const phases = goal.phases ?? [];
+  if (phases.length === 0) return 0;
+  const total = phases.reduce((sum, p) => sum + calculatePhaseProgress(p), 0);
+  return Math.round(total / phases.length);
 }
 
 export function deriveTaskStatus(task: Task): Status {
-  if (task.todos.length === 0) return task.status;
-  const allDone = task.todos.every(t => t.done);
-  const anyDone = task.todos.some(t => t.done);
+  const todos = task.todos ?? [];
+  if (todos.length === 0) return task.status;
+  const allDone = todos.every(t => t.done);
+  const anyDone = todos.some(t => t.done);
   if (allDone) return 'complete';
   if (anyDone) return 'in_progress';
   return 'not_started';
 }
 
-export function getDaysRemaining(deadline?: string): number | null {
+/** Calendar days until the deadline (0 = due today, negative = overdue). */
+export function getDaysRemaining(deadline?: string, today: DateKey = todayKey()): number | null {
   if (!deadline) return null;
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const end = new Date(deadline);
-  end.setHours(0, 0, 0, 0);
-  return Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  return daysBetween(today, dateKeyOf(deadline));
 }
 
 export function getUrgencyClass(days: number | null): string {

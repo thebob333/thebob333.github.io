@@ -9,13 +9,17 @@ import { getTodaysHabits } from '@/lib/habits';
 import { Target, Dumbbell, Trophy, TrendingUp, Settings, Moon, Flame, CheckCircle2, ChevronRight, Clock, AlertCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { BodyDiagram } from '@/components/BodyDiagram';
-import { loadSettings, loadAchievements, loadWeeklyPlan, loadCustomExercises } from '@/lib/storage';
+import { stores } from '@/lib/storage';
+import { useStore } from '@/hooks/useStore';
+import { useTodayKey } from '@/hooks/useToday';
+import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
+import { dayOfWeek } from '@/lib/dates';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { ProgressRing } from '@/components/ProgressRing';
 import { HabitHeatmap } from '@/components/HabitHeatmap';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -31,25 +35,40 @@ export default function Index() {
   const { goals, toggleToDo } = useGoals();
   const { sessions } = useWorkouts();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
-  const prs = getPersonalRecords(sessions);
-  const customExercises = useMemo(() => loadCustomExercises(), []);
-  const settings = useMemo(() => loadSettings(), []);
-  const weeklyVolume = getWeeklyVolume(sessions);
+  const today = useTodayKey();
+  const prs = useMemo(() => getPersonalRecords(sessions), [sessions]);
+  const customExercises = useStore(stores.CUSTOM_EXERCISES);
+  const settings = useStore(stores.SETTINGS);
+  const weeklyVolume = useMemo(() => getWeeklyVolume(sessions), [sessions]);
   const latestVolume = weeklyVolume[weeklyVolume.length - 1]?.volume || 0;
-  const unlockedAchievements = loadAchievements();
-  const { all: achievements } = checkAchievements(sessions, unlockedAchievements);
+  const unlockedAchievements = useStore(stores.ACHIEVEMENTS);
+  const { all: achievements, newlyUnlocked } = useMemo(
+    () => checkAchievements(sessions, unlockedAchievements),
+    [sessions, unlockedAchievements],
+  );
   const unlockedCount = achievements.filter(a => a.unlocked).length;
-  const todaysHabits = useMemo(() => getTodaysHabits(goals, habitLogs), [goals, habitLogs]);
+  // Persist newly earned badges once, so their unlock date is real.
+  useEffect(() => {
+    if (newlyUnlocked.length === 0) return;
+    const at = new Date().toISOString();
+    stores.ACHIEVEMENTS.update(prev => {
+      const have = new Set(prev.map(a => a.id));
+      const add = newlyUnlocked.filter(a => !have.has(a.id)).map(a => ({ id: a.id, unlockedAt: at }));
+      return add.length ? [...prev, ...add] : prev;
+    });
+  }, [newlyUnlocked]);
+  const todaysHabits = useMemo(() => getTodaysHabits(goals, habitLogs, today), [goals, habitLogs, today]);
   const habitsCompleted = todaysHabits.filter(h => h.completed).length;
 
   const dueSoonTodos = useMemo(() => {
     const todos: { todoId: string; title: string; goalId: string; goalTitle: string; phaseId: string; taskId: string; days: number }[] = [];
     goals.forEach(g => {
+      if (g.archived) return;
       g.phases.forEach(p => {
         p.tasks.forEach(t => {
-          t.todos.forEach(td => {
+          (t.todos ?? []).forEach(td => {
             if (td.done) return;
-            const days = getDaysRemaining(td.deadline);
+            const days = getDaysRemaining(td.deadline, today);
             if (days !== null && days <= 7) {
               todos.push({ todoId: td.id, title: td.title, goalId: g.id, goalTitle: g.title, phaseId: p.id, taskId: t.id, days });
             }
@@ -58,14 +77,11 @@ export default function Index() {
       });
     });
     return todos.sort((a, b) => a.days - b.days).slice(0, 5);
-  }, [goals]);
+  }, [goals, today]);
 
-  const todayPlan = useMemo(() => {
-    const plan = loadWeeklyPlan();
-    if (!plan) return null;
-    const todayIdx = (new Date().getDay() + 6) % 7;
-    return plan.days[todayIdx];
-  }, []);
+  const { days: planDays } = useWeeklyPlan();
+  const hasPlan = useStore(stores.WEEKLY_PLAN) !== null;
+  const todayPlan = hasPlan ? planDays[(dayOfWeek(today) + 6) % 7] : null;
 
   const stats = [
     { icon: Target, value: goals.length, label: 'Goals' },
@@ -121,7 +137,7 @@ export default function Index() {
             <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                  Today — {DAYS[(new Date().getDay() + 6) % 7]}
+                  Today — {DAYS[(dayOfWeek(today) + 6) % 7]}
                 </p>
                 <p className="text-lg font-semibold text-foreground capitalize mt-0.5">{todayPlan.splitDay} Day</p>
               </div>

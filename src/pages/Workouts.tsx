@@ -14,7 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { Dumbbell, TrendingUp, Trophy, Timer, Plus, Trash2, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, History, Save, FileText, Sparkles, Copy, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { loadTemplates, saveTemplates, generateId, WorkoutTemplate, loadCustomExercises, saveCustomExercises, loadSettings } from '@/lib/storage';
+import { stores, generateId, WorkoutTemplate } from '@/lib/storage';
+import { useStore } from '@/hooks/useStore';
 
 const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
   barbell: 'Barbell', dumbbell: 'Dumbbell', cable: 'Cable',
@@ -65,7 +66,7 @@ function RestTimer({ onRunningChange }: { onRunningChange: (running: boolean) =>
 }
 
 export default function WorkoutsPage() {
-  const [customExercises, setCustomExercises] = useState<CustomExercise[]>(() => loadCustomExercises());
+  const customExercises = useStore(stores.CUSTOM_EXERCISES);
   const { sessions, configs, addSession, deleteSession, updateConfig, addConfig, deleteConfig } = useWorkouts(customExercises);
   const prs = getPersonalRecords(sessions);
   const weeklyVolume = getWeeklyVolume(sessions);
@@ -97,9 +98,7 @@ export default function WorkoutsPage() {
       id, name: newExName.trim(), equipment: newExEquipment,
       muscleGroups: newExMuscles,
     };
-    const updated = [...customExercises, exercise];
-    setCustomExercises(updated);
-    saveCustomExercises(updated);
+    stores.CUSTOM_EXERCISES.update(prev => [...prev, exercise]);
     addConfig({
       exercise: id, targetSets: newExSets,
       repRangeMin: newExRepMin, repRangeMax: newExRepMax,
@@ -112,9 +111,7 @@ export default function WorkoutsPage() {
   };
 
   const handleDeleteCustomExercise = (id: string) => {
-    const updated = customExercises.filter(e => e.id !== id);
-    setCustomExercises(updated);
-    saveCustomExercises(updated);
+    stores.CUSTOM_EXERCISES.update(prev => prev.filter(e => e.id !== id));
     deleteConfig(id);
     toast.success('Exercise removed');
   };
@@ -127,7 +124,7 @@ export default function WorkoutsPage() {
   const [aiConfigResponse, setAiConfigResponse] = useState('');
 
   const generateAIConfigPrompt = () => {
-    const settings = loadSettings();
+    const settings = stores.SETTINGS.get();
     const name = newExName.trim() || '[EXERCISE NAME]';
     const equipment = EQUIPMENT_LABELS[newExEquipment];
     const muscles = newExMuscles.length > 0 ? newExMuscles.join(', ') : '(not specified)';
@@ -206,11 +203,12 @@ RULES:
   }[]>([]);
   const [sessionNotes, setSessionNotes] = useState('');
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
-  const [templates, setTemplates] = useState<WorkoutTemplate[]>(() => loadTemplates());
+  const templates = useStore(stores.TEMPLATES);
 
   const toggleSession = (id: string) => {
     const next = new Set(expandedSessions);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     setExpandedSessions(next);
   };
 
@@ -266,9 +264,7 @@ RULES:
         exercise: e.exercise, sets: e.sets.length, weight: e.sets[0]?.weight || 0, reps: e.sets[0]?.reps || 0,
       })),
     };
-    const updated = [...templates, template];
-    setTemplates(updated);
-    saveTemplates(updated);
+    stores.TEMPLATES.update(prev => [...prev, template]);
     toast.success(`Template "${name}" saved!`);
   };
 
@@ -288,9 +284,7 @@ RULES:
   };
 
   const deleteTemplate = (id: string) => {
-    const updated = templates.filter(t => t.id !== id);
-    setTemplates(updated);
-    saveTemplates(updated);
+    stores.TEMPLATES.update(prev => prev.filter(t => t.id !== id));
     toast.success('Template deleted');
   };
 

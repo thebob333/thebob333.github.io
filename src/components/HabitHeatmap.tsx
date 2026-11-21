@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { HabitLog } from '@/types/goals';
 import { Goal } from '@/types/goals';
 import { getAllActiveHabits } from '@/lib/habits';
+import { parseDateKey, toDateKey } from '@/lib/dates';
+import { useTodayKey } from '@/hooks/useToday';
 
 interface Props {
   goals: Goal[];
@@ -10,13 +12,13 @@ interface Props {
 
 export function HabitHeatmap({ goals, logs }: Props) {
   const activeHabits = useMemo(() => getAllActiveHabits(goals), [goals]);
+  const todayKey = useTodayKey();
   const habitCount = activeHabits.length;
 
   const { cells, months, numCols } = useMemo(() => {
     if (habitCount === 0) return { cells: [], months: [], numCols: 0 };
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = parseDateKey(todayKey);
     const weeks = 13;
 
     // Build a map of date → completions count
@@ -40,7 +42,7 @@ export function HabitHeatmap({ goals, logs }: Props) {
 
     const d = new Date(startSunday);
     while (d <= endDate) {
-      const key = d.toISOString().split('T')[0];
+      const key = toDateKey(d);
       const dayOfWeek = d.getDay(); // 0=Sun, row in the grid
       const daysSinceStart = Math.round((d.getTime() - startSunday.getTime()) / 86400000);
       const col = Math.floor(daysSinceStart / 7);
@@ -65,7 +67,7 @@ export function HabitHeatmap({ goals, logs }: Props) {
 
     const maxCol = cells.length > 0 ? Math.max(...cells.map(c => c.col)) + 1 : 0;
     return { cells, months: monthLabels, numCols: maxCol };
-  }, [logs, habitCount]);
+  }, [logs, habitCount, todayKey]);
 
   if (habitCount === 0) return null;
 

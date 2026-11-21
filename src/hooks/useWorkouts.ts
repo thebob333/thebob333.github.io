@@ -1,67 +1,69 @@
-import { useState, useCallback } from 'react';
-import { WorkoutSession, ExerciseConfig, ExerciseLog, getExerciseLabel, CustomExercise } from '@/types/workout';
-import { loadSessions, saveSessions, loadExerciseConfigs, saveExerciseConfigs, generateId } from '@/lib/storage';
+import { WorkoutSession, ExerciseConfig, getExerciseLabel, CustomExercise } from '@/types/workout';
+import { stores, generateId } from '@/lib/storage';
+import { useStore } from '@/hooks/useStore';
 import { toast } from 'sonner';
 
-export function useWorkouts(customExercises: CustomExercise[] = []) {
-  const [sessions, setSessions] = useState<WorkoutSession[]>(() => loadSessions());
-  const [configs, setConfigs] = useState<ExerciseConfig[]>(() => loadExerciseConfigs());
+const S = stores.SESSIONS;
+const CFG = stores.EXERCISE_CONFIGS;
 
-  const persistSessions = useCallback((updated: WorkoutSession[]) => {
-    setSessions(updated);
-    saveSessions(updated);
-  }, []);
-
-  const persistConfigs = useCallback((updated: ExerciseConfig[]) => {
-    setConfigs(updated);
-    saveExerciseConfigs(updated);
-  }, []);
-
-  const addSession = useCallback((session: Omit<WorkoutSession, 'id'>) => {
+export const workoutActions = {
+  addSession(session: Omit<WorkoutSession, 'id'>, customExercises: CustomExercise[] = stores.CUSTOM_EXERCISES.get()): WorkoutSession {
     const newSession = { ...session, id: generateId() };
-    persistSessions([...sessions, newSession]);
+    S.update(list => [...list, newSession]);
 
     // Auto-update configs based on performance
     const bumped: string[] = [];
-    const updatedConfigs = configs.map(config => {
-      const exerciseLog = session.exercises.find(e => e.exercise === config.exercise);
-      if (!exerciseLog) return config;
-
-      const allHitMax = exerciseLog.sets.every(s => s.reps >= config.repRangeMax);
-      const avgRpe = exerciseLog.sets.reduce((s, set) => s + set.rpe, 0) / exerciseLog.sets.length;
-
-      if (allHitMax && avgRpe <= 4) {
-        bumped.push(config.exercise);
-        return { ...config, currentWeight: config.currentWeight + config.weightIncrement };
-      }
-      return config;
+    CFG.update(configs => {
+      let changed = false;
+      const next = configs.map(config => {
+        const log = session.exercises.find(e => e.exercise === config.exercise);
+        if (!log || log.sets.length === 0) return config;
+        const allHitMax = log.sets.every(s => s.reps >= config.repRangeMax);
+        const avgRpe = log.sets.reduce((s, set) => s + set.rpe, 0) / log.sets.length;
+        if (allHitMax && avgRpe <= 4) {
+          bumped.push(config.exercise);
+          changed = true;
+          return { ...config, currentWeight: config.currentWeight + config.weightIncrement };
+        }
+        return config;
+      });
+      return changed ? next : configs;
     });
-    persistConfigs(updatedConfigs);
 
     if (bumped.length > 0) {
       const labels = bumped.map(e => getExerciseLabel(e, customExercises)).join(', ');
       toast.success(`Weight increased for next session: ${labels} 📈`);
     }
-
     return newSession;
-  }, [sessions, configs, customExercises, persistSessions, persistConfigs]);
+  },
 
-  const deleteSession = useCallback((id: string) => {
-    persistSessions(sessions.filter(s => s.id !== id));
-  }, [sessions, persistSessions]);
+  deleteSession(id: string) {
+    S.update(list => list.filter(s => s.id !== id));
+  },
 
-  const updateConfig = useCallback((exercise: string, updates: Partial<ExerciseConfig>) => {
-    persistConfigs(configs.map(c => c.exercise === exercise ? { ...c, ...updates } : c));
-  }, [configs, persistConfigs]);
+  updateConfig(exercise: string, updates: Partial<ExerciseConfig>) {
+    CFG.update(list => list.map(c => (c.exercise === exercise ? { ...c, ...updates } : c)));
+  },
 
-  const addConfig = useCallback((config: ExerciseConfig) => {
-    if (configs.some(c => c.exercise === config.exercise)) return;
-    persistConfigs([...configs, config]);
-  }, [configs, persistConfigs]);
+  addConfig(config: ExerciseConfig) {
+    CFG.update(list => (list.some(c => c.exercise === config.exercise) ? list : [...list, config]));
+  },
 
-  const deleteConfig = useCallback((exercise: string) => {
-    persistConfigs(configs.filter(c => c.exercise !== exercise));
-  }, [configs, persistConfigs]);
+  deleteConfig(exercise: string) {
+    CFG.update(list => list.filter(c => c.exercise !== exercise));
+  },
+};
 
-  return { sessions, configs, addSession, deleteSession, updateConfig, addConfig, deleteConfig };
+export function useWorkouts(customExercises?: CustomExercise[]) {
+  const sessions = useStore(S);
+  const configs = useStore(CFG);
+  return {
+    sessions,
+    configs,
+    addSession: (session: Omit<WorkoutSession, 'id'>) => workoutActions.addSession(session, customExercises),
+    deleteSession: workoutActions.deleteSession,
+    updateConfig: workoutActions.updateConfig,
+    addConfig: workoutActions.addConfig,
+    deleteConfig: workoutActions.deleteConfig,
+  };
 }

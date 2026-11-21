@@ -1,9 +1,15 @@
 import { Goal, HabitLog } from '@/types/goals';
 import { WorkoutSession, ExerciseConfig, WeeklyPlan, CustomExercise } from '@/types/workout';
 import { DEFAULT_CONFIGS } from '@/types/workout';
-import { UnlockedAchievement } from '@/lib/achievements';
+import type { UnlockedAchievement } from '@/lib/achievements';
+import { createStore, type Store } from '@/lib/store';
 
-const KEYS = {
+/**
+ * Every user-data key. Backups, migrations and the recovery screen iterate this
+ * map, so adding a key here (plus its store below) is all that's needed for it
+ * to be backed up and restored.
+ */
+export const KEYS = {
   GOALS: 'telos_goals',
   SESSIONS: 'telos_sessions',
   EXERCISE_CONFIGS: 'telos_exercise_configs',
@@ -23,6 +29,15 @@ const KEYS = {
   INTERACTIONS: 'telos_interactions',
   COMMITMENTS: 'telos_commitments',
   RELATIONSHIP_GOALS: 'telos_relationship_goals',
+} as const;
+
+export type StoreName = keyof typeof KEYS;
+export type StorageKey = (typeof KEYS)[StoreName];
+
+/** App bookkeeping keys — deliberately NOT part of backups. */
+export const META_KEYS = {
+  SCHEMA_VERSION: 'telos_schema_version',
+  LAST_EXPORT: 'telos_last_export_at',
 } as const;
 
 // Repeatable Block Template
@@ -45,10 +60,14 @@ export type CircleRing = 'core' | 'close' | 'extended' | 'distant';
 export type InfluenceTag = 'energizer' | 'challenger' | 'supporter' | 'drainer' | 'neutral';
 export type InteractionType = 'call' | 'text' | 'hangout' | 'meeting';
 
+export const RELATIONSHIP_TAGS: RelationshipTag[] = ['family', 'friend', 'coworker', 'mentor', 'mentee', 'partner', 'acquaintance', 'other'];
+export const CIRCLE_RINGS: CircleRing[] = ['core', 'close', 'extended', 'distant'];
+export const INFLUENCE_TAGS: InfluenceTag[] = ['energizer', 'challenger', 'supporter', 'drainer', 'neutral'];
+
 export interface Interaction {
   id: string;
   contactId: string;
-  date: string; // ISO date
+  date: string; // ISO timestamp (or YYYY-MM-DD when backdated)
   type: InteractionType;
   durationMinutes?: number;
   energyAfter?: 1 | 2 | 3 | 4 | 5; // how you felt after
@@ -59,7 +78,7 @@ export interface Commitment {
   id: string;
   contactId: string;
   text: string;
-  dueDate?: string;
+  dueDate?: string; // YYYY-MM-DD (local)
   completedAt?: string;
   recurring?: 'weekly' | 'biweekly' | 'monthly';
 }
@@ -96,6 +115,7 @@ export interface BlockCategory {
 
 export interface TimeBlock {
   id: string;
+  /** Local date key (YYYY-MM-DD) the block belongs to. Legacy data may hold a weekday name. */
   dayName: string;
   categoryId: string;
   title: string;
@@ -126,7 +146,7 @@ export interface AppSettings {
   goldTargets: Record<string, number>; // exercise ID → custom target (weight in lbs, or reps for pull_up)
 }
 
-const DEFAULT_SETTINGS: AppSettings = {
+export const DEFAULT_SETTINGS: AppSettings = {
   quotesEnabled: true,
   customQuotes: [],
   bodyweight: 180,
@@ -141,100 +161,8 @@ export interface WorkoutTemplate {
   exercises: { exercise: string; sets: number; weight: number; reps: number }[];
 }
 
-function load<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : fallback;
-  } catch { return fallback; }
-}
-
-function save<T>(key: string, data: T) {
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-// Goals
-export const loadGoals = (): Goal[] => load(KEYS.GOALS, []);
-export const saveGoals = (goals: Goal[]) => save(KEYS.GOALS, goals);
-
-// Workout Sessions
-export const loadSessions = (): WorkoutSession[] => load(KEYS.SESSIONS, []);
-export const saveSessions = (sessions: WorkoutSession[]) => save(KEYS.SESSIONS, sessions);
-
-// Exercise Configs
-export const loadExerciseConfigs = (): ExerciseConfig[] => load(KEYS.EXERCISE_CONFIGS, DEFAULT_CONFIGS);
-export const saveExerciseConfigs = (configs: ExerciseConfig[]) => save(KEYS.EXERCISE_CONFIGS, configs);
-
-// Weekly Plan
-export const loadWeeklyPlan = (): WeeklyPlan | null => load(KEYS.WEEKLY_PLAN, null);
-export const saveWeeklyPlan = (plan: WeeklyPlan) => save(KEYS.WEEKLY_PLAN, plan);
-
-// Settings
-export const loadSettings = (): AppSettings => {
-  const saved = load<AppSettings>(KEYS.SETTINGS, DEFAULT_SETTINGS);
-  return { ...DEFAULT_SETTINGS, ...saved };
-};
-export const saveSettings = (settings: AppSettings) => save(KEYS.SETTINGS, settings);
-
-// Achievements
-export const loadAchievements = (): UnlockedAchievement[] => load(KEYS.ACHIEVEMENTS, []);
-export const saveAchievements = (achievements: UnlockedAchievement[]) => save(KEYS.ACHIEVEMENTS, achievements);
-
-// Templates
-export const loadTemplates = (): WorkoutTemplate[] => load(KEYS.TEMPLATES, []);
-export const saveTemplates = (templates: WorkoutTemplate[]) => save(KEYS.TEMPLATES, templates);
-
 // Weekly Schedule (day → todo IDs)
 export type WeeklySchedule = Record<string, string[]>;
-export const loadWeeklySchedule = (): WeeklySchedule => load(KEYS.WEEKLY_SCHEDULE, {});
-export const saveWeeklySchedule = (schedule: WeeklySchedule) => save(KEYS.WEEKLY_SCHEDULE, schedule);
-
-// Weekly Focus (prioritized goal IDs)
-export const loadWeeklyFocus = (): string[] => load(KEYS.WEEKLY_FOCUS, []);
-export const saveWeeklyFocus = (focus: string[]) => save(KEYS.WEEKLY_FOCUS, focus);
-
-// Time Blocks
-export const loadTimeBlocks = (): TimeBlock[] => load(KEYS.TIME_BLOCKS, []);
-export const saveTimeBlocks = (blocks: TimeBlock[]) => save(KEYS.TIME_BLOCKS, blocks);
-
-// Block Categories
-export const loadBlockCategories = (): BlockCategory[] => load(KEYS.BLOCK_CATEGORIES, DEFAULT_CATEGORIES);
-export const saveBlockCategories = (cats: BlockCategory[]) => save(KEYS.BLOCK_CATEGORIES, cats);
-
-// Repeatable Blocks
-export const loadRepeatableBlocks = (): RepeatableBlock[] => load(KEYS.REPEATABLE_BLOCKS, []);
-export const saveRepeatableBlocks = (blocks: RepeatableBlock[]) => save(KEYS.REPEATABLE_BLOCKS, blocks);
-
-// Contacts
-export const loadContacts = (): Contact[] => {
-  const raw = load<Contact[]>(KEYS.CONTACTS, []);
-  // Migrate old contacts missing new fields
-  return raw.map(c => ({
-    ...c,
-    circleRing: c.circleRing || 'distant' as CircleRing,
-    influenceTag: c.influenceTag || 'neutral' as InfluenceTag,
-  }));
-};
-export const saveContacts = (contacts: Contact[]) => save(KEYS.CONTACTS, contacts);
-
-// Interactions
-export const loadInteractions = (): Interaction[] => load(KEYS.INTERACTIONS, []);
-export const saveInteractions = (interactions: Interaction[]) => save(KEYS.INTERACTIONS, interactions);
-
-// Commitments
-export const loadCommitments = (): Commitment[] => load(KEYS.COMMITMENTS, []);
-export const saveCommitments = (commitments: Commitment[]) => save(KEYS.COMMITMENTS, commitments);
-
-// Relationship Goals
-export const loadRelationshipGoals = (): RelationshipGoal[] => load(KEYS.RELATIONSHIP_GOALS, []);
-export const saveRelationshipGoals = (goals: RelationshipGoal[]) => save(KEYS.RELATIONSHIP_GOALS, goals);
-
-// Custom Exercises
-export const loadCustomExercises = (): CustomExercise[] => load(KEYS.CUSTOM_EXERCISES, []);
-export const saveCustomExercises = (exercises: CustomExercise[]) => save(KEYS.CUSTOM_EXERCISES, exercises);
-
-// Habit Logs
-export const loadHabitLogs = (): HabitLog[] => load(KEYS.HABIT_LOGS, []);
-export const saveHabitLogs = (logs: HabitLog[]) => save(KEYS.HABIT_LOGS, logs);
 
 // Goal Templates
 export interface GoalTemplate {
@@ -245,57 +173,127 @@ export interface GoalTemplate {
   phases: { title: string; description: string; tasks: { title: string; description: string; todos: string[]; habits: { title: string; frequency: string; target?: string }[] }[] }[];
   createdAt: string;
 }
-export const loadGoalTemplates = (): GoalTemplate[] => load(KEYS.GOAL_TEMPLATES, []);
-export const saveGoalTemplates = (templates: GoalTemplate[]) => save(KEYS.GOAL_TEMPLATES, templates);
 
-// Export all data
-export function exportAllData(): string {
-  return JSON.stringify({
-    goals: loadGoals(),
-    sessions: loadSessions(),
-    exerciseConfigs: loadExerciseConfigs(),
-    weeklyPlan: loadWeeklyPlan(),
-    settings: loadSettings(),
-    achievements: loadAchievements(),
-    templates: loadTemplates(),
-    weeklySchedule: loadWeeklySchedule(),
-    timeBlocks: loadTimeBlocks(),
-    blockCategories: loadBlockCategories(),
-    repeatableBlocks: loadRepeatableBlocks(),
-    contacts: loadContacts(),
-    customExercises: loadCustomExercises(),
-    habitLogs: loadHabitLogs(),
-    interactions: loadInteractions(),
-    commitments: loadCommitments(),
-    relationshipGoals: loadRelationshipGoals(),
-  }, null, 2);
+// ─── Shared stores (one per key) ────────────────────────────────────────────
+
+const arrayStore = <T,>(key: StorageKey, label: string, fallback: () => T[] = () => []) =>
+  createStore<T[]>({ key, label, kind: 'array', fallback });
+
+function normalizeSettings(s: AppSettings): AppSettings {
+  const merged = { ...DEFAULT_SETTINGS, ...s };
+  if (!merged.goldTargets || typeof merged.goldTargets !== 'object' || Array.isArray(merged.goldTargets)) {
+    merged.goldTargets = {};
+  }
+  if (!Array.isArray(merged.customQuotes)) merged.customQuotes = [];
+  return merged;
 }
 
-// Import all data
-export function importAllData(data: Record<string, unknown>) {
-  if (data.goals) saveGoals(data.goals as Goal[]);
-  if (data.sessions) saveSessions(data.sessions as WorkoutSession[]);
-  if (data.exerciseConfigs) saveExerciseConfigs(data.exerciseConfigs as ExerciseConfig[]);
-  if (data.weeklyPlan) saveWeeklyPlan(data.weeklyPlan as WeeklyPlan);
-  if (data.settings) saveSettings(data.settings as AppSettings);
-  if (data.achievements) saveAchievements(data.achievements as UnlockedAchievement[]);
-  if (data.templates) saveTemplates(data.templates as WorkoutTemplate[]);
-  if (data.weeklySchedule) saveWeeklySchedule(data.weeklySchedule as WeeklySchedule);
-  if (data.timeBlocks) saveTimeBlocks(data.timeBlocks as TimeBlock[]);
-  if (data.blockCategories) saveBlockCategories(data.blockCategories as BlockCategory[]);
-  if (data.repeatableBlocks) saveRepeatableBlocks(data.repeatableBlocks as RepeatableBlock[]);
-  if (data.contacts) saveContacts(data.contacts as Contact[]);
-  if (data.customExercises) saveCustomExercises(data.customExercises as CustomExercise[]);
-  if (data.habitLogs) saveHabitLogs(data.habitLogs as HabitLog[]);
-  if (data.interactions) saveInteractions(data.interactions as Interaction[]);
-  if (data.commitments) saveCommitments(data.commitments as Commitment[]);
-  if (data.relationshipGoals) saveRelationshipGoals(data.relationshipGoals as RelationshipGoal[]);
-}
+export const stores = {
+  GOALS: arrayStore<Goal>(KEYS.GOALS, 'Goals'),
+  SESSIONS: arrayStore<WorkoutSession>(KEYS.SESSIONS, 'Workout sessions'),
+  EXERCISE_CONFIGS: arrayStore<ExerciseConfig>(KEYS.EXERCISE_CONFIGS, 'Exercise settings', () => DEFAULT_CONFIGS.map(c => ({ ...c }))),
+  WEEKLY_PLAN: createStore<WeeklyPlan | null>({ key: KEYS.WEEKLY_PLAN, label: 'Weekly training split', kind: 'nullable', fallback: () => null }),
+  SETTINGS: createStore<AppSettings>({
+    key: KEYS.SETTINGS, label: 'Settings', kind: 'object',
+    fallback: () => ({ ...DEFAULT_SETTINGS, goldTargets: {}, customQuotes: [] }),
+    normalize: normalizeSettings,
+  }),
+  ACHIEVEMENTS: arrayStore<UnlockedAchievement>(KEYS.ACHIEVEMENTS, 'Achievements'),
+  TEMPLATES: arrayStore<WorkoutTemplate>(KEYS.TEMPLATES, 'Saved workouts'),
+  WEEKLY_SCHEDULE: createStore<WeeklySchedule>({ key: KEYS.WEEKLY_SCHEDULE, label: 'Weekly schedule', kind: 'object', fallback: () => ({}) }),
+  WEEKLY_FOCUS: arrayStore<string>(KEYS.WEEKLY_FOCUS, 'Weekly focus'),
+  TIME_BLOCKS: arrayStore<TimeBlock>(KEYS.TIME_BLOCKS, 'Plan time blocks'),
+  BLOCK_CATEGORIES: arrayStore<BlockCategory>(KEYS.BLOCK_CATEGORIES, 'Block categories', () => DEFAULT_CATEGORIES.map(c => ({ ...c }))),
+  REPEATABLE_BLOCKS: arrayStore<RepeatableBlock>(KEYS.REPEATABLE_BLOCKS, 'Routines'),
+  CONTACTS: arrayStore<Contact>(KEYS.CONTACTS, 'People'),
+  CUSTOM_EXERCISES: arrayStore<CustomExercise>(KEYS.CUSTOM_EXERCISES, 'Custom exercises'),
+  HABIT_LOGS: arrayStore<HabitLog>(KEYS.HABIT_LOGS, 'Habit check-ins'),
+  GOAL_TEMPLATES: arrayStore<GoalTemplate>(KEYS.GOAL_TEMPLATES, 'Goal blueprints'),
+  INTERACTIONS: arrayStore<Interaction>(KEYS.INTERACTIONS, 'Interactions'),
+  COMMITMENTS: arrayStore<Commitment>(KEYS.COMMITMENTS, 'Commitments'),
+  RELATIONSHIP_GOALS: arrayStore<RelationshipGoal>(KEYS.RELATIONSHIP_GOALS, 'Relationship goals'),
+} satisfies { [K in StoreName]: Store<unknown> };
 
-// Clear all data
-export function clearAllData() {
-  Object.values(KEYS).forEach(key => localStorage.removeItem(key));
-}
+// ─── Legacy load/save helpers ───────────────────────────────────────────────
+// These now go through the shared stores (so they can never hold a stale copy).
+// Prefer `useStore(stores.X)` in components and `stores.X.update(...)` for writes.
+
+/** @deprecated use stores.GOALS */
+export const loadGoals = (): Goal[] => stores.GOALS.get();
+/** @deprecated use stores.GOALS */
+export const saveGoals = (goals: Goal[]) => stores.GOALS.set(goals);
+/** @deprecated use stores.SESSIONS */
+export const loadSessions = (): WorkoutSession[] => stores.SESSIONS.get();
+/** @deprecated use stores.SESSIONS */
+export const saveSessions = (sessions: WorkoutSession[]) => stores.SESSIONS.set(sessions);
+/** @deprecated use stores.EXERCISE_CONFIGS */
+export const loadExerciseConfigs = (): ExerciseConfig[] => stores.EXERCISE_CONFIGS.get();
+/** @deprecated use stores.EXERCISE_CONFIGS */
+export const saveExerciseConfigs = (configs: ExerciseConfig[]) => stores.EXERCISE_CONFIGS.set(configs);
+/** @deprecated use stores.WEEKLY_PLAN */
+export const loadWeeklyPlan = (): WeeklyPlan | null => stores.WEEKLY_PLAN.get();
+/** @deprecated use stores.WEEKLY_PLAN */
+export const saveWeeklyPlan = (plan: WeeklyPlan) => stores.WEEKLY_PLAN.set(plan);
+/** @deprecated use stores.SETTINGS */
+export const loadSettings = (): AppSettings => stores.SETTINGS.get();
+/** @deprecated use stores.SETTINGS */
+export const saveSettings = (settings: AppSettings) => stores.SETTINGS.set(settings);
+/** @deprecated use stores.ACHIEVEMENTS */
+export const loadAchievements = (): UnlockedAchievement[] => stores.ACHIEVEMENTS.get();
+/** @deprecated use stores.ACHIEVEMENTS */
+export const saveAchievements = (a: UnlockedAchievement[]) => stores.ACHIEVEMENTS.set(a);
+/** @deprecated use stores.TEMPLATES */
+export const loadTemplates = (): WorkoutTemplate[] => stores.TEMPLATES.get();
+/** @deprecated use stores.TEMPLATES */
+export const saveTemplates = (t: WorkoutTemplate[]) => stores.TEMPLATES.set(t);
+/** @deprecated use stores.WEEKLY_SCHEDULE */
+export const loadWeeklySchedule = (): WeeklySchedule => stores.WEEKLY_SCHEDULE.get();
+/** @deprecated use stores.WEEKLY_SCHEDULE */
+export const saveWeeklySchedule = (s: WeeklySchedule) => stores.WEEKLY_SCHEDULE.set(s);
+/** @deprecated use stores.WEEKLY_FOCUS */
+export const loadWeeklyFocus = (): string[] => stores.WEEKLY_FOCUS.get();
+/** @deprecated use stores.WEEKLY_FOCUS */
+export const saveWeeklyFocus = (f: string[]) => stores.WEEKLY_FOCUS.set(f);
+/** @deprecated use stores.TIME_BLOCKS */
+export const loadTimeBlocks = (): TimeBlock[] => stores.TIME_BLOCKS.get();
+/** @deprecated use stores.TIME_BLOCKS */
+export const saveTimeBlocks = (b: TimeBlock[]) => stores.TIME_BLOCKS.set(b);
+/** @deprecated use stores.BLOCK_CATEGORIES */
+export const loadBlockCategories = (): BlockCategory[] => stores.BLOCK_CATEGORIES.get();
+/** @deprecated use stores.BLOCK_CATEGORIES */
+export const saveBlockCategories = (c: BlockCategory[]) => stores.BLOCK_CATEGORIES.set(c);
+/** @deprecated use stores.REPEATABLE_BLOCKS */
+export const loadRepeatableBlocks = (): RepeatableBlock[] => stores.REPEATABLE_BLOCKS.get();
+/** @deprecated use stores.REPEATABLE_BLOCKS */
+export const saveRepeatableBlocks = (b: RepeatableBlock[]) => stores.REPEATABLE_BLOCKS.set(b);
+/** @deprecated use stores.CONTACTS */
+export const loadContacts = (): Contact[] => stores.CONTACTS.get();
+/** @deprecated use stores.CONTACTS */
+export const saveContacts = (c: Contact[]) => stores.CONTACTS.set(c);
+/** @deprecated use stores.INTERACTIONS */
+export const loadInteractions = (): Interaction[] => stores.INTERACTIONS.get();
+/** @deprecated use stores.INTERACTIONS */
+export const saveInteractions = (i: Interaction[]) => stores.INTERACTIONS.set(i);
+/** @deprecated use stores.COMMITMENTS */
+export const loadCommitments = (): Commitment[] => stores.COMMITMENTS.get();
+/** @deprecated use stores.COMMITMENTS */
+export const saveCommitments = (c: Commitment[]) => stores.COMMITMENTS.set(c);
+/** @deprecated use stores.RELATIONSHIP_GOALS */
+export const loadRelationshipGoals = (): RelationshipGoal[] => stores.RELATIONSHIP_GOALS.get();
+/** @deprecated use stores.RELATIONSHIP_GOALS */
+export const saveRelationshipGoals = (g: RelationshipGoal[]) => stores.RELATIONSHIP_GOALS.set(g);
+/** @deprecated use stores.CUSTOM_EXERCISES */
+export const loadCustomExercises = (): CustomExercise[] => stores.CUSTOM_EXERCISES.get();
+/** @deprecated use stores.CUSTOM_EXERCISES */
+export const saveCustomExercises = (e: CustomExercise[]) => stores.CUSTOM_EXERCISES.set(e);
+/** @deprecated use stores.HABIT_LOGS */
+export const loadHabitLogs = (): HabitLog[] => stores.HABIT_LOGS.get();
+/** @deprecated use stores.HABIT_LOGS */
+export const saveHabitLogs = (l: HabitLog[]) => stores.HABIT_LOGS.set(l);
+/** @deprecated use stores.GOAL_TEMPLATES */
+export const loadGoalTemplates = (): GoalTemplate[] => stores.GOAL_TEMPLATES.get();
+/** @deprecated use stores.GOAL_TEMPLATES */
+export const saveGoalTemplates = (t: GoalTemplate[]) => stores.GOAL_TEMPLATES.set(t);
 
 export function generateId(): string {
   return crypto.randomUUID();

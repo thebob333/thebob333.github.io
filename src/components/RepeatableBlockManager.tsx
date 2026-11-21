@@ -1,9 +1,10 @@
 import { useState, useCallback } from 'react';
 import {
-  RepeatableBlock, RepeatPattern, BlockCategory,
-  loadRepeatableBlocks, saveRepeatableBlocks, generateId,
-  loadBlockCategories, DEFAULT_CATEGORIES,
+  RepeatableBlock, RepeatPattern,
+  stores, generateId, DEFAULT_CATEGORIES,
 } from '@/lib/storage';
+import { useStore } from '@/hooks/useStore';
+import { isDateKey, weekdayName } from '@/lib/dates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -31,15 +32,9 @@ function formatTime(h: number, m: number): string {
   return m === 0 ? `${display} ${period}` : `${display}:${String(m).padStart(2, '0')} ${period}`;
 }
 
-const DAY_NAMES_FROM_INDEX = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
 function resolveDayName(dayNameOrDate: string): string {
-  // If it looks like a date key (YYYY-MM-DD), convert to day name
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dayNameOrDate)) {
-    const d = new Date(dayNameOrDate + 'T12:00:00');
-    return DAY_NAMES_FROM_INDEX[d.getDay()];
-  }
-  return dayNameOrDate;
+  // A date key (YYYY-MM-DD) becomes its weekday name
+  return isDateKey(dayNameOrDate) ? weekdayName(dayNameOrDate) : dayNameOrDate;
 }
 
 function shouldShowOnDay(block: RepeatableBlock, dayNameOrDate: string): boolean {
@@ -60,15 +55,14 @@ interface Props {
 }
 
 export default function RepeatableBlockManager({ onChanged }: Props) {
-  const [blocks, setBlocks] = useState<RepeatableBlock[]>(() => loadRepeatableBlocks());
-  const [categories] = useState<BlockCategory[]>(() => loadBlockCategories());
+  const blocks = useStore(stores.REPEATABLE_BLOCKS);
+  const categories = useStore(stores.BLOCK_CATEGORIES);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<RepeatableBlock | null>(null);
   const [form, setForm] = useState<Partial<RepeatableBlock>>({});
 
   const persist = useCallback((updated: RepeatableBlock[]) => {
-    setBlocks(updated);
-    saveRepeatableBlocks(updated);
+    stores.REPEATABLE_BLOCKS.set(updated);
     onChanged?.();
   }, [onChanged]);
 

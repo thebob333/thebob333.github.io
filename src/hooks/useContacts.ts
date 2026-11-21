@@ -1,61 +1,61 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
+  stores, generateId,
   Contact, Interaction, Commitment, RelationshipGoal,
-  CircleRing, InfluenceTag, InteractionType,
-  loadContacts, saveContacts,
-  loadInteractions, saveInteractions,
-  loadCommitments, saveCommitments,
-  loadRelationshipGoals, saveRelationshipGoals,
-  generateId,
+  CircleRing, InteractionType, CIRCLE_RINGS,
 } from '@/lib/storage';
+import { dateKeyOf, daysBetween } from '@/lib/dates';
+import { useStore } from '@/hooks/useStore';
+import { useTodayKey } from '@/hooks/useToday';
 
-export function useContacts() {
-  const [contacts, setContacts] = useState<Contact[]>(() => loadContacts());
-  const [interactions, setInteractions] = useState<Interaction[]>(() => loadInteractions());
-  const [commitments, setCommitments] = useState<Commitment[]>(() => loadCommitments());
-  const [relationshipGoals, setRelationshipGoals] = useState<RelationshipGoal[]>(() => loadRelationshipGoals());
+const C = stores.CONTACTS;
+const I = stores.INTERACTIONS;
+const K = stores.COMMITMENTS;
+const R = stores.RELATIONSHIP_GOALS;
 
-  // --- Contacts CRUD ---
+export type StreakStatus = 'on-track' | 'due-soon' | 'overdue' | 'no-goal';
 
-  const persistContacts = useCallback((updated: Contact[]) => {
-    setContacts(updated);
-    saveContacts(updated);
-  }, []);
+const byDateDesc = (a: Interaction, b: Interaction) => new Date(b.date).getTime() - new Date(a.date).getTime();
 
-  const addContact = useCallback((data: Omit<Contact, 'id' | 'createdAt'>) => {
+export const contactActions = {
+  addContact(data: Omit<Contact, 'id' | 'createdAt'>): Contact {
     const contact: Contact = { ...data, id: generateId(), createdAt: new Date().toISOString() };
-    persistContacts([contact, ...contacts]);
+    C.update(list => [contact, ...list]);
     return contact;
-  }, [contacts, persistContacts]);
+  },
 
-  const updateContact = useCallback((id: string, data: Partial<Contact>) => {
-    persistContacts(contacts.map(c => c.id === id ? { ...c, ...data } : c));
-  }, [contacts, persistContacts]);
+  /** Add many at once — a single write, so nothing can be dropped. */
+  addContacts(list: Contact[]): Contact[] {
+    if (list.length === 0) return [];
+    C.update(prev => [...list, ...prev]);
+    return list;
+  },
 
-  const deleteContact = useCallback((id: string) => {
-    persistContacts(contacts.filter(c => c.id !== id));
-    // Clean up related data
-    const newInteractions = interactions.filter(i => i.contactId !== id);
-    setInteractions(newInteractions);
-    saveInteractions(newInteractions);
-    const newCommitments = commitments.filter(c => c.contactId !== id);
-    setCommitments(newCommitments);
-    saveCommitments(newCommitments);
-    const newGoals = relationshipGoals.filter(g => g.contactId !== id);
-    setRelationshipGoals(newGoals);
-    saveRelationshipGoals(newGoals);
-  }, [contacts, interactions, commitments, relationshipGoals, persistContacts]);
+  updateContact(id: string, data: Partial<Contact>) {
+    C.update(list => list.map(c => (c.id === id ? { ...c, ...data } : c)));
+  },
 
-  // --- Interactions CRUD ---
+  deleteContact(id: string) {
+    C.update(list => list.filter(c => c.id !== id));
+    I.update(list => list.filter(i => i.contactId !== id));
+    K.update(list => list.filter(c => c.contactId !== id));
+    R.update(list => list.filter(g => g.contactId !== id));
+    // Unlink (don't delete) Plan blocks that referenced this person.
+    stores.TIME_BLOCKS.update(blocks =>
+      blocks.some(b => b.contactId === id)
+        ? blocks.map(b => (b.contactId === id ? { ...b, contactId: undefined } : b))
+        : blocks,
+    );
+  },
 
-  const addInteraction = useCallback((data: {
+  addInteraction(data: {
     contactId: string;
     type: InteractionType;
     durationMinutes?: number;
     energyAfter?: 1 | 2 | 3 | 4 | 5;
     note?: string;
     date?: string;
-  }) => {
+  }): Interaction {
     const interaction: Interaction = {
       id: generateId(),
       contactId: data.contactId,
@@ -65,114 +65,106 @@ export function useContacts() {
       energyAfter: data.energyAfter,
       note: data.note,
     };
-    const updated = [interaction, ...interactions];
-    setInteractions(updated);
-    saveInteractions(updated);
+    I.update(list => [interaction, ...list]);
     return interaction;
-  }, [interactions]);
+  },
 
-  const deleteInteraction = useCallback((id: string) => {
-    const updated = interactions.filter(i => i.id !== id);
-    setInteractions(updated);
-    saveInteractions(updated);
-  }, [interactions]);
+  deleteInteraction(id: string) {
+    I.update(list => list.filter(i => i.id !== id));
+  },
 
-  const getInteractionsForContact = useCallback((contactId: string) =>
-    interactions.filter(i => i.contactId === contactId)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-  [interactions]);
-
-  // --- Commitments CRUD ---
-
-  const addCommitment = useCallback((data: {
-    contactId: string;
-    text: string;
-    dueDate?: string;
-    recurring?: 'weekly' | 'biweekly' | 'monthly';
-  }) => {
+  addCommitment(data: { contactId: string; text: string; dueDate?: string; recurring?: 'weekly' | 'biweekly' | 'monthly' }): Commitment {
     const commitment: Commitment = { id: generateId(), ...data };
-    const updated = [commitment, ...commitments];
-    setCommitments(updated);
-    saveCommitments(updated);
+    K.update(list => [commitment, ...list]);
     return commitment;
-  }, [commitments]);
+  },
 
-  const completeCommitment = useCallback((id: string) => {
-    const updated = commitments.map(c =>
-      c.id === id ? { ...c, completedAt: new Date().toISOString() } : c
-    );
-    setCommitments(updated);
-    saveCommitments(updated);
-  }, [commitments]);
+  completeCommitment(id: string) {
+    const at = new Date().toISOString();
+    K.update(list => list.map(c => (c.id === id ? { ...c, completedAt: at } : c)));
+  },
 
-  const uncompleteCommitment = useCallback((id: string) => {
-    const updated = commitments.map(c =>
-      c.id === id ? { ...c, completedAt: undefined } : c
-    );
-    setCommitments(updated);
-    saveCommitments(updated);
-  }, [commitments]);
+  uncompleteCommitment(id: string) {
+    K.update(list => list.map(c => (c.id === id ? { ...c, completedAt: undefined } : c)));
+  },
 
-  const deleteCommitment = useCallback((id: string) => {
-    const updated = commitments.filter(c => c.id !== id);
-    setCommitments(updated);
-    saveCommitments(updated);
-  }, [commitments]);
+  deleteCommitment(id: string) {
+    K.update(list => list.filter(c => c.id !== id));
+  },
 
-  const getCommitmentsForContact = useCallback((contactId: string) =>
-    commitments.filter(c => c.contactId === contactId),
-  [commitments]);
-
-  // --- Relationship Goals CRUD ---
-
-  const addRelationshipGoal = useCallback((data: {
-    contactId: string;
-    text: string;
-    targetDate?: string;
-  }) => {
+  addRelationshipGoal(data: { contactId: string; text: string; targetDate?: string }): RelationshipGoal {
     const goal: RelationshipGoal = { id: generateId(), ...data };
-    const updated = [goal, ...relationshipGoals];
-    setRelationshipGoals(updated);
-    saveRelationshipGoals(updated);
+    R.update(list => [goal, ...list]);
     return goal;
-  }, [relationshipGoals]);
+  },
 
-  const completeRelationshipGoal = useCallback((id: string) => {
-    const updated = relationshipGoals.map(g =>
-      g.id === id ? { ...g, completedAt: new Date().toISOString() } : g
-    );
-    setRelationshipGoals(updated);
-    saveRelationshipGoals(updated);
-  }, [relationshipGoals]);
+  completeRelationshipGoal(id: string) {
+    const at = new Date().toISOString();
+    R.update(list => list.map(g => (g.id === id ? { ...g, completedAt: at } : g)));
+  },
 
-  const deleteRelationshipGoal = useCallback((id: string) => {
-    const updated = relationshipGoals.filter(g => g.id !== id);
-    setRelationshipGoals(updated);
-    saveRelationshipGoals(updated);
-  }, [relationshipGoals]);
+  deleteRelationshipGoal(id: string) {
+    R.update(list => list.filter(g => g.id !== id));
+  },
+};
 
-  const getRelationshipGoalsForContact = useCallback((contactId: string) =>
-    relationshipGoals.filter(g => g.contactId === contactId),
-  [relationshipGoals]);
+export function useContacts() {
+  const contacts = useStore(C);
+  const interactions = useStore(I);
+  const commitments = useStore(K);
+  const relationshipGoals = useStore(R);
+  const today = useTodayKey();
 
-  // --- Derived Data ---
-
-  const getLastInteraction = useCallback((contactId: string): Interaction | null => {
-    const contactInteractions = interactions.filter(i => i.contactId === contactId);
-    if (contactInteractions.length === 0) return null;
-    return contactInteractions.reduce((latest, i) =>
-      new Date(i.date) > new Date(latest.date) ? i : latest
-    );
+  // O(1) lookups instead of scanning every interaction per contact per render.
+  const interactionsByContact = useMemo(() => {
+    const m = new Map<string, Interaction[]>();
+    for (const i of interactions) {
+      const list = m.get(i.contactId);
+      if (list) list.push(i);
+      else m.set(i.contactId, [i]);
+    }
+    m.forEach(list => list.sort(byDateDesc));
+    return m;
   }, [interactions]);
 
+  const commitmentsByContact = useMemo(() => {
+    const m = new Map<string, Commitment[]>();
+    for (const c of commitments) {
+      const list = m.get(c.contactId);
+      if (list) list.push(c);
+      else m.set(c.contactId, [c]);
+    }
+    return m;
+  }, [commitments]);
+
+  const getInteractionsForContact = useCallback(
+    (contactId: string) => interactionsByContact.get(contactId) ?? [],
+    [interactionsByContact],
+  );
+
+  const getCommitmentsForContact = useCallback(
+    (contactId: string) => commitmentsByContact.get(contactId) ?? [],
+    [commitmentsByContact],
+  );
+
+  const getRelationshipGoalsForContact = useCallback(
+    (contactId: string) => relationshipGoals.filter(g => g.contactId === contactId),
+    [relationshipGoals],
+  );
+
+  const getLastInteraction = useCallback(
+    (contactId: string): Interaction | null => interactionsByContact.get(contactId)?.[0] ?? null,
+    [interactionsByContact],
+  );
+
+  /** Whole calendar days since the last interaction (0 = today). */
   const getDaysSinceLastInteraction = useCallback((contactId: string): number | null => {
     const last = getLastInteraction(contactId);
     if (!last) return null;
-    const diff = Date.now() - new Date(last.date).getTime();
-    return Math.floor(diff / (1000 * 60 * 60 * 24));
-  }, [getLastInteraction]);
+    return Math.max(0, daysBetween(dateKeyOf(last.date), today));
+  }, [getLastInteraction, today]);
 
-  const getStreakStatus = useCallback((contact: Contact): 'on-track' | 'due-soon' | 'overdue' | 'no-goal' => {
+  const getStreakStatus = useCallback((contact: Contact): StreakStatus => {
     if (!contact.interactionGoalDays) return 'no-goal';
     const daysSince = getDaysSinceLastInteraction(contact.id);
     if (daysSince === null) return 'overdue'; // never interacted
@@ -182,29 +174,29 @@ export function useContacts() {
   }, [getDaysSinceLastInteraction]);
 
   const activeCommitments = useMemo(() =>
-    commitments.filter(c => !c.completedAt)
-      .sort((a, b) => {
-        if (!a.dueDate && !b.dueDate) return 0;
-        if (!a.dueDate) return 1;
-        if (!b.dueDate) return -1;
-        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
-      }),
+    commitments.filter(c => !c.completedAt).sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return dateKeyOf(a.dueDate).localeCompare(dateKeyOf(b.dueDate));
+    }),
   [commitments]);
 
+  /** Overdue only once the due day has fully passed. */
   const overdueCommitments = useMemo(() =>
-    activeCommitments.filter(c =>
-      c.dueDate && new Date(c.dueDate) < new Date()
-    ),
-  [activeCommitments]);
+    activeCommitments.filter(c => c.dueDate && dateKeyOf(c.dueDate) < today),
+  [activeCommitments, today]);
 
   const contactsByRing = useMemo(() => {
     const rings: Record<CircleRing, Contact[]> = { core: [], close: [], extended: [], distant: [] };
-    contacts.forEach(c => rings[c.circleRing].push(c));
+    for (const c of contacts) {
+      const ring = CIRCLE_RINGS.includes(c.circleRing) ? c.circleRing : 'distant';
+      rings[ring].push(c);
+    }
     return rings;
   }, [contacts]);
 
   return {
-    // Data
     contacts,
     interactions,
     commitments,
@@ -212,31 +204,12 @@ export function useContacts() {
     activeCommitments,
     overdueCommitments,
     contactsByRing,
-
-    // Contact CRUD
-    addContact,
-    updateContact,
-    deleteContact,
-
-    // Interactions
-    addInteraction,
-    deleteInteraction,
+    ...contactActions,
     getInteractionsForContact,
     getLastInteraction,
     getDaysSinceLastInteraction,
     getStreakStatus,
-
-    // Commitments
-    addCommitment,
-    completeCommitment,
-    uncompleteCommitment,
-    deleteCommitment,
     getCommitmentsForContact,
-
-    // Relationship Goals
-    addRelationshipGoal,
-    completeRelationshipGoal,
-    deleteRelationshipGoal,
     getRelationshipGoalsForContact,
   };
 }

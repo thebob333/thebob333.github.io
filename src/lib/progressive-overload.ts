@@ -1,3 +1,4 @@
+import { dateKeyOf, startOfWeekKey } from '@/lib/dates';
 import { ExerciseConfig, ExerciseLog, SetLog, WorkoutSession, PersonalRecord } from '@/types/workout';
 
 export function calculateVolumeLoad(sets: SetLog[]): number {
@@ -172,10 +173,7 @@ export function getWeeklyVolume(sessions: WorkoutSession[]): { week: string; vol
   const weekMap = new Map<string, number>();
 
   for (const session of sessions) {
-    const date = new Date(session.date);
-    const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() - date.getDay());
-    const weekKey = weekStart.toISOString().split('T')[0];
+    const weekKey = startOfWeekKey(dateKeyOf(session.date), 0);
 
     const sessionVolume = session.exercises.reduce(
       (sum, ex) => sum + calculateVolumeLoad(ex.sets), 0

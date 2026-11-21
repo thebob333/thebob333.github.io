@@ -1,73 +1,48 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Download, Upload, Trash2, Quote, AlertTriangle, Weight, Flame, Target } from 'lucide-react';
-import { exportAllData, importAllData, clearAllData, loadSettings, saveSettings, loadCustomExercises } from '@/lib/storage';
+import { Quote, Weight, Flame, Target } from 'lucide-react';
+import { stores } from '@/lib/storage';
+import { useStore } from '@/hooks/useStore';
+import { useSettings } from '@/hooks/useSettings';
 import { BUILT_IN_EXERCISE_IDS, EXERCISE_LABELS, CompoundExercise, CustomExercise } from '@/types/workout';
 import { getStandard } from '@/lib/strength-standards';
-import { toast } from 'sonner';
+import { DataCard } from '@/components/settings/DataCard';
+
+const MIN_BODYWEIGHT = 50;
+const MAX_BODYWEIGHT = 700;
 
 export default function SettingsPage() {
-  const [settings, setSettings] = useState(() => loadSettings());
-  const customExercises = useMemo(() => loadCustomExercises(), []);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-  const [importText, setImportText] = useState('');
-  const [showImport, setShowImport] = useState(false);
+  const { settings, updateSettings } = useSettings();
+  const customExercises = useStore(stores.CUSTOM_EXERCISES);
+  // Local drafts so typing never saves a half-entered value (e.g. "0" while clearing the field).
+  const [bodyweightDraft, setBodyweightDraft] = useState(() => String(settings.bodyweight));
+  const [quotesDraft, setQuotesDraft] = useState(() => settings.customQuotes.join('\n'));
 
-  const handleExport = () => {
-    const data = exportAllData();
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `telos-export-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success('Data exported!');
-  };
-
-  const handleImport = () => {
-    try {
-      const data = JSON.parse(importText);
-      importAllData(data);
-      setImportText('');
-      setShowImport(false);
-      toast.success('Data imported! Refresh to see changes.');
-      setTimeout(() => window.location.reload(), 1000);
-    } catch {
-      toast.error('Invalid JSON data');
+  const commitBodyweight = (text: string) => {
+    setBodyweightDraft(text);
+    const n = Number(text);
+    if (text.trim() !== '' && Number.isFinite(n) && n >= MIN_BODYWEIGHT && n <= MAX_BODYWEIGHT) {
+      updateSettings({ bodyweight: n });
     }
   };
 
-  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => { setImportText(ev.target?.result as string); };
-    reader.readAsText(file);
-  };
-
-  const handleClearAll = () => {
-    clearAllData();
-    setShowClearConfirm(false);
-    toast.success('All data cleared. Refresh to see changes.');
-    setTimeout(() => window.location.reload(), 1000);
-  };
-
-  const updateSettings = (updates: Partial<typeof settings>) => {
-    const next = { ...settings, ...updates };
-    setSettings(next);
-    saveSettings(next);
-  };
-
   const updateQuotes = (text: string) => {
-    const quotes = text.split('\n').filter(q => q.trim().length > 0);
-    updateSettings({ customQuotes: quotes });
+    setQuotesDraft(text);
+    updateSettings({ customQuotes: text.split('\n').map(q => q.trim()).filter(Boolean) });
+  };
+
+  const setGoldTarget = (id: string, raw: string) => {
+    const val = raw === '' ? undefined : Number(raw);
+    updateSettings(s => {
+      const next = { ...s.goldTargets };
+      if (val && Number.isFinite(val) && val > 0) next[id] = val;
+      else delete next[id];
+      return { goldTargets: next };
+    });
   };
 
   return (
@@ -87,7 +62,16 @@ export default function SettingsPage() {
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
             <Label className="w-32">Bodyweight (lbs)</Label>
-            <Input type="number" value={settings.bodyweight} onChange={e => updateSettings({ bodyweight: Number(e.target.value) })} className="w-32" min={50} max={500} />
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={bodyweightDraft}
+              onChange={e => commitBodyweight(e.target.value)}
+              onBlur={() => setBodyweightDraft(String(settings.bodyweight))}
+              className="w-32"
+              min={MIN_BODYWEIGHT}
+              max={MAX_BODYWEIGHT}
+            />
           </div>
           <p className="text-xs text-muted-foreground">Used for strength standards comparison and 1RM calculations</p>
         </CardContent>
@@ -118,16 +102,7 @@ export default function SettingsPage() {
                     className="w-24"
                     placeholder={String(defaultVal)}
                     value={customVal || ''}
-                    onChange={e => {
-                      const val = e.target.value === '' ? undefined : Number(e.target.value);
-                      const next = { ...settings.goldTargets };
-                      if (val) {
-                        next[ex] = val;
-                      } else {
-                        delete next[ex];
-                      }
-                      updateSettings({ goldTargets: next });
-                    }}
+                    onChange={e => setGoldTarget(ex, e.target.value)}
                   />
                   <span className="text-xs text-muted-foreground w-8">{unit}</span>
                 </div>
@@ -154,16 +129,7 @@ export default function SettingsPage() {
                         className="w-24"
                         placeholder="Target"
                         value={customVal || ''}
-                        onChange={e => {
-                          const val = e.target.value === '' ? undefined : Number(e.target.value);
-                          const next = { ...settings.goldTargets };
-                          if (val) {
-                            next[ce.id] = val;
-                          } else {
-                            delete next[ce.id];
-                          }
-                          updateSettings({ goldTargets: next });
-                        }}
+                        onChange={e => setGoldTarget(ce.id, e.target.value)}
                       />
                       <span className="text-xs text-muted-foreground w-8">{unit}</span>
                     </div>
@@ -210,76 +176,13 @@ export default function SettingsPage() {
               <Label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">
                 Custom Quotes (one per line, leave empty for defaults)
               </Label>
-              <Textarea className="mt-1 h-32 font-mono text-xs" placeholder="Enter your own quotes, one per line..." value={settings.customQuotes.join('\n')} onChange={e => updateQuotes(e.target.value)} />
+              <Textarea className="mt-1 h-32 font-mono text-xs" placeholder="Enter your own quotes, one per line..." value={quotesDraft} onChange={e => updateQuotes(e.target.value)} />
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Data Management */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Download className="h-5 w-5 text-primary" /> Data Management
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Button onClick={handleExport} className="font-semibold">
-              <Download className="h-4 w-4 mr-2" /> Export All Data
-            </Button>
-            <Button variant="outline" onClick={() => setShowImport(true)}>
-              <Upload className="h-4 w-4 mr-2" /> Import Data
-            </Button>
-          </div>
-
-          <div className="h-px bg-border" />
-
-          <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10 w-full">
-                <Trash2 className="h-4 w-4 mr-2" /> Clear All Data
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle className="text-destructive text-xl flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" /> Confirm Delete
-                </DialogTitle>
-              </DialogHeader>
-              <p className="text-sm text-muted-foreground">
-                This will permanently delete all your goals, workouts, and settings. This action cannot be undone.
-              </p>
-              <div className="flex gap-3 mt-4">
-                <Button variant="outline" className="flex-1" onClick={() => setShowClearConfirm(false)}>Cancel</Button>
-                <Button variant="destructive" className="flex-1 font-semibold" onClick={handleClearAll}>Delete Everything</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </CardContent>
-      </Card>
-
-      {/* Import Dialog */}
-      <Dialog open={showImport} onOpenChange={setShowImport}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Import Data</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div>
-              <Label className="text-sm text-muted-foreground">Upload JSON file</Label>
-              <Input type="file" accept=".json" onChange={handleFileImport} className="mt-1" />
-            </div>
-            <div>
-              <Label className="text-sm text-muted-foreground">Or paste JSON data</Label>
-              <Textarea className="mt-1 h-40 font-mono text-xs" placeholder='{"goals":[],"sessions":[],...}' value={importText} onChange={e => setImportText(e.target.value)} />
-            </div>
-            <Button onClick={handleImport} disabled={!importText.trim()} className="w-full font-semibold">
-              <Upload className="h-4 w-4 mr-2" /> Import
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <DataCard />
     </div>
   );
 }

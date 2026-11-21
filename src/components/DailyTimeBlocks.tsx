@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { TimeBlock, BlockCategory, DEFAULT_CATEGORIES, loadBlockCategories, saveBlockCategories, loadTimeBlocks, saveTimeBlocks, generateId, loadRepeatableBlocks, RepeatableBlock, Contact } from '@/lib/storage';
+import { TimeBlock, BlockCategory, DEFAULT_CATEGORIES, stores, generateId, Contact } from '@/lib/storage';
+import { useStore } from '@/hooks/useStore';
 import { shouldShowOnDay } from '@/components/RepeatableBlockManager';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,9 +12,13 @@ import { getDaysRemaining, getUrgencyColor } from '@/types/goals';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
-// 5 AM to 10 PM, 5-minute granularity
+// 5 AM to 11 PM, 5-minute granularity
 const START_HOUR = 5;
 const END_HOUR = 23; // exclusive
+const NO_TODOS: BacklogTodo[] = [];
+const NO_CONTACTS: Contact[] = [];
+const TB = stores.TIME_BLOCKS;
+const CATS = stores.BLOCK_CATEGORIES;
 const MINUTES_PER_PIXEL = 1; // 1 px = 1 minute
 const PIXEL_PER_MINUTE = 1;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
@@ -132,32 +137,20 @@ export interface BacklogTodo {
   effort?: string;
 }
 
-export interface DailyHabit {
-  habitId: string;
-  title: string;
-  frequency: string;
-  goalTitle: string;
-  completed: boolean;
-  streak: number;
-}
-
 interface DailyTimeBlocksProps {
+  /** Local date key (YYYY-MM-DD) being planned. */
   dayName: string;
   onToggleTodo?: (todoId: string) => void;
-  onToggleHabit?: (habitId: string) => void;
   backlogTodos?: BacklogTodo[];
   deadlineTodos?: BacklogTodo[];
-  dailyHabits?: DailyHabit[];
   contacts?: Contact[];
   todoStates?: Record<string, boolean>;
-  habitStates?: Record<string, boolean>;
-  onTodoLinked?: (todoId: string) => void;
-  onTodoUnlinked?: (todoId: string) => void;
 }
 
-export default function DailyTimeBlocks({ dayName, onToggleTodo, onToggleHabit, backlogTodos = [], deadlineTodos = [], dailyHabits = [], contacts = [], todoStates, habitStates, onTodoLinked, onTodoUnlinked }: DailyTimeBlocksProps) {
-  const [blocks, setBlocks] = useState<TimeBlock[]>(() => loadTimeBlocks());
-  const [categories, setCategories] = useState<BlockCategory[]>(() => loadBlockCategories());
+export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = NO_TODOS, deadlineTodos = NO_TODOS, contacts = NO_CONTACTS, todoStates }: DailyTimeBlocksProps) {
+  const blocks = useStore(TB);
+  const categories = useStore(CATS);
+  const repeatableBlocks = useStore(stores.REPEATABLE_BLOCKS);
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
   const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [newCatName, setNewCatName] = useState('');
@@ -177,23 +170,18 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, onToggleHabit, 
     [blocks, dayName]
   );
 
-  // Auto-populate from repeatable templates, deadline todos, and habits
+  // Auto-populate from repeatable templates and deadline todos. One atomic
+  // update from the latest blocks; returns `prev` (no write) when nothing changes.
+  const deadlineKey = deadlineTodos.map(t => t.todoId).join('|');
   useEffect(() => {
-    const templates = loadRepeatableBlocks();
-    const applicableTemplates = templates.filter(t => shouldShowOnDay(t, dayName));
-    const existingBlocks = blocks.filter(b => b.dayName === dayName);
-
-    const newBlocks: TimeBlock[] = [];
-    const linkedTodoIds: string[] = [];
-
-    // 0) Remove any leftover habit blocks — habits live in the checklist now, not the planner
-    const habitBlocks = existingBlocks.filter(b => b.habitId);
-    if (habitBlocks.length > 0) {
-      const habitBlockIds = new Set(habitBlocks.map(b => b.id));
-      const cleaned = blocks.filter(b => !habitBlockIds.has(b.id));
-      persist(cleaned);
-      return; // persist triggers re-render, next run will add todo/template blocks
-    }
+    const applicableTemplates = repeatableBlocks.filter(t => shouldShowOnDay(t, dayName));
+    TB.update(prev => {
+      // Habits live in the checklist now, not the planner — drop leftover habit blocks.
+      const all = prev.some(b => b.dayName === dayName && b.habitId)
+        ? prev.filter(b => !(b.dayName === dayName && b.habitId))
+        : prev;
+      const existingBlocks = all.filter(b => b.dayName === dayName);
+      const newBlocks: TimeBlock[] = [];
 
     // 1) Repeatable templates
     for (const tpl of applicableTemplates) {
@@ -231,7 +219,6 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, onToggleHabit, 
           durationMinutes: duration,
           todoId: todo.todoId,
         });
-        linkedTodoIds.push(todo.todoId);
         // Advance slot
         todoSlotMinute += duration;
         while (todoSlotMinute >= 60) {
@@ -241,24 +228,13 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, onToggleHabit, 
       }
     }
 
-
-    if (newBlocks.length > 0) {
-      persist([...blocks, ...newBlocks]);
-      linkedTodoIds.forEach(id => onTodoLinked?.(id));
-    }
-  }, [dayName, deadlineTodos.length, dailyHabits]); // re-run when day or habit set changes
+      if (newBlocks.length === 0) return all;
+      return [...all, ...newBlocks];
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only when the day, routines or due to-dos change
+  }, [dayName, repeatableBlocks, deadlineKey]);
 
   const columnLayout = useMemo(() => computeColumns(dayBlocks), [dayBlocks]);
-
-  const persist = useCallback((updated: TimeBlock[]) => {
-    setBlocks(updated);
-    saveTimeBlocks(updated);
-  }, []);
-
-  const persistCats = useCallback((updated: BlockCategory[]) => {
-    setCategories(updated);
-    saveBlockCategories(updated);
-  }, []);
 
   const addBlock = useCallback((minuteOfDay: number) => {
     const snapped = snapMinutes(minuteOfDay);
@@ -271,35 +247,28 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, onToggleHabit, 
       startMinute: snapped % 60,
       durationMinutes: 30,
     };
-    persist([...blocks, newBlock]);
+    TB.update(prev => [...prev, newBlock]);
     setEditingBlock(newBlock.id);
-  }, [blocks, dayName, categories, persist]);
+  }, [dayName, categories]);
 
   const updateBlock = useCallback((blockId: string, updates: Partial<TimeBlock>) => {
-    persist(blocks.map(b => b.id === blockId ? { ...b, ...updates } : b));
-  }, [blocks, persist]);
+    TB.update(prev => prev.map(b => (b.id === blockId ? { ...b, ...updates } : b)));
+  }, []);
 
   const deleteBlock = useCallback((blockId: string) => {
-    const block = blocks.find(b => b.id === blockId);
-    if (block?.todoId) onTodoUnlinked?.(block.todoId);
-    persist(blocks.filter(b => b.id !== blockId));
+    TB.update(prev => prev.filter(b => b.id !== blockId));
     setEditingBlock(null);
     toast.success('Block removed');
-  }, [blocks, persist, onTodoUnlinked]);
+  }, []);
 
   const linkTodo = useCallback((blockId: string, todoId: string, title: string) => {
-    const block = blocks.find(b => b.id === blockId);
-    if (block?.todoId && block.todoId !== todoId) onTodoUnlinked?.(block.todoId);
     updateBlock(blockId, { todoId, title });
-    onTodoLinked?.(todoId);
     toast.success('Todo linked');
-  }, [blocks, updateBlock, onTodoLinked, onTodoUnlinked]);
+  }, [updateBlock]);
 
   const unlinkTodo = useCallback((blockId: string) => {
-    const block = blocks.find(b => b.id === blockId);
-    if (block?.todoId) onTodoUnlinked?.(block.todoId);
     updateBlock(blockId, { todoId: undefined, title: '' });
-  }, [blocks, updateBlock, onTodoUnlinked]);
+  }, [updateBlock]);
 
   const linkContact = useCallback((blockId: string, contactId: string, contactName: string) => {
     const block = blocks.find(b => b.id === blockId);
@@ -325,19 +294,19 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, onToggleHabit, 
   const addCategory = useCallback(() => {
     if (!newCatName.trim()) return;
     const cat: BlockCategory = { id: generateId(), name: newCatName.trim(), color: newCatColor };
-    persistCats([...categories, cat]);
+    CATS.update(prev => [...prev, cat]);
     setNewCatName('');
     toast.success(`Added "${cat.name}" category`);
-  }, [categories, newCatName, newCatColor, persistCats]);
+  }, [newCatName, newCatColor]);
 
   const deleteCategory = useCallback((catId: string) => {
     if (DEFAULT_CATEGORIES.some(c => c.id === catId)) {
       toast.error("Can't delete default categories");
       return;
     }
-    persistCats(categories.filter(c => c.id !== catId));
-    persist(blocks.filter(b => b.categoryId !== catId));
-  }, [categories, blocks, persistCats, persist]);
+    CATS.update(prev => prev.filter(c => c.id !== catId));
+    TB.update(prev => prev.filter(b => b.categoryId !== catId));
+  }, []);
 
   const getCat = (catId: string) => categories.find(c => c.id === catId) || categories[0] || DEFAULT_CATEGORIES[0];
 
@@ -571,17 +540,6 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, onToggleHabit, 
                           if (block.todoId) onToggleTodo(block.todoId);
                         }}
                         className="h-3.5 w-3.5 mt-0.5 flex-shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    )}
-                    {/* Habit checkbox */}
-                    {block.habitId && onToggleHabit && !block.todoId && (
-                      <Checkbox
-                        checked={habitStates ? (habitStates[block.habitId] ?? false) : false}
-                        onCheckedChange={() => {
-                          if (block.habitId) onToggleHabit(block.habitId);
-                        }}
-                        className="h-3.5 w-3.5 mt-0.5 flex-shrink-0 border-amber data-[state=checked]:bg-amber data-[state=checked]:border-amber"
                         onClick={(e) => e.stopPropagation()}
                       />
                     )}

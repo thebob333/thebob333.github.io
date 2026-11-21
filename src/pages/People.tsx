@@ -1,3 +1,4 @@
+import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 import { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -151,11 +152,16 @@ const STREAK_LABELS = {
   'no-goal': '',
 };
 
+/** "Today", "3d ago", or for future dates "Tomorrow" / "in 3d". Calendar days, local time. */
 function formatRelativeDate(iso: string): string {
-  const date = new Date(iso);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffDays = daysBetween(dateKeyOf(iso), todayKey());
+  if (diffDays < 0) {
+    const ahead = -diffDays;
+    if (ahead === 1) return 'Tomorrow';
+    if (ahead < 7) return `in ${ahead}d`;
+    if (ahead < 30) return `in ${Math.round(ahead / 7)}w`;
+    return `in ${Math.round(ahead / 30)}mo`;
+  }
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays}d ago`;
@@ -165,7 +171,7 @@ function formatRelativeDate(iso: string): string {
 
 export default function PeoplePage() {
   const {
-    contacts, interactions, addContact, updateContact, deleteContact,
+    contacts, interactions, addContact, addContacts, updateContact, deleteContact,
     addInteraction, deleteInteraction, getInteractionsForContact,
     getDaysSinceLastInteraction, getStreakStatus,
     addCommitment, completeCommitment, uncompleteCommitment, deleteCommitment, getCommitmentsForContact,
@@ -295,37 +301,37 @@ export default function PeoplePage() {
 
   const handleVcfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // allow choosing the same file again
     if (!file) return;
     try {
       const text = await readVCardFile(file);
       const parsed = parseVCard(text);
       if (parsed.length === 0) {
-        toast.error('No contacts found in file');
+        toast.error('No contacts found in that file');
         return;
       }
       const { unique, duplicates } = findDuplicates(parsed, contacts);
       setImportPreview(unique);
       setImportDuplicates(duplicates);
     } catch {
-      toast.error('Failed to read file');
+      toast.error("Couldn't read that file");
     }
-    // Reset file input
-    e.target.value = '';
   };
 
   const handleConfirmImport = () => {
     if (!importPreview || importPreview.length === 0) return;
-    const toImport = importedToContacts(importPreview);
-    toImport.forEach(c => addContact(c as Omit<Contact, 'id' | 'createdAt'>));
-    toast.success(`Imported ${toImport.length} contact${toImport.length > 1 ? 's' : ''}`);
+    // One write for the whole batch — every contact is saved.
+    const saved = addContacts(importedToContacts(importPreview));
+    toast.success(`Imported ${saved.length} ${saved.length === 1 ? 'person' : 'people'}`);
     setImportPreview(null);
     setImportDuplicates([]);
   };
 
   const filtered = contacts.filter(c => {
-    const matchesSearch = !search || c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.notes.toLowerCase().includes(search.toLowerCase()) ||
-      c.plan.toLowerCase().includes(search.toLowerCase());
+    const q = search.toLowerCase();
+    const matchesSearch = !q || (c.name || '').toLowerCase().includes(q) ||
+      (c.notes || '').toLowerCase().includes(q) ||
+      (c.plan || '').toLowerCase().includes(q);
     const matchesTag = filterTag === 'all' || c.relationship === filterTag;
     return matchesSearch && matchesTag;
   });
@@ -632,7 +638,7 @@ export default function PeoplePage() {
                               ) : (
                                 <div className="space-y-1.5">
                                   {activeCommits.map(commitment => {
-                                    const isOverdue = commitment.dueDate && new Date(commitment.dueDate) < new Date();
+                                    const isOverdue = !!commitment.dueDate && dateKeyOf(commitment.dueDate) < todayKey();
                                     return (
                                       <div key={commitment.id} className="flex items-center gap-2 text-[11px] group">
                                         <button
@@ -645,7 +651,7 @@ export default function PeoplePage() {
                                           {commitment.text}
                                         </span>
                                         {commitment.recurring && (
-                                          <Repeat className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" title={commitment.recurring} />
+                                          <Repeat className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" aria-label={`Repeats ${commitment.recurring}`} />
                                         )}
                                         {commitment.dueDate && (
                                           <span className={`flex-shrink-0 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground/60'}`}>

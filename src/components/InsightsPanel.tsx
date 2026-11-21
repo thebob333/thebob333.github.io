@@ -1,3 +1,4 @@
+import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 import { useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Contact, Interaction, InfluenceTag } from '@/lib/storage';
@@ -31,7 +32,7 @@ interface InsightsPanelProps {
 }
 
 function formatRelativeDate(iso: string): string {
-  const diffDays = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  const diffDays = Math.max(0, daysBetween(dateKeyOf(iso), todayKey()));
   if (diffDays === 0) return 'Today';
   if (diffDays === 1) return 'Yesterday';
   if (diffDays < 7) return `${diffDays}d ago`;

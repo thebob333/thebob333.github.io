@@ -3,12 +3,17 @@ import { AppSidebar } from "./AppSidebar";
 import { MobileTabBar } from "./MobileTabBar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { AmbientSound } from "@/components/AmbientSound";
-import { loadSettings } from "@/lib/storage";
-import { useState } from "react";
+import { useSettings } from "@/hooks/useSettings";
+import { RouteErrorBoundary } from "@/components/AppErrorBoundary";
+import { useLocation } from "react-router-dom";
 
-export function AppLayout({ children }: { children: React.ReactNode }) {
+export function AppLayout({ children: page }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
-  const [ambientEnabled] = useState(() => loadSettings().ambientSoundEnabled);
+  const { settings } = useSettings();
+  const ambientEnabled = settings.ambientSoundEnabled;
+  const { pathname } = useLocation();
+  // One broken page shouldn't take down navigation.
+  const children = <RouteErrorBoundary key={pathname}>{page}</RouteErrorBoundary>;
 
   if (isMobile) {
     return (

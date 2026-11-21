@@ -1,7 +1,8 @@
+import { addDays, dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 import { useState } from 'react';
 import { useGoals } from '@/hooks/useGoals';
 import { useHabits } from '@/hooks/useHabits';
-import { generateId, loadGoalTemplates, GoalTemplate, saveGoalTemplates } from '@/lib/storage';
+import { generateId } from '@/lib/storage';
 import { Goal, calculateGoalProgress, calculatePhaseProgress, calculateTaskProgress, deriveTaskStatus, getDaysRemaining, getUrgencyClass, getUrgencyColor } from '@/types/goals';
 import { getCurrentStreak, isHabitCompletedOn, getTodayKey } from '@/lib/habits';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -185,6 +186,7 @@ export default function GoalsPage() {
     addNote, deleteNote,
     reorderPhases, reorderTasks, reorderTodos,
     archiveGoal, cloneGoal, saveAsTemplate, createFromTemplate,
+    templates, deleteTemplate,
   } = useGoals();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
   const today = getTodayKey();
@@ -206,7 +208,6 @@ export default function GoalsPage() {
   const [newHabit, setNewHabit] = useState({ title: '', frequency: 'daily', target: '' });
   const [noteText, setNoteText] = useState('');
   const [showTemplates, setShowTemplates] = useState(false);
-  const [templates, setTemplates] = useState<GoalTemplate[]>(() => loadGoalTemplates());
   const [showArchived, setShowArchived] = useState(false);
   const activeGoals = goals.filter(g => !g.archived);
   const archivedGoals = goals.filter(g => g.archived);
@@ -217,7 +218,8 @@ export default function GoalsPage() {
 
   const toggle = (set: Set<string>, id: string, setter: (s: Set<string>) => void) => {
     const next = new Set(set);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
     setter(next);
   };
 
@@ -255,18 +257,15 @@ export default function GoalsPage() {
   const handleSpreadDeadlines = (goalId: string) => {
     const goal = goals.find(g => g.id === goalId);
     if (!goal || !goal.deadline || goal.phases.length === 0) return;
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(goal.deadline);
-    end.setHours(0, 0, 0, 0);
-    const totalMs = end.getTime() - start.getTime();
-    if (totalMs <= 0) { toast.error('Deadline is in the past'); return; }
-    const stepMs = totalMs / goal.phases.length;
+    const start = todayKey();
+    const totalDays = daysBetween(start, dateKeyOf(goal.deadline));
+    if (totalDays <= 0) { toast.error('Deadline is in the past'); return; }
+    const n = goal.phases.length;
 
-    const updatedPhases = goal.phases.map((phase, i) => {
-      const phaseEnd = new Date(start.getTime() + stepMs * (i + 1));
-      return { ...phase, deadline: phaseEnd.toISOString().split('T')[0] };
-    });
+    const updatedPhases = goal.phases.map((phase, i) => ({
+      ...phase,
+      deadline: addDays(start, Math.round((totalDays * (i + 1)) / n)),
+    }));
     updateGoal(goalId, { phases: updatedPhases });
     toast.success(`Spread deadlines across ${goal.phases.length} phases`);
   };
@@ -283,7 +282,7 @@ export default function GoalsPage() {
     const phaseList = goal.phases.length > 0
       ? goal.phases.map((p, i) => `  - Phase ${i + 1}: "${p.title}" — ${p.description}${p.deadline ? ` (deadline: ${p.deadline})` : ''}`).join('\n')
       : null;
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayKey();
     const deadline = goal.deadline || '(no deadline set)';
 
     return `You are an expert project planner, systems designer, and skill coach.
@@ -549,7 +548,7 @@ RULES:
 
       totalTasks += tasks.length;
       totalTodos += tasks.reduce((sum, t) => sum + t.todos.length, 0);
-      let totalHabits = tasks.reduce((sum, t) => sum + t.habits.length, 0);
+      const totalHabits = tasks.reduce((sum, t) => sum + t.habits.length, 0);
 
       if (existingIdx >= 0) {
         const existing = updatedPhases[existingIdx];
@@ -1185,9 +1184,7 @@ RULES:
                         <Plus className="h-3 w-3 mr-1" /> Use
                       </Button>
                       <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
-                        const updated = templates.filter(t => t.id !== tmpl.id);
-                        setTemplates(updated);
-                        saveGoalTemplates(updated);
+                        deleteTemplate(tmpl.id);
                         toast.success('Template deleted');
                       }}>
                         <Trash2 className="h-3 w-3" />

@@ -1,39 +1,19 @@
-import { useState, useEffect } from 'react';
 import { Goal, calculateGoalProgress } from '@/types/goals';
-import { loadWeeklyFocus, saveWeeklyFocus } from '@/lib/storage';
+import { useWeeklyFocus } from '@/hooks/useWeeklyFocus';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Star } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Props {
   goals: Goal[];
 }
 
 export function WeeklyFocus({ goals }: Props) {
-  const [focusIds, setFocusIds] = useState<string[]>(() => loadWeeklyFocus());
-
-  useEffect(() => {
-    // Clean out stale IDs
-    const validIds = focusIds.filter(id => goals.some(g => g.id === id));
-    if (validIds.length !== focusIds.length) {
-      setFocusIds(validIds);
-      saveWeeklyFocus(validIds);
-    }
-  }, [goals]);
-
-  const toggleFocus = (goalId: string) => {
-    let next: string[];
-    if (focusIds.includes(goalId)) {
-      next = focusIds.filter(id => id !== goalId);
-    } else if (focusIds.length < 3) {
-      next = [...focusIds, goalId];
-    } else {
-      return; // max 3
-    }
-    setFocusIds(next);
-    saveWeeklyFocus(next);
-  };
-
-  const focusGoals = goals.filter(g => focusIds.includes(g.id));
+  const { focusIds } = useWeeklyFocus();
+  // Deleted goals simply drop out here; deleteGoal also removes them from storage.
+  const focusGoals = focusIds
+    .map(id => goals.find(g => g.id === id))
+    .filter((g): g is Goal => Boolean(g) && !g.archived);
 
   if (focusGoals.length === 0) return null;
 
@@ -67,26 +47,24 @@ export function WeeklyFocus({ goals }: Props) {
   );
 }
 
-export function FocusStar({ goalId, goals }: { goalId: string; goals: Goal[] }) {
-  const [focusIds, setFocusIds] = useState<string[]>(() => loadWeeklyFocus());
+export function FocusStar({ goalId }: { goalId: string; goals?: Goal[] }) {
+  const { focusIds, toggle: toggleFocus, max } = useWeeklyFocus();
   const isFocused = focusIds.includes(goalId);
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    let next: string[];
-    if (isFocused) {
-      next = focusIds.filter(id => id !== goalId);
-    } else if (focusIds.length < 3) {
-      next = [...focusIds, goalId];
-    } else {
-      return;
-    }
-    setFocusIds(next);
-    saveWeeklyFocus(next);
+    const result = toggleFocus(goalId);
+    if (result === 'full') toast(`You can focus on ${max} goals at a time`, { description: 'Unstar one to make room.' });
   };
 
   return (
-    <button onClick={toggle} className="p-0.5 hover:scale-110 transition-transform" title={isFocused ? 'Remove from weekly focus' : focusIds.length >= 3 ? 'Max 3 focus goals' : 'Add to weekly focus'}>
+    <button
+      onClick={toggle}
+      className="p-0.5 hover:scale-110 transition-transform"
+      aria-pressed={isFocused}
+      aria-label={isFocused ? 'Remove from weekly focus' : 'Add to weekly focus'}
+      title={isFocused ? 'Remove from weekly focus' : focusIds.length >= max ? `Max ${max} focus goals` : 'Add to weekly focus'}
+    >
       <Star className={`h-4 w-4 ${isFocused ? 'text-violet fill-violet' : 'text-muted-foreground/40 hover:text-violet/60'}`} />
     </button>
   );

@@ -9,6 +9,8 @@ npm run dev          # Start dev server (port 8080)
 npm run build        # Production build
 npm run build:dev    # Development build
 npm run lint         # ESLint
+npm run typecheck    # TypeScript (vite build does NOT type-check)
+npm run check        # lint + typecheck + tests
 npm run test         # Run tests once
 npm run test:watch   # Run tests in watch mode
 ```
@@ -24,11 +26,23 @@ npx vitest run src/path/to/file.test.ts
 
 ### Data Flow
 
-User interaction → Page/Component → Custom Hook → `useState` + `localStorage` → Re-render
+User interaction → action (`goalActions`, `contactActions`, …) → `stores.X.update(prev => next)` → every subscribed component re-renders
 
-The two primary hooks are:
-- `src/hooks/useGoals.ts` — manages the entire goal hierarchy
-- `src/hooks/useWorkouts.ts` — manages workout sessions and exercise configs
+- `src/lib/store.ts` — one shared, cached store per localStorage key (`get/set/update/subscribe`). Writes are try/catch-wrapped (quota → toast, cache unchanged), corrupt JSON is quarantined to `telos__corrupt:*`, other tabs sync via the `storage` event, and cached values are deep-frozen in dev (in-place mutation throws).
+- `src/lib/storage.ts` — `KEYS`, all data types, and the `stores` map. The old `loadX/saveX` helpers are deprecated wrappers; ESLint blocks importing them.
+- Read in components with `useStore(stores.X)` (`src/hooks/useStore.ts`). **Never** copy store data into `useState` and save it back — that was the source of past data-loss bugs. Always write with `update(prev => …)` so you start from the latest value.
+- Domain hooks keep stable public APIs: `useGoals`, `useHabits`, `useContacts`, `useWorkouts`, `useSettings`, `useWeeklyPlan`, `useWeeklyFocus`.
+
+### Dates
+
+Use `src/lib/dates.ts` for anything calendar-related (`todayKey`, `toDateKey`, `parseDateKey`, `daysBetween`, `addDays`, …). A date key is the user's LOCAL `YYYY-MM-DD`. Never use `toISOString().slice/split` for dates (it's UTC — ESLint flags it). Components that depend on "today" should use `useTodayKey()` so they update at midnight / when the PWA resumes.
+
+### Schema versioning, backups, recovery
+
+- `src/lib/migrations.ts` — `telos_schema_version` + ordered, idempotent migrations run before React renders (`src/main.tsx`). Shared with backup import. **Any change to a stored shape needs a new migration + test.**
+- `src/lib/backup.ts` — versioned backup envelope built from `KEYS` (can't miss a key), validated import with preview, iPhone share-sheet export.
+- `src/lib/snapshots.ts` — automatic IndexedDB safety copies (daily + before migration/import/reset/clear).
+- `src/components/AppErrorBoundary.tsx` / `RecoveryScreen.tsx` — app-level and per-route crash screens with backup/restore/reset.
 
 ### Goal Data Model
 
@@ -47,7 +61,7 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 
 ### Storage Keys
 
-All `localStorage` keys are prefixed `telos_`: `telos_goals`, `telos_sessions`, `telos_exercise_configs`, `telos_weekly_plan`, `telos_settings`, `telos_achievements`, `telos_weekly_schedule`, `telos_time_blocks`, `telos_repeatable_blocks`, `telos_contacts`.
+All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/storage.ts` (goals, sessions, exercise configs, weekly plan, settings, achievements, templates, weekly schedule/focus, time blocks, block categories, repeatable blocks, contacts, interactions, commitments, relationship goals, custom exercises, habit logs, goal templates). Meta keys (`telos_schema_version`, `telos_last_export_at`) are excluded from backups.
 
 ### Routing & Layout
 
@@ -63,4 +77,4 @@ The project uses loose TypeScript (`noImplicitAny: false`, `strictNullChecks: fa
 
 ### Testing
 
-Tests use Vitest + jsdom + Testing Library. Config is in `vitest.config.ts`; setup in `src/test/setup.ts`. Test coverage is currently minimal.
+Tests use Vitest + jsdom + Testing Library. Config is in `vitest.config.ts`; setup in `src/test/setup.ts` (pins `TZ=America/Los_Angeles`, clears localStorage and stores before each test, uses an in-memory snapshot backend). Use `withTimeZone()` from `src/test/tz.ts` for timezone cases. Tests live next to the code (`*.test.ts[x]`).
