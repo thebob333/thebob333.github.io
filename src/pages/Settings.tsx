@@ -9,7 +9,7 @@ import { stores } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { useSettings } from '@/hooks/useSettings';
 import { BUILT_IN_EXERCISE_IDS, EXERCISE_LABELS, CompoundExercise, CustomExercise } from '@/types/workout';
-import { getStandard } from '@/lib/strength-standards';
+import { getStandard, suggestedCustomTarget } from '@/lib/strength-standards';
 import { DataCard } from '@/components/settings/DataCard';
 import { PageHeader } from '@/components/app/PageHeader';
 import { AppearanceCard } from '@/components/settings/AppearanceCard';
@@ -19,7 +19,7 @@ const MAX_BODYWEIGHT = 700;
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
-  const customExercises = useStore(stores.CUSTOM_EXERCISES);
+  const customExercises = useStore(stores.CUSTOM_EXERCISES).filter(e => !e.archived);
   // Local drafts so typing never saves a half-entered value (e.g. "0" while clearing the field).
   const [bodyweightDraft, setBodyweightDraft] = useState(() => String(settings.bodyweight));
   const [quotesDraft, setQuotesDraft] = useState(() => settings.customQuotes.join('\n'));
@@ -114,7 +114,7 @@ export default function SettingsPage() {
             <>
               <div className="border-t border-border pt-4 mt-4">
                 <p className="text-xs text-muted-foreground mb-3">
-                  Custom exercises — set a target so they contribute to the body diagram.
+                  Custom exercises — leave blank to use the suggested goal shown.
                 </p>
               </div>
               <div className="space-y-3">
@@ -128,7 +128,7 @@ export default function SettingsPage() {
                         type="number"
                         inputMode="numeric"
                         className="w-24"
-                        placeholder="Target"
+                        placeholder={String(suggestedCustomTarget(ce.equipment, settings.bodyweight))}
                         value={customVal || ''}
                         onChange={e => setGoldTarget(ce.id, e.target.value)}
                       />

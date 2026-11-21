@@ -12,11 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/app/ResponsiveDialog';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { Dumbbell, TrendingUp, Trophy, Timer, Plus, Trash2, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, History, Save, FileText, Sparkles, Copy, X } from 'lucide-react';
+import { Dumbbell, TrendingUp, Trophy, Timer, Plus, Trash2, ArrowUp, ArrowDown, Minus, ChevronDown, ChevronRight, History, Save, FileText, Sparkles, Copy, X, Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { stores, generateId, WorkoutTemplate } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { PageHeader } from '@/components/app/PageHeader';
+import { RowMenu } from '@/components/app/RowMenu';
+import { suggestedCustomTarget } from '@/lib/strength-standards';
 import { WeeklySplitEditor } from '@/components/gym/WeeklySplitEditor';
 
 const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
@@ -106,24 +108,70 @@ export default function WorkoutsPage() {
   const [newExRepMin, setNewExRepMin] = useState(8);
   const [newExRepMax, setNewExRepMax] = useState(12);
   const [newExIncrement, setNewExIncrement] = useState(5);
+  const [newExTarget, setNewExTarget] = useState('');
+  /** Set when the sheet edits an existing custom exercise instead of creating one. */
+  const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
+  const bodyweightSetting = useStore(stores.SETTINGS).bodyweight;
+  const suggestedTarget = suggestedCustomTarget(newExEquipment, bodyweightSetting);
+
+  const resetCustomForm = () => {
+    setEditingCustomId(null);
+    setNewExName(''); setNewExEquipment('barbell'); setNewExMuscles([]); setNewExWeight(45);
+    setNewExSets(3); setNewExRepMin(8); setNewExRepMax(12); setNewExIncrement(5); setNewExTarget('');
+  };
+
+  const openEditCustom = (id: string) => {
+    const ce = customExercises.find(e => e.id === id);
+    const cfg = configs.find(c => c.exercise === id);
+    if (!ce) return;
+    setEditingCustomId(id);
+    setNewExName(ce.name); setNewExEquipment(ce.equipment); setNewExMuscles(ce.muscleGroups);
+    if (cfg) {
+      setNewExWeight(cfg.currentWeight); setNewExSets(cfg.targetSets); setNewExRepMin(cfg.repRangeMin);
+      setNewExRepMax(cfg.repRangeMax); setNewExIncrement(cfg.weightIncrement);
+    }
+    const t = stores.SETTINGS.get().goldTargets[id];
+    setNewExTarget(t ? String(t) : '');
+    setShowAddCustom(true);
+  };
+
+  const saveTarget = (id: string) => {
+    const n = Number(newExTarget);
+    stores.SETTINGS.update(s => {
+      const goldTargets = { ...s.goldTargets };
+      if (newExTarget.trim() && Number.isFinite(n) && n > 0) goldTargets[id] = n;
+      else delete goldTargets[id];
+      return { ...s, goldTargets };
+    });
+  };
 
   const handleAddCustomExercise = () => {
     if (!newExName.trim()) return;
-    const id = `custom_${newExName.trim().toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
-    const exercise: CustomExercise = {
-      id, name: newExName.trim(), equipment: newExEquipment,
-      muscleGroups: newExMuscles,
-    };
-    stores.CUSTOM_EXERCISES.update(prev => [...prev, exercise]);
-    addConfig({
-      exercise: id, targetSets: newExSets,
-      repRangeMin: newExRepMin, repRangeMax: newExRepMax,
+    const configFields = {
+      targetSets: newExSets, repRangeMin: newExRepMin, repRangeMax: newExRepMax,
       currentWeight: newExWeight, weightIncrement: newExIncrement,
-    });
+    };
+    if (editingCustomId) {
+      const id = editingCustomId;
+      stores.CUSTOM_EXERCISES.update(prev => prev.map(e => (e.id === id ? { ...e, name: newExName.trim(), equipment: newExEquipment, muscleGroups: newExMuscles } : e)));
+      if (configs.some(c => c.exercise === id)) {
+        updateConfig(id, configFields);
+        workoutActions.sanitizeConfig(id);
+      } else {
+        addConfig({ exercise: id, ...configFields });
+      }
+      saveTarget(id);
+      toast.success(`Updated "${newExName.trim()}"`);
+    } else {
+      const id = `custom_${newExName.trim().toLowerCase().replace(/\s+/g, '_')}_${Date.now()}`;
+      const exercise: CustomExercise = { id, name: newExName.trim(), equipment: newExEquipment, muscleGroups: newExMuscles };
+      stores.CUSTOM_EXERCISES.update(prev => [...prev, exercise]);
+      addConfig({ exercise: id, ...configFields });
+      saveTarget(id);
+      toast.success(`Added "${exercise.name}"`);
+    }
     setShowAddCustom(false);
-    setNewExName(''); setNewExMuscles([]); setNewExWeight(45);
-    setNewExSets(3); setNewExRepMin(8); setNewExRepMax(12); setNewExIncrement(5);
-    toast.success(`Added "${exercise.name}"`);
+    resetCustomForm();
   };
 
   // Archive rather than delete, so past sessions and PRs keep the exercise's name.
@@ -703,9 +751,13 @@ RULES:
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">{config.targetSets} × {config.repRangeMin}-{config.repRangeMax}</Badge>
                       {isCustom && (
-                        <Button size="sm" variant="ghost" className="text-destructive h-7 w-7 p-0" onClick={() => handleDeleteCustomExercise(config.exercise)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
+                        <RowMenu
+                          label={`Actions for ${label(config.exercise)}`}
+                          items={[
+                            { label: 'Edit exercise & target', icon: Pencil, onSelect: () => openEditCustom(config.exercise) },
+                            { label: 'Remove exercise', icon: Trash2, destructive: true, separated: true, onSelect: () => handleDeleteCustomExercise(config.exercise) },
+                          ]}
+                        />
                       )}
                     </div>
                   </div>
@@ -744,7 +796,7 @@ RULES:
           })}
 
           {/* Add Custom Exercise */}
-          <Dialog open={showAddCustom} onOpenChange={setShowAddCustom}>
+          <Dialog open={showAddCustom} onOpenChange={o => { setShowAddCustom(o); if (!o) resetCustomForm(); }}>
             <DialogTrigger asChild>
               <Button variant="outline" className="w-full border-dashed border-2 border-primary/20 py-8 text-primary hover:bg-primary/5">
                 <Plus className="h-5 w-5 mr-2" /> Add Custom Exercise
@@ -752,7 +804,7 @@ RULES:
             </DialogTrigger>
             <DialogContent className="max-w-lg">
               <DialogHeader>
-                <DialogTitle className="text-xl font-bold">New Custom Exercise</DialogTitle>
+                <DialogTitle className="text-xl font-bold">{editingCustomId ? 'Edit exercise' : 'New custom exercise'}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4 mt-2">
                 <div>
@@ -849,8 +901,26 @@ RULES:
                   </div>
                 </div>
 
-                <Button onClick={handleAddCustomExercise} disabled={!newExName.trim()} className="w-full font-semibold">
-                  <Plus className="h-4 w-4 mr-2" /> Add Exercise
+                <div className="border-t pt-4">
+                  <label htmlFor="ex-target" className="text-sm text-muted-foreground uppercase tracking-wider font-medium">
+                    Strength goal ({newExEquipment === 'bodyweight' ? 'reps' : 'lbs'})
+                  </label>
+                  <Input
+                    id="ex-target"
+                    type="number"
+                    inputMode="decimal"
+                    value={newExTarget}
+                    onChange={e => setNewExTarget(e.target.value)}
+                    placeholder={`Suggested: ${suggestedTarget}`}
+                    className="mt-1 h-10"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Your “gold” level for this lift — it fills in the strength map. Leave blank to use the suggestion ({suggestedTarget} {newExEquipment === 'bodyweight' ? 'reps' : 'lbs'}).
+                  </p>
+                </div>
+
+                <Button onClick={handleAddCustomExercise} disabled={!newExName.trim()} className="h-11 w-full font-semibold">
+                  {editingCustomId ? 'Save changes' : <><Plus className="h-4 w-4 mr-2" /> Add exercise</>}
                 </Button>
               </div>
             </DialogContent>

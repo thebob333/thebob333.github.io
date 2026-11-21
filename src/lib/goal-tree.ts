@@ -50,3 +50,33 @@ export function flattenTodos(goals: Goal[], opts: { includeArchived?: boolean } 
   }
   return out;
 }
+
+const EFFORT_WEIGHT = { LOW: 1, MED: 2, HIGH: 3 } as const;
+
+/** How much work a phase holds: to-dos weighted by effort; empty tasks count as medium. */
+export function phaseWeight(phase: Phase): number {
+  const tasks = phase.tasks ?? [];
+  if (tasks.length === 0) return 1;
+  return tasks.reduce((sum, t) => {
+    const todos = t.todos ?? [];
+    if (todos.length === 0) return sum + 2;
+    return sum + todos.reduce((s, td) => s + (td.effort ? EFFORT_WEIGHT[td.effort] : 2), 0);
+  }, 0);
+}
+
+/**
+ * Give each phase a deadline between today and the goal's deadline, in
+ * proportion to how much work it holds (so a heavy phase gets more time).
+ */
+export function spreadPhaseDeadlines(phases: Phase[], today: string, goalDeadline: string, addDays: (k: string, n: number) => string, daysBetween: (a: string, b: string) => number): Phase[] | null {
+  const totalDays = daysBetween(today, goalDeadline);
+  if (totalDays <= 0 || phases.length === 0) return null;
+  const weights = phases.map(phaseWeight);
+  const total = weights.reduce((a, b) => a + b, 0);
+  let acc = 0;
+  return phases.map((p, i) => {
+    acc += weights[i];
+    const offset = i === phases.length - 1 ? totalDays : Math.max(1, Math.round((totalDays * acc) / total));
+    return { ...p, deadline: addDays(today, offset) };
+  });
+}

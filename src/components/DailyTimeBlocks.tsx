@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { TimeBlock, BlockCategory, DEFAULT_CATEGORIES, stores, generateId, Contact } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { autofillDay, dismissBlock, undismissBlock } from '@/lib/plan-autofill';
+import { QuickLogSheet } from '@/components/people/QuickLogSheet';
 import { todayKey } from '@/lib/dates';
 import { shouldShowOnDay } from '@/components/RepeatableBlockManager';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X, Palette, Trash2, Link2, Unlink, Repeat, Target, User, Clock } from 'lucide-react';
+import { Plus, X, Palette, Trash2, Link2, Unlink, Repeat, Target, User, Clock, Check } from 'lucide-react';
 import { getDaysRemaining, getUrgencyColor } from '@/types/goals';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -167,6 +168,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   
   // Resize state
   const [resizeDrag, setResizeDrag] = useState<{ blockId: string; startY: number; startDuration: number } | null>(null);
+  const [logContact, setLogContact] = useState<Contact | null>(null);
   // Live preview while resizing; saved once on release instead of on every pointer move.
   const [resizePreview, setResizePreview] = useState<number | null>(null);
   
@@ -642,11 +644,26 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                           onLink={(contactId, name) => linkContact(block.id, contactId, name)}
                         />
                       )}
-                      {block.contactId && (
-                        <button onClick={() => unlinkContact(block.id)} className="p-0.5 rounded bg-amber/20 border border-amber/30 hover:bg-amber/40" title="Unlink contact">
-                          <User className="h-3 w-3 text-amber" />
-                        </button>
-                      )}
+                      {block.contactId && (() => {
+                        const person = contacts.find(c => c.id === block.contactId);
+                        return (
+                          <>
+                            {person && (
+                              <button
+                                onClick={() => setLogContact(person)}
+                                className="flex h-8 w-8 items-center justify-center rounded bg-primary/15 border border-primary/30 hover:bg-primary/25"
+                                title={`Log time with ${person.name}`}
+                                aria-label={`Log time with ${person.name}`}
+                              >
+                                <Check className="h-3.5 w-3.5 text-primary" />
+                              </button>
+                            )}
+                            <button onClick={() => unlinkContact(block.id)} className="p-0.5 rounded bg-amber/20 border border-amber/30 hover:bg-amber/40" title="Unlink contact">
+                              <User className="h-3 w-3 text-amber" />
+                            </button>
+                          </>
+                        );
+                      })()}
                       <button onClick={() => deleteBlock(block.id)} className="p-0.5 rounded bg-destructive/20 border border-destructive/30 hover:bg-destructive/40">
                         <Trash2 className="h-3 w-3 text-destructive" />
                       </button>
@@ -689,6 +706,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
           })}
         </div>
       </div>
+      <QuickLogSheet contact={logContact} onClose={() => setLogContact(null)} />
     </div>
   );
 }

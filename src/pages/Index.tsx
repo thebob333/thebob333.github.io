@@ -26,6 +26,7 @@ import { AmbientSound } from '@/components/AmbientSound';
 import { PageHeader } from '@/components/app/PageHeader';
 import { TodayChecklist, type ChecklistTodo } from '@/components/today/TodayChecklist';
 import { quoteOfTheDay } from '@/lib/quotes';
+import { PeopleNudges } from '@/components/today/PeopleNudges';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -199,6 +200,11 @@ export default function Index() {
           ) : null}
         </motion.div>
       )}
+
+      {/* People to reach out to + commitments due */}
+      <motion.div {...fade(0.105)}>
+        <PeopleNudges />
+      </motion.div>
 
       {/* Weekly focus */}
       <motion.div {...fade(0.12)}>

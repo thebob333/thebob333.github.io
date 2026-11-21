@@ -22,8 +22,11 @@ import { WeeklyFocus, FocusStar } from '@/components/WeeklyFocus';
 import { PageHeader } from '@/components/app/PageHeader';
 import { RowMenu } from '@/components/app/RowMenu';
 import { RoundCheck } from '@/components/app/RoundCheck';
+import { EditItemDialog, type EditTarget } from '@/components/goals/EditItemDialog';
+import { Pencil, CheckCircle2 as DoneIcon } from 'lucide-react';
 
 import { parseGoalPlan, applyPlanToGoal, type ParseResult } from '@/lib/goal-plan-parser';
+import { spreadPhaseDeadlines } from '@/lib/goal-tree';
 import type { EffortLevel, HabitEvolution } from '@/types/goals';
 
 const statusColors: Record<string, string> = {
@@ -104,9 +107,10 @@ export default function GoalsPage() {
     addNote, deleteNote,
     reorderPhases, reorderTasks, reorderTodos,
     archiveGoal, cloneGoal, saveAsTemplate, createFromTemplate,
-    templates, deleteTemplate, restoreGoal,
+    templates, deleteTemplate, restoreGoal, updateTask,
   } = useGoals();
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState<Goal | null>(null);
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
   /** Do a destructive edit inside a goal, offering a 5-second Undo that restores that goal. */
   const withUndo = (goalId: string, message: string, action: () => void) => {
@@ -184,17 +188,14 @@ export default function GoalsPage() {
   const handleSpreadDeadlines = (goalId: string) => {
     const goal = goals.find(g => g.id === goalId);
     if (!goal || !goal.deadline || goal.phases.length === 0) return;
-    const start = todayKey();
-    const totalDays = daysBetween(start, dateKeyOf(goal.deadline));
-    if (totalDays <= 0) { toast.error('Deadline is in the past'); return; }
-    const n = goal.phases.length;
-
-    const updatedPhases = goal.phases.map((phase, i) => ({
-      ...phase,
-      deadline: addDays(start, Math.round((totalDays * (i + 1)) / n)),
-    }));
+    // Heavier phases (more / harder to-dos) get proportionally more time.
+    const updatedPhases = spreadPhaseDeadlines(goal.phases, todayKey(), dateKeyOf(goal.deadline), addDays, daysBetween);
+    if (!updatedPhases) { toast.error('The goal deadline has already passed'); return; }
+    const before = goal.phases;
     updateGoal(goalId, { phases: updatedPhases });
-    toast.success(`Spread deadlines across ${goal.phases.length} phases`);
+    toast.success(`Deadlines spread across ${goal.phases.length} phases by workload`, {
+      action: { label: 'Undo', onClick: () => updateGoal(goalId, { phases: before }) },
+    });
   };
 
   const handleAddHabit = () => {
@@ -638,6 +639,7 @@ RULES:
                         label={`More actions for ${goal.title}`}
                         className="ml-auto border"
                         items={[
+                          { label: 'Edit goal', icon: Pencil, onSelect: () => setEditTarget({ kind: 'goal', goal }) },
                           ...(goal.deadline ? [{ label: 'Spread deadlines', icon: CalendarDays, onSelect: () => handleSpreadDeadlines(goal.id) }] : []),
                           { label: 'Duplicate goal', icon: Copy, onSelect: () => { cloneGoal(goal.id); toast.success('Goal duplicated'); } },
                           { label: 'Save as blueprint', icon: Bookmark, onSelect: () => { saveAsTemplate(goal.id); toast.success('Saved as a blueprint', { description: 'Reuse it any time from Blueprints.' }); } },
@@ -670,6 +672,7 @@ RULES:
                                   label={`Actions for phase ${phase.title}`}
                                   items={[
                                     { label: 'Add task', icon: Plus, onSelect: () => setAddTaskTarget({ goalId: goal.id, phaseId: phase.id }) },
+                                    { label: 'Edit phase', icon: Pencil, onSelect: () => setEditTarget({ kind: 'phase', goalId: goal.id, phase }) },
                                     { label: 'Move up', icon: ArrowUp, disabled: phaseIdx === 0, onSelect: () => reorderPhases(goal.id, phase.id, 'up') },
                                     { label: 'Move down', icon: ArrowDown, disabled: phaseIdx === goal.phases.length - 1, onSelect: () => reorderPhases(goal.id, phase.id, 'down') },
                                     { label: 'Delete phase', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo(goal.id, `Deleted phase "${phase.title}"`, () => deletePhase(goal.id, phase.id)) },
@@ -696,7 +699,17 @@ RULES:
                                           <RowMenu
                                             label={`Actions for task ${task.title}`}
                                             items={[
-                                              { label: 'Add to-do', icon: Plus, onSelect: () => setAddTodoTarget({ goalId: goal.id, phaseId: phase.id, taskId: task.id }) },
+                                              ...(task.todos.length === 0 ? [{
+                                                label: task.status === 'complete' ? 'Mark not done' : 'Mark done',
+                                                icon: DoneIcon,
+                                                onSelect: () => {
+                                                  const next = task.status === 'complete' ? 'not_started' as const : 'complete' as const;
+                                                  updateTask(goal.id, phase.id, task.id, { status: next });
+                                                  toast.success(next === 'complete' ? `Done: ${task.title}` : 'Marked not done', { action: { label: 'Undo', onClick: () => updateTask(goal.id, phase.id, task.id, { status: task.status }) } });
+                                                },
+                                              }] : []),
+                                              { label: 'Edit task', icon: Pencil, onSelect: () => setEditTarget({ kind: 'task', goalId: goal.id, phaseId: phase.id, task }) },
+                                              { label: 'Add to-do', icon: Plus, separated: true, onSelect: () => setAddTodoTarget({ goalId: goal.id, phaseId: phase.id, taskId: task.id }) },
                                               { label: 'Add habit', icon: Repeat, onSelect: () => setAddHabitTarget({ goalId: goal.id, phaseId: phase.id, taskId: task.id }) },
                                               { label: 'Move up', icon: ArrowUp, separated: true, onSelect: () => reorderTasks(goal.id, phase.id, task.id, 'up') },
                                               { label: 'Move down', icon: ArrowDown, onSelect: () => reorderTasks(goal.id, phase.id, task.id, 'down') },
@@ -724,7 +737,8 @@ RULES:
                                               <RowMenu
                                                 label={`Actions for ${todo.title}`}
                                                 items={[
-                                                  { label: 'Move up', icon: ArrowUp, disabled: todoIdx === 0, onSelect: () => reorderTodos(goal.id, phase.id, task.id, todo.id, 'up') },
+                                                  { label: 'Edit to-do', icon: Pencil, onSelect: () => setEditTarget({ kind: 'todo', goalId: goal.id, phaseId: phase.id, taskId: task.id, todo }) },
+                                                  { label: 'Move up', icon: ArrowUp, separated: true, disabled: todoIdx === 0, onSelect: () => reorderTodos(goal.id, phase.id, task.id, todo.id, 'up') },
                                                   { label: 'Move down', icon: ArrowDown, disabled: todoIdx === task.todos.length - 1, onSelect: () => reorderTodos(goal.id, phase.id, task.id, todo.id, 'down') },
                                                   { label: 'Delete to-do', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo(goal.id, 'To-do deleted', () => deleteToDo(goal.id, phase.id, task.id, todo.id)) },
                                                 ]}
@@ -767,6 +781,7 @@ RULES:
                                                   <RowMenu
                                                     label={`Actions for habit ${habit.title}`}
                                                     items={[
+                                                      { label: 'Edit habit', icon: Pencil, onSelect: () => setEditTarget({ kind: 'habit', goalId: goal.id, phaseId: phase.id, taskId: task.id, habit }) },
                                                       { label: habit.active ? 'Pause habit' : 'Resume habit', icon: ToggleLeft, onSelect: () => toggleHabit(goal.id, phase.id, task.id, habit.id) },
                                                       { label: 'Delete habit', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo(goal.id, 'Habit deleted', () => deleteHabit(goal.id, phase.id, task.id, habit.id)) },
                                                     ]}
@@ -1040,6 +1055,8 @@ RULES:
           )}
         </DialogContent>
       </Dialog>
+
+      <EditItemDialog target={editTarget} onClose={() => setEditTarget(null)} />
 
       {/* Delete goal confirmation */}
       <Dialog open={!!confirmDeleteGoal} onOpenChange={o => !o && setConfirmDeleteGoal(null)}>

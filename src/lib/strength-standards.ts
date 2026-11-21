@@ -1,4 +1,4 @@
-import { CompoundExercise, EXERCISE_LABELS } from '@/types/workout';
+import { CompoundExercise, EXERCISE_LABELS, EquipmentType } from '@/types/workout';
 
 // Strength standards as multipliers of bodyweight
 // Source: approximate Rippetoe / ExRx / Symmetric Strength norms
@@ -77,3 +77,23 @@ export const LEVEL_COLORS: Record<StrengthLevel, string> = {
 };
 
 export { LEVELS, STANDARDS };
+
+/**
+ * A sensible "gold" goal for a custom exercise when you haven't set one, so
+ * custom lifts count toward your strength map from day one. Bodyweight moves
+ * are measured in reps; everything else in lbs (dumbbells per hand).
+ */
+const CUSTOM_TARGET_MULTIPLIER: Record<EquipmentType, number> = {
+  barbell: 1.0,
+  dumbbell: 0.4,
+  cable: 0.6,
+  machine: 0.9,
+  bodyweight: 0, // reps
+  other: 0.5,
+};
+
+export function suggestedCustomTarget(equipment: EquipmentType, bodyweight: number): number {
+  if (equipment === 'bodyweight') return 20;
+  const lbs = (CUSTOM_TARGET_MULTIPLIER[equipment] ?? 0.5) * (bodyweight || 180);
+  return Math.max(5, Math.round(lbs / 5) * 5);
+}

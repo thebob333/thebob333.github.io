@@ -6,6 +6,7 @@ import { stores, generateId, type ActiveWorkout } from '@/lib/storage';
 import { getExerciseHistory, getProgressionSuggestion, planNextSession, applyDeload } from '@/lib/progressive-overload';
 import { useStore } from '@/hooks/useStore';
 import { toast } from 'sonner';
+import { checkAchievements } from '@/lib/achievements';
 
 const S = stores.SESSIONS;
 const CFG = stores.EXERCISE_CONFIGS;
@@ -41,6 +42,18 @@ export const workoutActions = {
     });
 
     if (changes.length > 0) toast.success('Level up for next session 📈', { description: changes.join(' · ') });
+
+    // Celebrate badges the moment they're earned (and save them with a real date).
+    const { newlyUnlocked } = checkAchievements(S.get(), stores.ACHIEVEMENTS.get());
+    if (newlyUnlocked.length > 0) {
+      const at = new Date().toISOString();
+      stores.ACHIEVEMENTS.update(prev => {
+        const have = new Set(prev.map(a => a.id));
+        const add = newlyUnlocked.filter(a => !have.has(a.id)).map(a => ({ id: a.id, unlockedAt: at }));
+        return add.length ? [...prev, ...add] : prev;
+      });
+      newlyUnlocked.slice(0, 2).forEach(a => toast(`${a.icon} Badge unlocked: ${a.title}`, { description: a.description, duration: 6000 }));
+    }
     return newSession;
   },
 

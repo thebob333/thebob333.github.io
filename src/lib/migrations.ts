@@ -116,7 +116,8 @@ function fixGoalTemplate(t: Obj, ctx: MigrationContext): Obj {
         ...task,
         title: str(task.title, 'Task'),
         description: str(task.description),
-        todos: arr(task.todos).filter((x): x is string => typeof x === 'string'),
+        // Older blueprints store to-dos as plain strings; newer ones as objects.
+        todos: arr(task.todos).filter(x => typeof x === 'string' || (isObj(x) && typeof x.title === 'string')),
         habits: arr(task.habits).filter(isObj).map(h => ({
           ...h,
           title: str(h.title, 'Habit'),

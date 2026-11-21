@@ -4,7 +4,7 @@ import {
   Contact, Interaction, Commitment, RelationshipGoal,
   CircleRing, InteractionType, CIRCLE_RINGS,
 } from '@/lib/storage';
-import { dateKeyOf, daysBetween } from '@/lib/dates';
+import { addDays, dateKeyOf, daysBetween, todayKey, type DateKey } from '@/lib/dates';
 import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 
@@ -14,6 +14,22 @@ const K = stores.COMMITMENTS;
 const R = stores.RELATIONSHIP_GOALS;
 
 export type StreakStatus = 'on-track' | 'due-soon' | 'overdue' | 'no-goal';
+
+/** Next due date for a recurring commitment, never in the past. */
+export function nextDueDate(due: string | undefined, recurring: 'weekly' | 'biweekly' | 'monthly', today: DateKey): DateKey {
+  const step = (k: DateKey): DateKey => {
+    if (recurring === 'weekly') return addDays(k, 7);
+    if (recurring === 'biweekly') return addDays(k, 14);
+    const [y, m, d] = k.split('-').map(Number);
+    const last = new Date(y, m + 1, 0).getDate(); // days in next month
+    const mm = m === 12 ? 1 : m + 1;
+    const yy = m === 12 ? y + 1 : y;
+    return `${yy}-${String(mm).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+  };
+  let next = step(due ? dateKeyOf(due) : today);
+  while (next <= today) next = step(next);
+  return next;
+}
 
 const byDateDesc = (a: Interaction, b: Interaction) => new Date(b.date).getTime() - new Date(a.date).getTime();
 
@@ -109,13 +125,46 @@ export const contactActions = {
     return commitment;
   },
 
-  completeCommitment(id: string) {
+  /** Complete a commitment; recurring ones schedule the next occurrence automatically. */
+  completeCommitment(id: string): Commitment | null {
     const at = new Date().toISOString();
-    K.update(list => list.map(c => (c.id === id ? { ...c, completedAt: at } : c)));
+    let next: Commitment | null = null;
+    K.update(list => {
+      const c = list.find(x => x.id === id);
+      if (!c || c.completedAt) return list;
+      if (c.recurring) {
+        next = {
+          id: generateId(),
+          contactId: c.contactId,
+          text: c.text,
+          recurring: c.recurring,
+          dueDate: nextDueDate(c.dueDate, c.recurring, todayKey()),
+        };
+      }
+      const updated = list.map(x => (x.id === id ? { ...x, completedAt: at, spawnedId: next?.id } : x));
+      return next ? [next, ...updated] : updated;
+    });
+    return next;
   },
 
   uncompleteCommitment(id: string) {
-    K.update(list => list.map(c => (c.id === id ? { ...c, completedAt: undefined } : c)));
+    K.update(list => {
+      const c = list.find(x => x.id === id);
+      if (!c) return list;
+      // Undo the auto-scheduled next occurrence too (if it hasn't been done yet).
+      const spawned = c.spawnedId ? list.find(x => x.id === c.spawnedId && !x.completedAt) : undefined;
+      return list
+        .filter(x => x.id !== spawned?.id)
+        .map(x => (x.id === id ? { ...x, completedAt: undefined, spawnedId: undefined } : x));
+    });
+  },
+
+  updateCommitment(id: string, updates: Partial<Commitment>) {
+    K.update(list => list.map(c => (c.id === id ? { ...c, ...updates } : c)));
+  },
+
+  updateInteraction(id: string, updates: Partial<Interaction>) {
+    I.update(list => list.map(i => (i.id === id ? { ...i, ...updates } : i)));
   },
 
   deleteCommitment(id: string) {

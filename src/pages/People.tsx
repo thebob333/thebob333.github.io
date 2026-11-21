@@ -2,6 +2,7 @@ import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 import { ENERGY_LEVELS } from '@/lib/people';
 import { PageHeader } from '@/components/app/PageHeader';
 import { RowMenu } from '@/components/app/RowMenu';
+import { RelationshipGoals } from '@/components/people/RelationshipGoals';
 import { contactActions } from '@/hooks/useContacts';
 import { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -95,6 +96,7 @@ type InteractionForm = {
   durationMinutes: string;
   energyAfter: 1 | 2 | 3 | 4 | 5 | null;
   note: string;
+  date: string; // YYYY-MM-DD — defaults to today, can be backdated
 };
 
 type CommitmentForm = {
@@ -109,7 +111,7 @@ const emptyForm = (): ContactForm => ({
 });
 
 const emptyInteractionForm = (): InteractionForm => ({
-  type: 'hangout', durationMinutes: '', energyAfter: null, note: '',
+  type: 'hangout', durationMinutes: '', energyAfter: null, note: '', date: todayKey(),
 });
 
 const emptyCommitmentForm = (): CommitmentForm => ({
@@ -249,30 +251,65 @@ export default function PeoplePage() {
     setDialogOpen(true);
   };
 
+  const [editingInteraction, setEditingInteraction] = useState<Interaction | null>(null);
   const openLogInteraction = (contactId: string) => {
+    setEditingInteraction(null);
     setInteractionContactId(contactId);
     setInteractionForm(emptyInteractionForm());
+    setInteractionDialogOpen(true);
+  };
+  const openEditInteraction = (i: Interaction) => {
+    setEditingInteraction(i);
+    setInteractionContactId(i.contactId);
+    setInteractionForm({
+      type: i.type,
+      durationMinutes: i.durationMinutes ? String(i.durationMinutes) : '',
+      energyAfter: i.energyAfter ?? null,
+      note: i.note ?? '',
+      date: dateKeyOf(i.date),
+    });
     setInteractionDialogOpen(true);
   };
 
   const handleLogInteraction = () => {
     if (!interactionContactId) return;
-    addInteraction({
-      contactId: interactionContactId,
+    const today = todayKey();
+    const pickedDate = interactionForm.date && interactionForm.date <= today ? interactionForm.date : today;
+    // Today keeps the exact time; a backdated entry is stored as that calendar day.
+    const date = pickedDate === today
+      ? (editingInteraction && dateKeyOf(editingInteraction.date) === today ? editingInteraction.date : new Date().toISOString())
+      : pickedDate;
+    const fields = {
       type: interactionForm.type,
       durationMinutes: interactionForm.durationMinutes ? Number(interactionForm.durationMinutes) : undefined,
       energyAfter: interactionForm.energyAfter || undefined,
       note: interactionForm.note || undefined,
-    });
+      date,
+    };
     const contact = contacts.find(c => c.id === interactionContactId);
-    toast.success(`Logged ${interactionForm.type} with ${contact?.name || 'contact'}`);
+    if (editingInteraction) {
+      contactActions.updateInteraction(editingInteraction.id, fields);
+      toast.success('Interaction updated');
+    } else {
+      addInteraction({ contactId: interactionContactId, ...fields });
+      toast.success(`Logged ${interactionForm.type} with ${contact?.name || 'contact'}`);
+    }
     setInteractionDialogOpen(false);
     setInteractionContactId(null);
+    setEditingInteraction(null);
   };
 
+  const [editingCommitment, setEditingCommitment] = useState<Commitment | null>(null);
   const openAddCommitment = (contactId: string) => {
+    setEditingCommitment(null);
     setCommitmentContactId(contactId);
     setCommitmentForm(emptyCommitmentForm());
+    setCommitmentDialogOpen(true);
+  };
+  const openEditCommitment = (c: Commitment) => {
+    setEditingCommitment(c);
+    setCommitmentContactId(c.contactId);
+    setCommitmentForm({ text: c.text, dueDate: c.dueDate ?? '', recurring: c.recurring ?? '' });
     setCommitmentDialogOpen(true);
   };
 
@@ -281,16 +318,29 @@ export default function PeoplePage() {
       toast.error('Commitment text is required');
       return;
     }
-    addCommitment({
-      contactId: commitmentContactId,
+    const fields = {
       text: commitmentForm.text.trim(),
       dueDate: commitmentForm.dueDate || undefined,
       recurring: commitmentForm.recurring || undefined,
-    });
-    const contact = contacts.find(c => c.id === commitmentContactId);
-    toast.success(`Commitment added for ${contact?.name || 'contact'}`);
+    };
+    if (editingCommitment) {
+      contactActions.updateCommitment(editingCommitment.id, fields);
+      toast.success('Commitment updated');
+    } else {
+      addCommitment({ contactId: commitmentContactId, ...fields });
+      const contact = contacts.find(c => c.id === commitmentContactId);
+      toast.success(`Commitment added for ${contact?.name || 'contact'}`);
+    }
     setCommitmentDialogOpen(false);
     setCommitmentContactId(null);
+    setEditingCommitment(null);
+  };
+
+  const handleCompleteCommitment = (c: Commitment) => {
+    const next = completeCommitment(c.id);
+    toast.success(next?.dueDate ? `Done — next one scheduled for ${formatRelativeDate(next.dueDate)}` : 'Commitment done', {
+      action: { label: 'Undo', onClick: () => uncompleteCommitment(c.id) },
+    });
   };
 
   // --- Import handlers ---
@@ -622,6 +672,8 @@ export default function PeoplePage() {
                               </div>
                             )}
 
+                            <RelationshipGoals contactId={contact.id} />
+
                             {/* Commitments */}
                             <div className="pt-1">
                               <div className="flex items-center justify-between mb-2">
@@ -649,7 +701,7 @@ export default function PeoplePage() {
                                     return (
                                       <div key={commitment.id} className="flex items-center gap-2 text-[11px] group">
                                         <button
-                                          onClick={e => { e.stopPropagation(); completeCommitment(commitment.id); }}
+                                          onClick={e => { e.stopPropagation(); handleCompleteCommitment(commitment); }}
                                           className="flex-shrink-0 hover:text-success transition-colors"
                                         >
                                           <Circle className="h-3.5 w-3.5 text-muted-foreground" />
@@ -665,7 +717,10 @@ export default function PeoplePage() {
                                             {formatRelativeDate(commitment.dueDate)}
                                           </span>
                                         )}
-                                        <RowMenu label="Commitment actions" items={[{ label: 'Delete commitment', icon: Trash2, destructive: true, onSelect: () => removeCommitment(commitment) }]} />
+                                        <RowMenu label="Commitment actions" items={[
+                                          { label: 'Edit', icon: Edit2, onSelect: () => openEditCommitment(commitment) },
+                                          { label: 'Delete commitment', icon: Trash2, destructive: true, separated: true, onSelect: () => removeCommitment(commitment) },
+                                        ]} />
                                       </div>
                                     );
                                   })}
@@ -678,7 +733,10 @@ export default function PeoplePage() {
                                         <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                                       </button>
                                       <span className="flex-1 line-through text-muted-foreground">{commitment.text}</span>
-                                      <RowMenu label="Commitment actions" items={[{ label: 'Delete commitment', icon: Trash2, destructive: true, onSelect: () => removeCommitment(commitment) }]} />
+                                      <RowMenu label="Commitment actions" items={[
+                                          { label: 'Edit', icon: Edit2, onSelect: () => openEditCommitment(commitment) },
+                                          { label: 'Delete commitment', icon: Trash2, destructive: true, separated: true, onSelect: () => removeCommitment(commitment) },
+                                        ]} />
                                     </div>
                                   ))}
                                 </div>
@@ -724,7 +782,10 @@ export default function PeoplePage() {
                                         <span className="text-muted-foreground/60 ml-auto flex-shrink-0">
                                           {formatRelativeDate(interaction.date)}
                                         </span>
-                                        <RowMenu label="Interaction actions" items={[{ label: 'Delete interaction', icon: Trash2, destructive: true, onSelect: () => removeInteraction(interaction) }]} />
+                                        <RowMenu label="Interaction actions" items={[
+                                          { label: 'Edit', icon: Edit2, onSelect: () => openEditInteraction(interaction) },
+                                          { label: 'Delete interaction', icon: Trash2, destructive: true, separated: true, onSelect: () => removeInteraction(interaction) },
+                                        ]} />
                                       </div>
                                     );
                                   })}
@@ -845,7 +906,7 @@ export default function PeoplePage() {
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
               <Activity className="h-5 w-5 text-primary" />
-              Log Interaction
+              {editingInteraction ? 'Edit interaction' : 'Log interaction'}
             </DialogTitle>
             {interactionContactName && (
               <p className="text-sm text-muted-foreground">with {interactionContactName}</p>
@@ -927,8 +988,25 @@ export default function PeoplePage() {
               />
             </div>
 
-            <Button onClick={handleLogInteraction} className="w-full font-semibold">
-              Log Interaction
+            <div className="space-y-2">
+              <Label htmlFor="interaction-date" className="text-xs font-medium">When</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="interaction-date"
+                  type="date"
+                  max={todayKey()}
+                  value={interactionForm.date}
+                  onChange={e => setInteractionForm({ ...interactionForm, date: e.target.value })}
+                  className="h-10"
+                />
+                {interactionForm.date !== todayKey() && (
+                  <Button type="button" variant="ghost" className="h-10" onClick={() => setInteractionForm({ ...interactionForm, date: todayKey() })}>Today</Button>
+                )}
+              </div>
+            </div>
+
+            <Button onClick={handleLogInteraction} className="h-11 w-full font-semibold">
+              {editingInteraction ? 'Save changes' : 'Log interaction'}
             </Button>
           </div>
         </DialogContent>
@@ -939,7 +1017,7 @@ export default function PeoplePage() {
           <DialogHeader>
             <DialogTitle className="text-lg font-bold flex items-center gap-2">
               <HandHeart className="h-5 w-5 text-primary" />
-              Add Commitment
+              {editingCommitment ? 'Edit commitment' : 'Add commitment'}
             </DialogTitle>
             {commitmentContactName && (
               <p className="text-sm text-muted-foreground">to {commitmentContactName}</p>
@@ -987,8 +1065,8 @@ export default function PeoplePage() {
               </div>
             </div>
 
-            <Button onClick={handleAddCommitment} className="w-full font-semibold">
-              Add Commitment
+            <Button onClick={handleAddCommitment} className="h-11 w-full font-semibold">
+              {editingCommitment ? 'Save changes' : 'Add commitment'}
             </Button>
           </div>
         </DialogContent>

@@ -2,6 +2,7 @@ import { Goal, Phase, Task, ToDo, Habit, TaskNote, GoalDomain } from '@/types/go
 import { stores, generateId, GoalTemplate } from '@/lib/storage';
 import { mapGoal, mapPhase, mapTask, moveById } from '@/lib/goal-tree';
 import { useStore } from '@/hooks/useStore';
+import { addDays, dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 
 const G = stores.GOALS;
 const T = stores.GOAL_TEMPLATES;
@@ -50,6 +51,28 @@ export const goalActions = {
       const phase: Phase = { id: generateId(), title, description, deadline, tasks: [], order: g.phases.length };
       return { ...g, phases: [...g.phases, phase] };
     }));
+  },
+
+  updatePhase(goalId: string, phaseId: string, updates: Partial<Phase>) {
+    G.update(goals => mapPhase(goals, goalId, phaseId, p => ({ ...p, ...updates })));
+  },
+
+  updateTask(goalId: string, phaseId: string, taskId: string, updates: Partial<Task>) {
+    G.update(goals => mapTask(goals, goalId, phaseId, taskId, t => ({ ...t, ...updates })));
+  },
+
+  updateToDo(goalId: string, phaseId: string, taskId: string, todoId: string, updates: Partial<ToDo>) {
+    G.update(goals => mapTask(goals, goalId, phaseId, taskId, t => ({
+      ...t,
+      todos: t.todos.map(td => (td.id === todoId ? { ...td, ...updates } : td)),
+    })));
+  },
+
+  updateHabit(goalId: string, phaseId: string, taskId: string, habitId: string, updates: Partial<Habit>) {
+    G.update(goals => mapTask(goals, goalId, phaseId, taskId, t => ({
+      ...t,
+      habits: (t.habits ?? []).map(h => (h.id === habitId ? { ...h, ...updates } : h)),
+    })));
   },
 
   addTask(goalId: string, phaseId: string, title: string, description: string, deadline?: string) {
@@ -172,19 +195,25 @@ export const goalActions = {
   saveAsTemplate(goalId: string): GoalTemplate | undefined {
     const source = G.get().find(g => g.id === goalId);
     if (!source) return;
+    const start = dateKeyOf(source.createdAt);
+    const offset = (d?: string) => (d ? Math.max(0, daysBetween(start, dateKeyOf(d))) : undefined);
     const template: GoalTemplate = {
       id: generateId(),
       name: source.title,
       description: source.description,
       endGoal: source.endGoal,
+      domain: source.domain,
+      durationDays: offset(source.deadline),
       phases: source.phases.map(p => ({
         title: p.title,
         description: p.description,
+        offsetDays: offset(p.deadline),
         tasks: p.tasks.map(t => ({
           title: t.title,
           description: t.description,
-          todos: (t.todos ?? []).map(td => td.title),
-          habits: (t.habits ?? []).map(h => ({ title: h.title, frequency: h.frequency, target: h.target })),
+          offsetDays: offset(t.deadline),
+          todos: (t.todos ?? []).map(td => ({ title: td.title, effort: td.effort, isBenchmark: td.isBenchmark, offsetDays: offset(td.deadline) })),
+          habits: (t.habits ?? []).map(h => ({ title: h.title, frequency: h.frequency, target: h.target, evolution: h.evolution })),
         })),
       })),
       createdAt: new Date().toISOString(),
@@ -197,28 +226,37 @@ export const goalActions = {
     T.update(templates => templates.filter(t => t.id !== id));
   },
 
+  /** Start a new goal from a blueprint; relative deadlines are counted from today. */
   createFromTemplate(template: GoalTemplate, deadline?: string): Goal {
+    const today = todayKey();
+    const at = (n?: number) => (typeof n === 'number' ? addDays(today, n) : undefined);
     const newGoal: Goal = {
       id: generateId(),
       title: template.name,
       description: template.description,
       endGoal: template.endGoal,
-      deadline,
+      domain: template.domain as GoalDomain | undefined,
+      deadline: deadline ?? at(template.durationDays),
       createdAt: new Date().toISOString(),
       phases: (template.phases ?? []).map((p, pi) => ({
         id: generateId(),
         title: p.title,
         description: p.description,
+        deadline: at(p.offsetDays),
         order: pi,
         tasks: (p.tasks ?? []).map((t, ti) => ({
           id: generateId(),
           title: t.title,
           description: t.description,
+          deadline: at(t.offsetDays),
           status: 'not_started' as const,
           order: ti,
-          todos: (t.todos ?? []).map((td, tdi) => ({ id: generateId(), title: td, done: false, order: tdi })),
+          todos: (t.todos ?? []).map((td, tdi) => {
+            const o = typeof td === 'string' ? { title: td } : td;
+            return { id: generateId(), title: o.title, done: false, order: tdi, effort: o.effort, isBenchmark: o.isBenchmark, deadline: at(o.offsetDays) };
+          }),
           habits: (t.habits ?? []).map(h => ({
-            id: generateId(), title: h.title, frequency: h.frequency, target: h.target, active: true,
+            id: generateId(), title: h.title, frequency: h.frequency, target: h.target, evolution: h.evolution, active: true,
           })),
         })),
       })),

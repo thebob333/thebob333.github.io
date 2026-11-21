@@ -83,6 +83,8 @@ export interface Commitment {
   dueDate?: string; // YYYY-MM-DD (local)
   completedAt?: string;
   recurring?: 'weekly' | 'biweekly' | 'monthly';
+  /** The next occurrence created when this recurring commitment was completed. */
+  spawnedId?: string;
 }
 
 export interface RelationshipGoal {
@@ -178,13 +180,24 @@ export interface ActiveWorkout {
 /** Per day (YYYY-MM-DD): auto-created Plan blocks you removed, so they aren't re-created. */
 export type PlanDismissed = Record<string, string[]>;
 
-// Goal Templates
+// Goal Templates ("Blueprints")
+/** Deadlines are stored as days after the goal starts, so a blueprint can be reused any time. */
+export interface BlueprintTodo { title: string; effort?: 'LOW' | 'MED' | 'HIGH'; isBenchmark?: boolean; offsetDays?: number }
+export interface BlueprintHabit { title: string; frequency: string; target?: string; evolution?: 'NEW' | 'CARRY' | 'INCREASE' | 'REPLACE' }
 export interface GoalTemplate {
   id: string;
   name: string;
   description: string;
   endGoal: string;
-  phases: { title: string; description: string; tasks: { title: string; description: string; todos: string[]; habits: { title: string; frequency: string; target?: string }[] }[] }[];
+  domain?: string;
+  /** Goal length in days (from start to deadline), if the original had a deadline. */
+  durationDays?: number;
+  phases: {
+    title: string;
+    description: string;
+    offsetDays?: number;
+    tasks: { title: string; description: string; offsetDays?: number; todos: (string | BlueprintTodo)[]; habits: BlueprintHabit[] }[];
+  }[];
   createdAt: string;
 }
 

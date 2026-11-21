@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Model, { IExerciseData, IMuscleStats, Muscle } from 'react-body-highlighter';
 import { CompoundExercise, EXERCISE_LABELS, PersonalRecord, CustomExercise, isBuiltInExercise, MuscleGroup } from '@/types/workout';
-import { getStandard } from '@/lib/strength-standards';
+import { getStandard, suggestedCustomTarget } from '@/lib/strength-standards';
 import { X } from 'lucide-react';
 
 function getGoldThreshold(exercise: CompoundExercise, bodyweight: number, goldTargets: Record<string, number>): number {
@@ -18,9 +18,9 @@ function getExerciseRatio(exercise: CompoundExercise, pr: PersonalRecord | undef
 
 function getExerciseDisplay(exercise: CompoundExercise, pr: PersonalRecord | undefined, threshold: number): { current: string; gold: string } {
   if (exercise === 'pull_up') {
-    return { current: pr ? `${pr.reps} reps` : '—', gold: `${threshold} reps` };
+    return { current: pr ? `Best ${pr.reps} reps` : 'Not logged yet', gold: `goal ${threshold} reps` };
   }
-  return { current: pr ? `${pr.weight} lbs` : '—', gold: `${threshold} lbs` };
+  return { current: pr ? `Best ${pr.weight} lbs` : 'Not logged yet', gold: `goal ${threshold} lbs` };
 }
 
 // Our app muscle groups → which compound exercises work them, with weight (1.0 = primary, 0.3 = secondary)
@@ -104,6 +104,7 @@ function getCustomMuscleRatios(
   prs: PersonalRecord[],
   customExercises: CustomExercise[],
   goldTargets: Record<string, number>,
+  bodyweight: number,
 ): Record<string, number> {
   // Build lookup: custom exercise ID → { muscleGroups, equipment }
   const customMap = new Map<string, CustomExercise>();
@@ -119,8 +120,8 @@ function getCustomMuscleRatios(
     const ce = customMap.get(pr.exercise);
     if (!ce || ce.muscleGroups.length === 0) continue;
 
-    const target = goldTargets[ce.id];
-    if (!target) continue; // No gold target set — can't calculate ratio
+    // Your own target if set, otherwise a sensible default for that equipment.
+    const target = goldTargets[ce.id] || suggestedCustomTarget(ce.equipment, bodyweight);
 
     const ratio = ce.equipment === 'bodyweight'
       ? Math.min(pr.reps / target, 1)
@@ -147,17 +148,18 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
 
   // Compute custom exercise PR-based ratios per muscle group
   const customRatios = useMemo(
-    () => getCustomMuscleRatios(prs, customExercises, goldTargets),
-    [prs, customExercises, goldTargets],
+    () => getCustomMuscleRatios(prs, customExercises, goldTargets, bodyweight),
+    [prs, customExercises, goldTargets, bodyweight],
   );
 
   // Compute final ratio per muscle group: max of compound PR ratio and custom exercise volume ratio
-  const muscleRatios: Record<string, number> = {};
-  Object.keys(APP_MUSCLE_EXERCISES).forEach(m => {
-    const compoundRatio = getMuscleRatio(m, prs, bodyweight, goldTargets);
-    const customRatio = customRatios[m] || 0;
-    muscleRatios[m] = Math.max(compoundRatio, customRatio);
-  });
+  const muscleRatios = useMemo(() => {
+    const out: Record<string, number> = {};
+    Object.keys(APP_MUSCLE_EXERCISES).forEach(m => {
+      out[m] = Math.max(getMuscleRatio(m, prs, bodyweight, goldTargets), customRatios[m] || 0);
+    });
+    return out;
+  }, [prs, bodyweight, goldTargets, customRatios]);
 
   // Build per-muscle data for the body highlighter
   // Each app muscle group becomes its own "exercise" entry targeting the library SVG muscles
@@ -175,7 +177,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
       });
     });
     return data;
-  }, [prs, customExercises, goldTargets]);
+  }, [muscleRatios]);
 
   // Find custom exercises that target the selected muscle group (PR-based, like compounds)
   const customExercisesForMuscle = useMemo(() => {
@@ -188,33 +190,20 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
 
     return relevant.map(ce => {
       const pr = prs.find(p => p.exercise === ce.id);
-      const target = goldTargets[ce.id];
+      const custom = goldTargets[ce.id];
+      const target = custom || suggestedCustomTarget(ce.equipment, bodyweight);
       const isBodyweight = ce.equipment === 'bodyweight';
-
-      if (!target) {
-        // No gold target set — show PR but no ratio
-        return {
-          label: ce.name,
-          current: pr ? (isBodyweight ? `${pr.reps} reps` : `${pr.weight} lbs`) : '—',
-          gold: 'No target set',
-          ratio: 0,
-          hasTarget: false,
-        };
-      }
-
-      const ratio = pr
-        ? Math.min((isBodyweight ? pr.reps : pr.weight) / target, 1)
-        : 0;
-
+      const unit = isBodyweight ? 'reps' : 'lbs';
+      const ratio = pr ? Math.min((isBodyweight ? pr.reps : pr.weight) / target, 1) : 0;
       return {
         label: ce.name,
-        current: pr ? (isBodyweight ? `${pr.reps} reps` : `${pr.weight} lbs`) : '—',
-        gold: `${target} ${isBodyweight ? 'reps' : 'lbs'}`,
+        current: pr ? `Best ${isBodyweight ? pr.reps : pr.weight} ${unit}` : 'Not logged yet',
+        gold: `goal ${target} ${unit}${custom ? '' : ' (suggested)'}`,
         ratio,
         hasTarget: true,
       };
-    }).filter(e => e.hasTarget || e.current !== '—'); // Show if has a target or has logged data
-  }, [selectedMuscle, customExercises, prs, goldTargets]);
+    });
+  }, [selectedMuscle, customExercises, prs, goldTargets, bodyweight]);
 
   const selectedInfo = selectedMuscle ? {
     name: selectedMuscle.charAt(0).toUpperCase() + selectedMuscle.slice(1),
@@ -320,7 +309,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-foreground font-medium">{ex.label}</span>
                     <span className={ex.ratio >= 1 ? 'font-bold' : 'text-muted-foreground'} style={ex.ratio >= 1 ? { color: GRADIENT_STEPS[GRADIENT_STEPS.length - 1] } : {}}>
-                      {ex.current} / {ex.gold}
+                      {ex.current} · {ex.gold}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
@@ -346,7 +335,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
                       <div className="flex justify-between text-xs mb-1">
                         <span className="text-foreground font-medium">{ce.label}</span>
                         <span className={ce.ratio >= 1 ? 'font-bold' : 'text-muted-foreground'} style={ce.ratio >= 1 ? { color: GRADIENT_STEPS[GRADIENT_STEPS.length - 1] } : {}}>
-                          {ce.current} / {ce.gold}
+                          {ce.current} · {ce.gold}
                         </span>
                       </div>
                       <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
