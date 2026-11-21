@@ -80,19 +80,19 @@ export function HabitHeatmap({ goals, logs }: Props) {
   const height = topPad + totalRows * (cellSize + gap);
 
   const getColor = (count: number) => {
-    if (count === 0) return 'hsl(var(--muted))';
+    if (count === 0) return 'hsl(var(--secondary))';
     const ratio = Math.min(count / habitCount, 1);
-    if (ratio <= 0.25) return 'hsl(var(--success) / 0.3)';
-    if (ratio <= 0.5) return 'hsl(var(--success) / 0.55)';
-    if (ratio <= 0.75) return 'hsl(var(--success) / 0.8)';
-    return 'hsl(var(--success))';
+    if (ratio <= 0.25) return 'hsl(var(--habits) / 0.3)';
+    if (ratio <= 0.5) return 'hsl(var(--habits) / 0.55)';
+    if (ratio <= 0.75) return 'hsl(var(--habits) / 0.8)';
+    return 'hsl(var(--habits))';
   };
 
   const dayLabels = ['', 'M', '', 'W', '', 'F', ''];
 
   return (
-    <div className="rounded-xl bg-card border border-border p-4 shadow-sm">
-      <p className="text-xs text-muted-foreground uppercase tracking-wider mb-3">Habit Activity</p>
+    <div className="surface p-4">
+      <p className="mb-3 text-headline">Habit history</p>
       <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`}>
         {/* Month labels */}
         {months.map((m, i) => (

@@ -10,6 +10,7 @@ import Index from "./pages/Index";
 
 // Today loads instantly; other pages load on first visit (and are cached offline).
 const Goals = lazy(() => import("./pages/Goals"));
+const GoalDetail = lazy(() => import("./pages/GoalDetail"));
 const Workouts = lazy(() => import("./pages/Workouts"));
 const Program = lazy(() => import("./pages/Program"));
 const People = lazy(() => import("./pages/People"));
@@ -24,6 +25,7 @@ function AnimatedRoutes() {
         <Routes location={location}>
           <Route path="/" element={<Index />} />
           <Route path="/goals" element={<Goals />} />
+          <Route path="/goals/:goalId" element={<GoalDetail />} />
           <Route path="/gym" element={<Workouts />} />
           <Route path="/plan" element={<Program />} />
           {/* Old addresses keep working (bookmarks, home-screen shortcuts). */}
