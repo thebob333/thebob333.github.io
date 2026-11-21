@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 
 interface ProgressRingProps {
   value: number; // 0-100
@@ -14,10 +13,8 @@ export function ProgressRing({ value, size = 64, strokeWidth = 5, className = ''
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (Math.min(value, 100) / 100) * circumference;
 
-  // Navy → Coral based on value
-  const hue = 220 - (value / 100) * 208;
-  const sat = 60 + (value / 100) * 20;
-  const color = `hsl(${hue} ${sat}% 50%)`;
+  // One calm accent; turns green when complete.
+  const color = value >= 100 ? 'hsl(var(--success))' : 'hsl(var(--primary))';
 
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
@@ -27,10 +24,10 @@ export function ProgressRing({ value, size = 64, strokeWidth = 5, className = ''
           cy={size / 2}
           r={radius}
           fill="none"
-          stroke="hsl(var(--muted))"
+          stroke="hsl(var(--primary) / 0.12)"
           strokeWidth={strokeWidth}
         />
-        <motion.circle
+        <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
@@ -39,14 +36,17 @@ export function ProgressRing({ value, size = 64, strokeWidth = 5, className = ''
           strokeWidth={strokeWidth}
           strokeLinecap="round"
           strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: offset }}
-          transition={{ duration: 1.2, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          strokeDashoffset={offset}
+          style={{
+            ['--ring-circ' as string]: circumference,
+            animation: 'ring-fill 1s cubic-bezier(0.16,1,0.3,1) 0.15s backwards',
+            transition: 'stroke-dashoffset 0.6s cubic-bezier(0.16,1,0.3,1)',
+          }}
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         {showPercent && (
-          <span className="text-xs font-bold" style={{ color }}>
+          <span className="text-[11px] font-bold tabular-nums" style={{ color }}>
             {Math.round(value)}%
           </span>
         )}

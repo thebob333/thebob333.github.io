@@ -17,6 +17,8 @@ export interface ToDo {
   id: string;
   title: string;
   done: boolean;
+  /** When it was checked off (ISO) — lets Today count what you finished today. */
+  doneAt?: string;
   order: number;
   deadline?: string;
   effort?: EffortLevel;

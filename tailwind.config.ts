@@ -66,15 +66,29 @@ export default {
         violet: { ...colors.violet, DEFAULT: "hsl(var(--violet))" },
         amber: { ...colors.amber, DEFAULT: "hsl(var(--amber))" },
         sky: { ...colors.sky, DEFAULT: "hsl(var(--sky))" },
+        // Life areas — the ring colors on Today (Habits, Tasks, Move, People).
+        habits: "hsl(var(--habits))",
+        tasks: "hsl(var(--tasks))",
+        move: "hsl(var(--move))",
+        people: "hsl(var(--people))",
         // Status meanings — use these instead of raw green/amber/red.
         success: { DEFAULT: "hsl(var(--success))", foreground: "hsl(var(--success-foreground))" },
         warning: { DEFAULT: "hsl(var(--warning))", foreground: "hsl(var(--warning-foreground))" },
         info: { DEFAULT: "hsl(var(--info))", foreground: "hsl(var(--info-foreground))" },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        lg: "calc(var(--radius) - 4px)",
+        md: "calc(var(--radius) - 6px)",
+        sm: "calc(var(--radius) - 8px)",
+      },
+      // Type scale (iOS-inspired). Use these instead of ad-hoc text sizes.
+      fontSize: {
+        "large-title": ["2rem", { lineHeight: "2.375rem", letterSpacing: "-0.025em", fontWeight: "700" }],
+        title: ["1.375rem", { lineHeight: "1.75rem", letterSpacing: "-0.018em", fontWeight: "700" }],
+        headline: ["1.0625rem", { lineHeight: "1.375rem", letterSpacing: "-0.01em", fontWeight: "600" }],
+        body: ["0.9375rem", { lineHeight: "1.375rem", letterSpacing: "-0.005em" }],
+        footnote: ["0.8125rem", { lineHeight: "1.125rem" }],
+        caption: ["0.75rem", { lineHeight: "1rem" }],
       },
       keyframes: {
         "accordion-down": {

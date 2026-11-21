@@ -19,6 +19,7 @@ import { Plus, ChevronDown, ChevronRight, Trash2, Target, Copy, Sparkles, Clock,
 import { toast } from 'sonner';
 import { ProgressRing } from '@/components/ProgressRing';
 import { WeeklyFocus, FocusStar } from '@/components/WeeklyFocus';
+import { HabitHeatmap } from '@/components/HabitHeatmap';
 import { PageHeader } from '@/components/app/PageHeader';
 import { useSearchParams } from 'react-router-dom';
 import { RowMenu } from '@/components/app/RowMenu';
@@ -541,6 +542,7 @@ RULES:
 
       {/* Weekly Focus */}
       <WeeklyFocus goals={goals} />
+      <HabitHeatmap goals={goals} logs={habitLogs} />
 
       {/* Goals List */}
       {activeGoals.length === 0 && archivedGoals.length === 0 ? (

@@ -31,8 +31,8 @@ export default defineConfig(({ mode }) => ({
         scope: "/",
         display: "standalone",
         orientation: "portrait",
-        background_color: "#F5F2EB",
-        theme_color: "#F5F2EB",
+        background_color: "#F6F6F9",
+        theme_color: "#F6F6F9",
         categories: ["productivity", "health", "fitness", "lifestyle"],
         icons: [
           { src: "/icons/pwa-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },

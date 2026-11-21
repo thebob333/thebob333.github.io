@@ -1,46 +1,33 @@
 import { NavLink } from "@/components/NavLink";
 import { useLocation } from "react-router-dom";
+import { cn } from "@/lib/utils";
 import { NAV_ITEMS, isNavActive } from "./nav";
 
-const tabs = NAV_ITEMS;
-
+/** Translucent iOS-style tab bar: icon + label, the active tab tinted with the accent. */
 export function MobileTabBar() {
-  const location = useLocation();
-  const isActive = (path: string) => isNavActive(location.pathname, path);
-
+  const { pathname } = useLocation();
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/95 backdrop-blur-md border-t border-border safe-area-bottom">
-      <div className="flex items-center justify-around h-14 px-1">
-        {tabs.map((tab) => {
-          const active = isActive(tab.url);
+    <nav
+      aria-label="Main"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-border/60 bg-background/80 backdrop-blur-xl backdrop-saturate-150 safe-area-bottom"
+    >
+      <div className="mx-auto flex h-[3.25rem] max-w-lg items-stretch">
+        {NAV_ITEMS.map(tab => {
+          const active = isNavActive(pathname, tab.url);
           return (
             <NavLink
               key={tab.url}
               to={tab.url}
               end={tab.url === "/"}
-              className="flex flex-col items-center justify-center gap-0.5 flex-1 py-1 transition-colors"
               aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex flex-1 flex-col items-center justify-center gap-0.5 transition-colors",
+                active ? "text-primary" : "text-muted-foreground",
+              )}
               activeClassName=""
             >
-              <div
-                className={`p-1.5 rounded-xl transition-all ${
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground"
-                }`}
-              >
-                <tab.icon className="h-5 w-5" />
-              </div>
-              <span
-                className={`text-[11px] font-medium leading-none ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
-              >
-                {tab.title}
-              </span>
-              {active && (
-                <div className="w-1 h-1 rounded-full bg-primary" />
-              )}
+              <tab.icon className="h-[22px] w-[22px]" strokeWidth={active ? 2.25 : 1.75} />
+              <span className={cn("text-[11px] leading-none", active ? "font-semibold" : "font-medium")}>{tab.title}</span>
             </NavLink>
           );
         })}

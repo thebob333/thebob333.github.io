@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useTheme } from 'next-themes';
 
-const COLORS = { light: '#F5F2EB', dark: '#12151C' };
+const COLORS = { light: '#F6F6F9', dark: '#09090B' };
 
 /** Keeps the browser / iPhone status-bar color in step with light or dark mode. */
 export function ThemeColorSync() {

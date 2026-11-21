@@ -21,6 +21,7 @@ import { RowMenu } from '@/components/app/RowMenu';
 import { suggestedCustomTarget } from '@/lib/strength-standards';
 import { WeeklySplitEditor } from '@/components/gym/WeeklySplitEditor';
 import { BadgeShelf } from '@/components/gym/BadgeShelf';
+import { BodyDiagram } from '@/components/BodyDiagram';
 
 const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
   barbell: 'Barbell', dumbbell: 'Dumbbell', cable: 'Cable',
@@ -112,7 +113,9 @@ export default function WorkoutsPage() {
   const [newExTarget, setNewExTarget] = useState('');
   /** Set when the sheet edits an existing custom exercise instead of creating one. */
   const [editingCustomId, setEditingCustomId] = useState<string | null>(null);
-  const bodyweightSetting = useStore(stores.SETTINGS).bodyweight;
+  const settingsStore = useStore(stores.SETTINGS);
+  const bodyweightSetting = settingsStore.bodyweight;
+  const goldTargetsSetting = settingsStore.goldTargets;
   const suggestedTarget = suggestedCustomTarget(newExEquipment, bodyweightSetting);
 
   const resetCustomForm = () => {
@@ -644,6 +647,9 @@ RULES:
 
         {/* PROGRESS TAB */}
         <TabsContent value="progress" className="space-y-4">
+          {sessions.length > 0 && (
+            <BodyDiagram prs={prs} customExercises={customExercises} bodyweight={bodyweightSetting} goldTargets={goldTargetsSetting} />
+          )}
           <div className="flex gap-4 items-end">
             <div>
               <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Exercise</label>

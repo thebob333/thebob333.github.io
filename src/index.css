@@ -2,126 +2,142 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * TELOS design tokens.
+ * Calm neutrals, one confident accent (indigo), and four ring colors that give
+ * each life area its identity: Habits (orange), Tasks (indigo), Move (green),
+ * People (cyan). Everything else is grey on purpose.
+ */
 @layer base {
   :root {
-    --background: 40 30% 96%;
-    --foreground: 220 30% 15%;
+    --background: 240 20% 97%;
+    --foreground: 240 10% 7%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 30% 15%;
+    --card-foreground: 240 10% 7%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 30% 15%;
+    --popover-foreground: 240 10% 7%;
 
-    --primary: 220 60% 30%;
+    --primary: 238 78% 58%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 20% 92%;
-    --secondary-foreground: 220 30% 20%;
+    --secondary: 240 10% 94%;
+    --secondary-foreground: 240 10% 12%;
 
-    --muted: 40 10% 90%;
-    --muted-foreground: 220 10% 45%;
+    --muted: 240 9% 94%;
+    --muted-foreground: 240 4% 44%;
 
-    --accent: 220 40% 94%;
-    --accent-foreground: 220 30% 15%;
+    --accent: 240 12% 95%;
+    --accent-foreground: 240 10% 7%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 80% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 88%;
-    --input: 220 15% 88%;
-    --ring: 220 60% 30%;
+    --border: 240 7% 90%;
+    --input: 240 7% 88%;
+    --ring: 238 78% 58%;
 
-    --radius: 0.75rem;
+    --radius: 1rem;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 30% 15%;
-    --sidebar-primary: 220 60% 30%;
+    --sidebar-foreground: 240 10% 7%;
+    --sidebar-primary: 238 78% 58%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 40% 96%;
-    --sidebar-accent-foreground: 220 30% 15%;
-    --sidebar-border: 220 15% 90%;
-    --sidebar-ring: 220 60% 30%;
+    --sidebar-accent: 240 12% 95%;
+    --sidebar-accent-foreground: 240 10% 7%;
+    --sidebar-border: 240 7% 91%;
+    --sidebar-ring: 238 78% 58%;
 
-    /* Section accent colors */
-    --coral: 12 80% 65%;
-    --teal: 170 60% 45%;
-    --violet: 270 60% 60%;
-    --amber: 38 90% 55%;
-    --sky: 200 80% 55%;
+    /* Life-area colors (rings, icons, tints) */
+    --habits: 18 92% 56%;
+    --tasks: 238 78% 58%;
+    --move: 145 63% 42%;
+    --people: 190 85% 42%;
+
+    /* Legacy accent names, mapped onto the new palette */
+    --coral: 18 92% 56%;
+    --teal: 172 66% 38%;
+    --violet: 262 70% 60%;
+    --amber: 36 95% 50%;
+    --sky: 205 90% 52%;
 
     /* Status colors */
-    --success: 152 60% 36%;
+    --success: 145 63% 38%;
     --success-foreground: 0 0% 100%;
-    --warning: 32 90% 44%;
+    --warning: 32 95% 46%;
     --warning-foreground: 0 0% 100%;
-    --info: 205 75% 45%;
+    --info: 210 90% 50%;
     --info-foreground: 0 0% 100%;
 
-    /* Page background */
-    --bg-from: 40 30% 97%;
-    --bg-to: 40 20% 93%;
+    --bg-from: 240 20% 97%;
+    --bg-to: 240 20% 97%;
 
     color-scheme: light;
     font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-}
 
-@layer base {
   .dark {
-    --background: 222 22% 9%;
-    --foreground: 40 20% 94%;
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
 
-    --card: 222 20% 12.5%;
-    --card-foreground: 40 20% 94%;
+    --card: 240 6% 9%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 222 20% 14%;
-    --popover-foreground: 40 20% 94%;
+    --popover: 240 6% 11%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 215 85% 68%;
-    --primary-foreground: 222 30% 10%;
+    --primary: 236 92% 72%;
+    --primary-foreground: 240 30% 8%;
 
-    --secondary: 222 15% 20%;
-    --secondary-foreground: 40 20% 90%;
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 0 0% 96%;
 
-    --muted: 222 15% 18%;
-    --muted-foreground: 220 12% 66%;
+    --muted: 240 5% 14%;
+    --muted-foreground: 240 5% 64%;
 
-    --accent: 222 18% 20%;
-    --accent-foreground: 40 20% 94%;
+    --accent: 240 5% 15%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 72% 62%;
+    --destructive: 0 85% 64%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 222 15% 22%;
-    --input: 222 15% 24%;
-    --ring: 215 85% 68%;
+    --border: 240 5% 16%;
+    --input: 240 5% 20%;
+    --ring: 236 92% 72%;
 
-    --sidebar-background: 222 22% 11%;
-    --sidebar-foreground: 40 20% 94%;
-    --sidebar-primary: 215 85% 68%;
-    --sidebar-primary-foreground: 222 30% 10%;
-    --sidebar-accent: 222 18% 18%;
-    --sidebar-accent-foreground: 40 20% 94%;
-    --sidebar-border: 222 15% 20%;
-    --sidebar-ring: 215 85% 68%;
+    --sidebar-background: 240 6% 7%;
+    --sidebar-foreground: 0 0% 98%;
+    --sidebar-primary: 236 92% 72%;
+    --sidebar-primary-foreground: 240 30% 8%;
+    --sidebar-accent: 240 5% 14%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 5% 14%;
+    --sidebar-ring: 236 92% 72%;
 
-    --coral: 12 85% 70%;
-    --teal: 170 55% 52%;
-    --violet: 270 70% 72%;
-    --amber: 38 92% 60%;
-    --sky: 200 85% 64%;
+    --habits: 20 100% 62%;
+    --tasks: 236 92% 72%;
+    --move: 142 70% 52%;
+    --people: 188 90% 52%;
 
-    --success: 152 55% 52%;
-    --success-foreground: 222 30% 10%;
-    --warning: 38 92% 60%;
-    --warning-foreground: 222 30% 10%;
-    --info: 205 85% 64%;
-    --info-foreground: 222 30% 10%;
+    --coral: 20 100% 62%;
+    --teal: 172 66% 50%;
+    --violet: 262 85% 74%;
+    --amber: 38 96% 58%;
+    --sky: 205 95% 64%;
 
-    --bg-from: 222 22% 10%;
-    --bg-to: 222 24% 7%;
+    --success: 142 70% 52%;
+    --success-foreground: 240 30% 8%;
+    --warning: 38 96% 58%;
+    --warning-foreground: 240 30% 8%;
+    --info: 205 95% 64%;
+    --info-foreground: 240 30% 8%;
+
+    --bg-from: 240 10% 4%;
+    --bg-to: 240 10% 4%;
 
     color-scheme: dark;
   }
@@ -139,21 +155,11 @@
   body {
     @apply bg-background text-foreground;
     -webkit-tap-highlight-color: transparent;
-    /* Let iOS keep text sizes stable on rotation. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    background-image: linear-gradient(180deg, hsl(var(--bg-from)) 0%, hsl(var(--bg-to)) 100%);
-    background-attachment: fixed;
   }
-
-  /* Subtle paper texture on larger screens only (it's expensive to paint on phones). */
-  @media (min-width: 768px) {
-    body {
-      background-image:
-        radial-gradient(circle at 1px 1px, hsl(220 10% 70% / 0.07) 1px, transparent 0),
-        linear-gradient(180deg, hsl(var(--bg-from)) 0%, hsl(var(--bg-to)) 100%);
-      background-size: 20px 20px, 100% 100%;
-    }
+  ::selection {
+    background: hsl(var(--primary) / 0.2);
   }
 
   /* iOS zooms into any field under 16px when you tap it. Keep fields 16px on phones. */
@@ -175,6 +181,36 @@
   }
 }
 
+/* Rings and progress arcs fill in on first show; later changes glide via transition. */
+@keyframes ring-fill {
+  from { stroke-dashoffset: var(--ring-circ); }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+.rise-in {
+  animation: rise-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+@layer components {
+  /* A grouped list: one rounded surface, rows separated by hairlines (iOS-style). */
+  .list-group {
+    @apply overflow-hidden rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_0_0_1px_hsl(var(--border)/0.7)];
+  }
+  .list-group > * + * {
+    @apply border-t border-border/70;
+  }
+  .surface {
+    @apply rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_0_0_1px_hsl(var(--border)/0.7)];
+  }
+  .section-label {
+    @apply px-1 pb-2 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground;
+  }
+  .pressable {
+    @apply transition-transform duration-100 active:scale-[0.98];
+  }
+}
+
 /* Safe areas (iPhone notch / home indicator) */
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
@@ -184,10 +220,9 @@
 }
 /* Space reserved under page content for the tab bar + home indicator. */
 .pb-tabbar {
-  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
 }
 
-/* Hide scrollbar but keep scrolling */
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -196,3 +231,6 @@
   display: none;
 }
 
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

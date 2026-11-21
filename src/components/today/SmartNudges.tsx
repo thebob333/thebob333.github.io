@@ -52,29 +52,29 @@ export function SmartNudges({ today }: { today: DateKey }) {
   return (
     <div className="space-y-2">
       {nudges.map(n => (
-        <div key={n.id} className="flex items-start gap-3 rounded-2xl border bg-card p-3 shadow-sm">
-          <div className={`mt-0.5 rounded-full p-2 ${n.kind === 'backup' ? 'bg-info/10 text-info' : 'bg-warning/10 text-warning'}`}>
+        <div key={n.id} className="surface flex items-center gap-3 p-3 pl-4">
+          <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${n.kind === 'backup' ? 'bg-info/10 text-info' : 'bg-warning/10 text-warning'}`}>
             {n.kind === 'backup' ? <CloudDownload className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-          </div>
+          </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">{n.title}</p>
-            <p className="text-xs text-muted-foreground">{n.detail}</p>
-            {n.kind === 'backup' ? (
-              <button
-                type="button"
-                className="mt-1.5 h-9 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground"
-                onClick={async () => {
-                  const r = await shareOrDownloadBackup();
-                  if (r !== 'cancelled') { toast.success('Backup saved'); setLastExport(getLastExportAt()); }
-                }}
-              >
-                Save backup
-              </button>
-            ) : (
-              <Link to="/gym" className="mt-1.5 inline-flex h-9 items-center rounded-full border px-3 text-xs font-semibold">Open Gym</Link>
-            )}
+            <p className="truncate text-body font-semibold">{n.title}</p>
+            <p className="line-clamp-2 text-footnote text-muted-foreground">{n.detail}</p>
           </div>
-          <button type="button" aria-label="Hide for today" onClick={() => dismiss(n.id)} className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground hover:bg-accent">
+          {n.kind === 'backup' ? (
+            <button
+              type="button"
+              className="pressable h-8 shrink-0 rounded-full bg-primary px-3 text-footnote font-semibold text-primary-foreground"
+              onClick={async () => {
+                const r = await shareOrDownloadBackup();
+                if (r !== 'cancelled') { toast.success('Backup saved'); setLastExport(getLastExportAt()); }
+              }}
+            >
+              Back up
+            </button>
+          ) : (
+            <Link to="/gym" className="pressable flex h-8 shrink-0 items-center rounded-full bg-secondary px-3 text-footnote font-semibold">View</Link>
+          )}
+          <button type="button" aria-label="Hide for today" onClick={() => dismiss(n.id)} className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground">
             <X className="h-4 w-4" />
           </button>
         </div>

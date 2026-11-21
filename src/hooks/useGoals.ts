@@ -114,7 +114,9 @@ export const goalActions = {
   toggleToDo(goalId: string, phaseId: string, taskId: string, todoId: string) {
     G.update(goals => mapTask(goals, goalId, phaseId, taskId, t => ({
       ...t,
-      todos: t.todos.map(td => (td.id === todoId ? { ...td, done: !td.done } : td)),
+      todos: t.todos.map(td => (td.id === todoId
+        ? { ...td, done: !td.done, doneAt: td.done ? undefined : new Date().toISOString() }
+        : td)),
     })));
   },
 
