@@ -198,7 +198,7 @@ export default function Index() {
           <p className="mx-auto mt-1 max-w-xs text-body text-muted-foreground">Create a goal and TELOS turns it into daily habits and to-dos you check off right here.</p>
           <div className="mt-5 flex flex-col gap-2">
             <Button asChild className="h-12 rounded-xl text-body font-semibold"><Link to="/goals?new=1">Create a goal</Link></Button>
-            <Button asChild variant="secondary" className="h-12 rounded-xl text-body"><Link to="/gym">Set up training</Link></Button>
+            <Button asChild variant="secondary" className="h-12 rounded-xl text-body"><Link to="/gym?s=program">Set up training</Link></Button>
           </div>
         </div>
       ) : (

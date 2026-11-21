@@ -310,7 +310,7 @@ export default function ProgramPage() {
               <Repeat className="h-3.5 w-3.5" /> Routines
             </Button>
             <Button asChild variant="ghost" size="sm" className="text-xs gap-1.5">
-              <Link to="/gym"><Settings2 className="h-3.5 w-3.5" /> Edit split</Link>
+              <Link to="/gym?s=program"><Settings2 className="h-3.5 w-3.5" /> Edit split</Link>
             </Button>
           </div>
         </div>
@@ -331,7 +331,7 @@ export default function ProgramPage() {
           </Button>
         ) : (
           <Button asChild variant="outline" className="flex-1 h-10 text-sm text-muted-foreground">
-            <Link to="/gym">Rest day · edit split</Link>
+            <Link to="/gym?s=program">Rest day · edit split</Link>
           </Button>
         )}
         <Button asChild variant="ghost" size="icon" className="h-10 w-10 text-muted-foreground" aria-label="Settings">
