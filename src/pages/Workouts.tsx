@@ -20,6 +20,7 @@ import { PageHeader } from '@/components/app/PageHeader';
 import { RowMenu } from '@/components/app/RowMenu';
 import { suggestedCustomTarget } from '@/lib/strength-standards';
 import { WeeklySplitEditor } from '@/components/gym/WeeklySplitEditor';
+import { BadgeShelf } from '@/components/gym/BadgeShelf';
 
 const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
   barbell: 'Barbell', dumbbell: 'Dumbbell', cable: 'Cable',
@@ -357,7 +358,7 @@ RULES:
           <TabsTrigger value="templates" className="h-9 text-xs">Saved</TabsTrigger>
           <TabsTrigger value="history" className="h-9 text-xs">History</TabsTrigger>
           <TabsTrigger value="progress" className="h-9 text-xs">Progress</TabsTrigger>
-          <TabsTrigger value="prs" className="h-9 text-xs">PRs</TabsTrigger>
+          <TabsTrigger value="prs" className="h-9 text-xs">Records</TabsTrigger>
           <TabsTrigger value="config" className="col-span-2 h-9 text-xs">Exercises & targets</TabsTrigger>
         </TabsList>
 
@@ -705,7 +706,7 @@ RULES:
         </TabsContent>
 
         {/* PRs TAB */}
-        <TabsContent value="prs" className="space-y-4">
+        <TabsContent value="prs" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {prs.length > 0 ? prs.map(pr => (
               <Card key={pr.exercise} className="shadow-sm border-coral/20">
@@ -731,6 +732,7 @@ RULES:
               </Card>
             )}
           </div>
+          <BadgeShelf />
         </TabsContent>
 
         {/* CONFIG TAB */}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Target, Dumbbell, Trophy, TrendingUp, Moon, ChevronRight, Play } from 'lucide-react';
@@ -27,6 +27,12 @@ import { PageHeader } from '@/components/app/PageHeader';
 import { TodayChecklist, type ChecklistTodo } from '@/components/today/TodayChecklist';
 import { quoteOfTheDay } from '@/lib/quotes';
 import { PeopleNudges } from '@/components/today/PeopleNudges';
+import { SmartNudges } from '@/components/today/SmartNudges';
+import { WeeklyReview, isReviewDue } from '@/components/today/WeeklyReview';
+import { QuickAdd } from '@/components/today/QuickAdd';
+import { Onboarding, useShowOnboarding } from '@/components/app/Onboarding';
+import { SampleDataBanner } from '@/components/app/SampleDataBanner';
+import { CalendarCheck } from 'lucide-react';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -113,14 +119,19 @@ export default function Index() {
 
   const dateLabel = parseDateKey(today).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   const isNew = goals.length === 0 && sessions.length === 0;
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const reviewDue = !isNew && isReviewDue(today, settings.lastReviewWeek);
+  const showOnboarding = useShowOnboarding(isNew);
 
   return (
-    <div className="mx-auto max-w-lg space-y-5 pb-8">
+    <div className="mx-auto max-w-lg space-y-5 pb-24">
       <PageHeader
         eyebrow={dateLabel}
         title={getGreeting()}
         actions={settings.ambientSoundEnabled ? <span className="md:hidden"><AmbientSound enabled /></span> : undefined}
       />
+      <SampleDataBanner />
+
       {settings.quotesEnabled && (
         <p className="-mt-2 text-sm italic text-muted-foreground">“{quoteOfTheDay(settings.customQuotes, today)}”</p>
       )}
@@ -152,6 +163,19 @@ export default function Index() {
             <span className="text-sm font-semibold text-primary">Resume</span>
           </Link>
         </motion.div>
+      )}
+
+      {/* Sunday / Monday ritual */}
+      {reviewDue && (
+        <motion.button {...fade(0.04)} type="button" onClick={() => setReviewOpen(true)}
+          className="flex w-full items-center gap-3 rounded-2xl border border-violet/30 bg-violet/10 p-4 text-left shadow-sm">
+          <CalendarCheck className="h-5 w-5 shrink-0 text-violet" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">Your week in review</p>
+            <p className="text-xs text-muted-foreground">Two minutes: see how it went and pick next week's focus.</p>
+          </div>
+          <span className="text-sm font-semibold text-violet">Start</span>
+        </motion.button>
       )}
 
       {/* One checklist for everything due today */}
@@ -200,6 +224,11 @@ export default function Index() {
           ) : null}
         </motion.div>
       )}
+
+      {/* Heads-ups: stalled lifts, overdue backup */}
+      <motion.div {...fade(0.1)}>
+        <SmartNudges today={today} />
+      </motion.div>
 
       {/* People to reach out to + commitments due */}
       <motion.div {...fade(0.105)}>
@@ -271,6 +300,9 @@ export default function Index() {
           <p className="mt-1 text-xs font-medium text-primary">Log your first session →</p>
         </Link>
       ) : null}
+      <WeeklyReview open={reviewOpen} onClose={() => setReviewOpen(false)} today={today} />
+      {!isNew && <QuickAdd onStartWorkout={startTodaysWorkout} onReview={() => setReviewOpen(true)} />}
+      {showOnboarding && <Onboarding />}
     </div>
   );
 }

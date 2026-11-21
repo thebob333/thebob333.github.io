@@ -1,5 +1,5 @@
 import { addDays, dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGoals } from '@/hooks/useGoals';
 import { useHabits } from '@/hooks/useHabits';
 import { generateId } from '@/lib/storage';
@@ -20,6 +20,7 @@ import { toast } from 'sonner';
 import { ProgressRing } from '@/components/ProgressRing';
 import { WeeklyFocus, FocusStar } from '@/components/WeeklyFocus';
 import { PageHeader } from '@/components/app/PageHeader';
+import { useSearchParams } from 'react-router-dom';
 import { RowMenu } from '@/components/app/RowMenu';
 import { RoundCheck } from '@/components/app/RoundCheck';
 import { EditItemDialog, type EditTarget } from '@/components/goals/EditItemDialog';
@@ -110,6 +111,14 @@ export default function GoalsPage() {
     templates, deleteTemplate, restoreGoal, updateTask,
   } = useGoals();
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState<Goal | null>(null);
+  // Arriving from Today's quick add / onboarding with ?new=1 opens the New Goal sheet.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('new') === '1') {
+      setShowNewGoal(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
   /** Do a destructive edit inside a goal, offering a 5-second Undo that restores that goal. */

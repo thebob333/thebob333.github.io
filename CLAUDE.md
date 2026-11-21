@@ -65,6 +65,11 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 - `src/lib/goal-plan-parser.ts` — parses AI-written goal plans (tolerant of markdown, missing dates) and merges them into a goal without duplicating phases/tasks/to-dos.
 - `src/lib/plan-autofill.ts` — fills a Plan day from routines and due to-dos; blocks remember their source (`sourceTemplateId` / `todoId`) and removed ones are remembered per day in `stores.PLAN_DISMISSED`.
 
+- `src/lib/insights.ts` — weekly summary (Weekly Review), new-record detection, streak milestones, stalled-lift nudges.
+- `src/lib/sample-data.ts` — optional first-run sample data, tracked in `telos_sample` so it can be removed in one tap.
+
+Device-only keys (not backed up, not in `KEYS`): `telos-theme`, `telos_onboarded`, `telos_sample`, `telos_dismissed_nudges`.
+
 ### Storage Keys
 
 All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/storage.ts` (goals, sessions, exercise configs, weekly plan, settings, achievements, templates, weekly schedule/focus, time blocks, block categories, repeatable blocks, contacts, interactions, commitments, relationship goals, custom exercises, habit logs, goal templates). Meta keys (`telos_schema_version`, `telos_last_export_at`) are excluded from backups.

@@ -7,6 +7,7 @@ import { getExerciseHistory, getProgressionSuggestion, planNextSession, applyDel
 import { useStore } from '@/hooks/useStore';
 import { toast } from 'sonner';
 import { checkAchievements } from '@/lib/achievements';
+import { newRecordsIn } from '@/lib/insights';
 
 const S = stores.SESSIONS;
 const CFG = stores.EXERCISE_CONFIGS;
@@ -20,7 +21,17 @@ export const workoutActions = {
       id: generateId(),
       exercises: session.exercises.filter(e => e.sets.length > 0),
     };
+    const previous = S.get();
     S.update(list => [...list, newSession]);
+
+    // New personal records get their own moment.
+    const records = newRecordsIn(newSession, previous, customExercises);
+    if (records.length > 0) {
+      toast(`🎉 New personal record${records.length > 1 ? 's' : ''}!`, {
+        description: records.map(r => `${r.label} ${r.value}`).join(' · '),
+        duration: 7000,
+      });
+    }
 
     const allSessions = S.get();
     const changes: string[] = [];

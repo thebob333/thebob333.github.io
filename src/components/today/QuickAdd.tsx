@@ -1,0 +1,121 @@
+import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
+import { CalendarCheck, CheckSquare, Dumbbell, Plus, Target, Users } from 'lucide-react';
+import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useGoals, goalActions } from '@/hooks/useGoals';
+import { useStore } from '@/hooks/useStore';
+import { stores, type Contact } from '@/lib/storage';
+import { todayKey } from '@/lib/dates';
+import { QuickLogSheet } from '@/components/people/QuickLogSheet';
+
+type View = 'menu' | 'todo' | 'person';
+
+/** One button for the things you do most: add a to-do, log time with someone, start a workout. */
+export function QuickAdd({ onStartWorkout, onReview }: { onStartWorkout: () => void; onReview: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<View>('menu');
+  const [logFor, setLogFor] = useState<Contact | null>(null);
+  const navigate = useNavigate();
+  const { goals } = useGoals();
+  const contacts = useStore(stores.CONTACTS);
+
+  // Every task you could add a to-do to, labelled with its goal.
+  const tasks = useMemo(() => goals.filter(g => !g.archived).flatMap(g =>
+    g.phases.flatMap(p => p.tasks.map(t => ({ key: `${g.id}|${p.id}|${t.id}`, label: `${g.title} · ${t.title}`, done: t.status === 'complete' }))),
+  ).filter(t => !t.done), [goals]);
+  const [taskKey, setTaskKey] = useState('');
+  const [title, setTitle] = useState('');
+  const [due, setDue] = useState(todayKey());
+
+  const close = () => { setOpen(false); setTimeout(() => setView('menu'), 200); };
+
+  const addTodo = () => {
+    const key = taskKey || tasks[0]?.key;
+    if (!key || !title.trim()) return;
+    const [g, p, t] = key.split('|');
+    goalActions.addToDo(g, p, t, title.trim(), due || undefined);
+    toast.success('To-do added', { description: due === todayKey() ? 'It’s on today’s checklist.' : undefined });
+    setTitle('');
+    close();
+  };
+
+  const item = (icon: React.ReactNode, label: string, hint: string, onClick: () => void) => (
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-xl border bg-background p-3 text-left active:bg-accent">
+      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">{icon}</span>
+      <span className="min-w-0"><span className="block text-[15px] font-semibold">{label}</span><span className="block text-xs text-muted-foreground">{hint}</span></span>
+    </button>
+  );
+
+  return (
+    <>
+      {/* Portal so the page's entrance animation can't offset a fixed button. */}
+      {createPortal(
+        <button
+          type="button"
+          aria-label="Quick add"
+          onClick={() => setOpen(true)}
+          className="fixed right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg active:scale-95 md:bottom-8 md:right-8"
+          style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
+        >
+          <Plus className="h-6 w-6" />
+        </button>,
+        document.body,
+      )}
+
+      <Dialog open={open} onOpenChange={o => (o ? setOpen(true) : close())}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{view === 'todo' ? 'Add a to-do' : view === 'person' ? 'Log time with…' : 'Quick add'}</DialogTitle>
+          </DialogHeader>
+
+          {view === 'menu' && (
+            <div className="space-y-2">
+              {tasks.length > 0 && item(<CheckSquare className="h-5 w-5" />, 'Add a to-do', 'Goes into one of your goals', () => setView('todo'))}
+              {contacts.length > 0 && item(<Users className="h-5 w-5" />, 'Log time with someone', 'A call, text or hangout', () => setView('person'))}
+              {item(<Dumbbell className="h-5 w-5" />, 'Start today’s workout', 'Exercises filled in for you', () => { close(); onStartWorkout(); })}
+              {item(<Target className="h-5 w-5" />, 'New goal', 'Turn something big into a plan', () => { close(); navigate('/goals?new=1'); })}
+              {item(<CalendarCheck className="h-5 w-5" />, 'Weekly review', 'Look back and pick your focus', () => { close(); onReview(); })}
+            </div>
+          )}
+
+          {view === 'todo' && (
+            <form className="space-y-3" onSubmit={e => { e.preventDefault(); addTodo(); }}>
+              <Input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="What needs doing?" className="h-11" />
+              <Select value={taskKey || tasks[0]?.key} onValueChange={setTaskKey}>
+                <SelectTrigger className="h-11"><SelectValue placeholder="Which goal?" /></SelectTrigger>
+                <SelectContent>{tasks.map(t => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}</SelectContent>
+              </Select>
+              <div className="flex gap-2">
+                <Input type="date" value={due} onChange={e => setDue(e.target.value)} className="h-11" aria-label="Due date" />
+                {due && <Button type="button" variant="ghost" className="h-11" onClick={() => setDue('')}>No date</Button>}
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" className="h-11 flex-1" onClick={() => setView('menu')}>Back</Button>
+                <Button type="submit" className="h-11 flex-1 font-semibold" disabled={!title.trim()}>Add</Button>
+              </div>
+            </form>
+          )}
+
+          {view === 'person' && (
+            <div className="max-h-[50vh] space-y-1 overflow-y-auto">
+              {contacts.map(c => (
+                <button key={c.id} type="button" onClick={() => { close(); setLogFor(c); }} className="flex h-12 w-full items-center gap-3 rounded-lg px-2 text-left active:bg-accent">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{c.name.charAt(0).toUpperCase()}</span>
+                  <span className="truncate text-[15px]">{c.name}</span>
+                </button>
+              ))}
+              <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => setView('menu')}>Back</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <QuickLogSheet contact={logFor} onClose={() => setLogFor(null)} />
+    </>
+  );
+}

@@ -149,6 +149,8 @@ export interface AppSettings {
   bodyweight: number;
   ambientSoundEnabled: boolean;
   goldTargets: Record<string, number>; // exercise ID → custom target (weight in lbs, or reps for pull_up)
+  /** Monday (YYYY-MM-DD) of the last week you reviewed. */
+  lastReviewWeek?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
