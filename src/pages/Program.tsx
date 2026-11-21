@@ -209,7 +209,7 @@ export default function ProgramPage() {
   const currentPlan = plan[selectedDayIdx];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-5.5rem)] md:h-[calc(100vh-4.5rem)] max-w-5xl mx-auto">
+    <div className="flex flex-col h-[calc(100dvh-5.25rem-env(safe-area-inset-bottom)-max(0.75rem,env(safe-area-inset-top)))] md:h-[calc(100dvh-4.5rem)] max-w-5xl mx-auto">
       {/* DAY SELECTOR */}
       <div className="flex-shrink-0 pb-3">
         {/* Mobile: big swipeable day header */}

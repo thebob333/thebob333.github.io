@@ -25,6 +25,7 @@ import { WeeklyFocus } from '@/components/WeeklyFocus';
 import { AmbientSound } from '@/components/AmbientSound';
 import { PageHeader } from '@/components/app/PageHeader';
 import { TodayChecklist, type ChecklistTodo } from '@/components/today/TodayChecklist';
+import { quoteOfTheDay } from '@/lib/quotes';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -119,6 +120,9 @@ export default function Index() {
         title={getGreeting()}
         actions={settings.ambientSoundEnabled ? <span className="md:hidden"><AmbientSound enabled /></span> : undefined}
       />
+      {settings.quotesEnabled && (
+        <p className="-mt-2 text-sm italic text-muted-foreground">“{quoteOfTheDay(settings.customQuotes, today)}”</p>
+      )}
 
       {/* First run */}
       {isNew && (

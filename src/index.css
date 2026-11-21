@@ -50,7 +50,8 @@
     --amber: 38 90% 55%;
     --sky: 200 80% 55%;
 
-    font-family: 'Inter', sans-serif;
+    font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
@@ -66,18 +67,52 @@
   body {
     @apply bg-background text-foreground;
     -webkit-tap-highlight-color: transparent;
-    background-image:
-      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.08'/%3E%3C/svg%3E"),
-      radial-gradient(circle at 1px 1px, hsl(220 10% 70% / 0.07) 1px, transparent 0),
-      linear-gradient(180deg, hsl(40 30% 97%) 0%, hsl(40 20% 93%) 100%);
-    background-size: 200px 200px, 20px 20px, 100% 100%;
+    /* Let iOS keep text sizes stable on rotation. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    background-image: linear-gradient(180deg, hsl(40 30% 97%) 0%, hsl(40 20% 93%) 100%);
     background-attachment: fixed;
+  }
+
+  /* Subtle paper texture on larger screens only (it's expensive to paint on phones). */
+  @media (min-width: 768px) {
+    body {
+      background-image:
+        radial-gradient(circle at 1px 1px, hsl(220 10% 70% / 0.07) 1px, transparent 0),
+        linear-gradient(180deg, hsl(40 30% 97%) 0%, hsl(40 20% 93%) 100%);
+      background-size: 20px 20px, 100% 100%;
+    }
+  }
+
+  /* iOS zooms into any field under 16px when you tap it. Keep fields 16px on phones. */
+  @media (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
 }
 
-/* Safe area for bottom tab bar */
+/* Safe areas (iPhone notch / home indicator) */
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.safe-area-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+}
+/* Space reserved under page content for the tab bar + home indicator. */
+.pb-tabbar {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* Hide scrollbar but keep scrolling */

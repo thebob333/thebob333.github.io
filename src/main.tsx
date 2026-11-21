@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { toast } from "sonner";
 import App from "./App.tsx";
+import "@fontsource-variable/inter";
 import "./index.css";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { configureStores, setWritesBlocked } from "@/lib/store";

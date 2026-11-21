@@ -17,8 +17,8 @@ export function AppLayout({ children: page }: { children: React.ReactNode }) {
 
   if (isMobile) {
     return (
-      <div className="min-h-screen flex flex-col w-full">
-        <main className="flex-1 overflow-auto px-3 pt-3 pb-20">
+      <div className="min-h-[100dvh] flex flex-col w-full">
+        <main className="flex-1 px-4 safe-area-top pb-tabbar">
           {children}
         </main>
         <MobileTabBar />

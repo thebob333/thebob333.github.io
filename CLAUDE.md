@@ -75,6 +75,10 @@ All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/s
 
 Naming: goal templates are **Blueprints**, repeatable Plan blocks are **Routines**, workout templates are **Saved workouts**. The weekly training split is edited in Gym (`WeeklySplitEditor`). Habits are always shown with their goal/task (`CheckRow` in `src/components/today/`).
 
+### PWA
+
+`vite-plugin-pwa` (config in `vite.config.ts`) generates the manifest and a Workbox service worker that precaches the app, so it opens offline. Updates are `registerType: "prompt"`: `src/components/app/PwaUpdater.tsx` shows a toast and only activates on tap. Icons live in `public/icons/` (regenerate with `node scripts/generate-icons.mjs`). Routes other than Today are `React.lazy`-loaded; the route error boundary reloads once if a stale chunk fails after a deploy. Inter is self-hosted via `@fontsource-variable/inter`. On phones all inputs are forced to 16px (prevents iOS focus-zoom), so the viewport no longer disables zoom. Layout uses `100dvh` and the `.safe-area-top` / `.pb-tabbar` helpers for the notch and home indicator.
+
 ### UI
 
 Built on **shadcn/ui** (`src/components/ui/`) over Radix UI primitives, styled with Tailwind. Custom theme colors: coral, teal, violet, amber, sky. Dark mode uses the `class` strategy. Path alias `@/` maps to `src/`.

@@ -1,26 +1,26 @@
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Suspense, lazy } from "react";
+import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { AnimatePresence } from "framer-motion";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageTransition } from "@/components/PageTransition";
+import { PwaUpdater } from "@/components/app/PwaUpdater";
+import { PageSkeleton } from "@/components/app/PageSkeleton";
 import Index from "./pages/Index";
-import Goals from "./pages/Goals";
-import Workouts from "./pages/Workouts";
-import Program from "./pages/Program";
-import People from "./pages/People";
-import Settings from "./pages/Settings";
-import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+// Today loads instantly; other pages load on first visit (and are cached offline).
+const Goals = lazy(() => import("./pages/Goals"));
+const Workouts = lazy(() => import("./pages/Workouts"));
+const Program = lazy(() => import("./pages/Program"));
+const People = lazy(() => import("./pages/People"));
+const Settings = lazy(() => import("./pages/Settings"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 function AnimatedRoutes() {
   const location = useLocation();
   return (
-    <AnimatePresence mode="wait">
-      <PageTransition routeKey={location.pathname} key={location.pathname}>
+    <PageTransition routeKey={location.pathname}>
+      <Suspense fallback={<PageSkeleton />}>
         <Routes location={location}>
           <Route path="/" element={<Index />} />
           <Route path="/goals" element={<Goals />} />
@@ -33,23 +33,26 @@ function AnimatedRoutes() {
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </PageTransition>
-    </AnimatePresence>
+      </Suspense>
+    </PageTransition>
   );
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AppLayout>
-          <AnimatedRoutes />
-        </AppLayout>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <TooltipProvider>
+    <Toaster
+      position="bottom-center"
+      // Keep toasts above the tab bar and the iPhone home indicator.
+      mobileOffset={{ bottom: "calc(4.75rem + env(safe-area-inset-bottom))" }}
+      closeButton
+    />
+    <PwaUpdater />
+    <BrowserRouter>
+      <AppLayout>
+        <AnimatedRoutes />
+      </AppLayout>
+    </BrowserRouter>
+  </TooltipProvider>
 );
 
 export default App;
