@@ -22,6 +22,8 @@ import { suggestedCustomTarget } from '@/lib/strength-standards';
 import { WeeklySplitEditor } from '@/components/gym/WeeklySplitEditor';
 import { BadgeShelf } from '@/components/gym/BadgeShelf';
 import { BodyDiagram } from '@/components/BodyDiagram';
+import { SmartNudges } from '@/components/today/SmartNudges';
+import { useTodayKey } from '@/hooks/useToday';
 
 const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
   barbell: 'Barbell', dumbbell: 'Dumbbell', cable: 'Cable',
@@ -274,6 +276,7 @@ RULES:
   // The workout in progress is saved continuously, so leaving the page or
   // closing the app never loses it.
   const active = useActiveWorkout();
+  const todayKey = useTodayKey();
   const [tab, setTab] = useState('session');
   const splitDay = (active?.splitDay ?? 'push') as SplitDay;
   const sessionExercises = active?.exercises ?? [];
@@ -379,6 +382,7 @@ RULES:
 
         {/* LOG SESSION TAB */}
         <TabsContent value="session" className="space-y-4">
+          <SmartNudges today={todayKey} kinds={['deload', 'fatigue']} />
           <div className="flex gap-4 flex-wrap items-end">
             <div>
               <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Split Day</label>

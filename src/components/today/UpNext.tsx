@@ -1,18 +1,20 @@
 import { useState } from 'react';
-import { ChevronDown, Dumbbell, Flame, HandHeart, Sparkles } from 'lucide-react';
+import { ChevronDown, Dumbbell, Flame, HandHeart } from 'lucide-react';
 import { ListRow, CheckCircle, IconBadge } from '@/components/app/ListRow';
 
 export type UpNextItem =
   | { kind: 'workout'; id: string; title: string; subtitle?: string; done: boolean; onStart: () => void; resume?: boolean }
   | { kind: 'todo'; id: string; title: string; subtitle?: string; days: number | null; done: boolean; onToggle: () => void }
   | { kind: 'habit'; id: string; title: string; subtitle?: string; streak: number; done: boolean; onToggle: () => void }
-  | { kind: 'commitment'; id: string; title: string; subtitle?: string; days: number | null; done: boolean; onToggle: () => void };
+  | { kind: 'commitment'; id: string; title: string; subtitle?: string; days: number | null; done: boolean; onToggle: () => void }
+  | { kind: 'person'; id: string; title: string; subtitle?: string; done: boolean; onToggle: () => void; overdue: boolean; initial: string };
 
 const C = {
   habit: 'hsl(var(--habits))',
   todo: 'hsl(var(--tasks))',
   workout: 'hsl(var(--move))',
   commitment: 'hsl(var(--people))',
+  person: 'hsl(var(--people))',
 };
 
 function Due({ days }: { days: number | null }) {
@@ -36,6 +38,22 @@ function Row({ item }: { item: UpNextItem }) {
             {item.resume ? 'Resume' : 'Start'}
           </button>
         )}
+      />
+    );
+  }
+  if (item.kind === 'person') {
+    return (
+      <ListRow
+        onClick={item.onToggle}
+        leading={
+          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full text-footnote font-bold text-white" style={{ backgroundColor: C.person }}>
+            {item.initial}
+          </span>
+        }
+        title={item.title}
+        subtitle={<span className={item.overdue ? 'text-destructive' : ''}>{item.subtitle}</span>}
+        muted={item.done}
+        trailing={<span className="text-footnote font-semibold" style={{ color: C.person }}>Log</span>}
       />
     );
   }
@@ -73,25 +91,29 @@ function Disclosure({ label, count, children }: { label: string; count: number; 
   );
 }
 
-/** Everything to do today in one list, in a sensible order; finished items fold away. */
-export function UpNext({ items, later }: { items: UpNextItem[]; later: UpNextItem[] }) {
+const VISIBLE = 6;
+
+/** Everything else to do today, in a sensible order; finished items fold away. */
+export function UpNext({ items, later, title = 'Then' }: { items: UpNextItem[]; later: UpNextItem[]; title?: string }) {
+  const [showAll, setShowAll] = useState(false);
   const open = items.filter(i => !i.done);
   const done = items.filter(i => i.done);
+  const visible = showAll ? open : open.slice(0, VISIBLE);
+  if (open.length === 0 && done.length === 0 && later.length === 0) return null;
 
   return (
-    <section aria-label="Up next" className="space-y-2">
-      <h2 className="section-label">Up next</h2>
+    <section aria-label={title} className="space-y-2">
+      {open.length > 0 && <h2 className="section-label">{title}</h2>}
       {open.length > 0 ? (
-        <div className="list-group">{open.map(i => <Row key={i.kind + i.id} item={i} />)}</div>
-      ) : (
-        <div className="surface flex items-center gap-3 p-4">
-          <IconBadge color="hsl(var(--habits))"><Sparkles className="h-4 w-4" /></IconBadge>
-          <div>
-            <p className="text-body font-semibold">{items.length ? 'All done for today' : 'Nothing scheduled today'}</p>
-            <p className="text-footnote text-muted-foreground">{items.length ? 'Enjoy it — you earned it.' : 'Add a goal or a to-do with the + button.'}</p>
-          </div>
+        <div className="list-group">
+          {visible.map(i => <Row key={i.kind + i.id} item={i} />)}
+          {open.length > VISIBLE && (
+            <button type="button" onClick={() => setShowAll(v => !v)} className="flex h-12 w-full items-center justify-center text-body font-semibold text-primary">
+              {showAll ? 'Show less' : `Show ${open.length - VISIBLE} more`}
+            </button>
+          )}
         </div>
-      )}
+      ) : null}
       <Disclosure label="Completed" count={done.length}>{done.map(i => <Row key={i.kind + i.id} item={i} />)}</Disclosure>
       <Disclosure label="Later this week" count={later.length}>{later.map(i => <Row key={i.kind + i.id} item={i} />)}</Disclosure>
     </section>

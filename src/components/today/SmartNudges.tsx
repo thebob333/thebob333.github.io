@@ -16,7 +16,7 @@ function readDismissed(): Record<string, string> {
 }
 
 /** Helpful heads-ups: stalled lifts and an overdue backup. Each can be hidden for the day. */
-export function SmartNudges({ today }: { today: DateKey }) {
+export function SmartNudges({ today, kinds }: { today: DateKey; kinds?: Nudge['kind'][] }) {
   const sessions = useStore(stores.SESSIONS);
   const configs = useStore(stores.EXERCISE_CONFIGS);
   const custom = useStore(stores.CUSTOM_EXERCISES);
@@ -38,8 +38,9 @@ export function SmartNudges({ today }: { today: DateKey }) {
         detail: 'Save a copy to Files or iCloud Drive so nothing is lost if your phone is reset.',
       });
     }
-    return list.filter(n => dismissed[n.id] !== today);
-  }, [sessions, configs, custom, goals.length, lastExport, dismissed, today]);
+    return list.filter(n => dismissed[n.id] !== today && (!kinds || kinds.includes(n.kind)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessions, configs, custom, goals, lastExport, dismissed, today, kinds?.join()]);
 
   if (nudges.length === 0) return null;
 

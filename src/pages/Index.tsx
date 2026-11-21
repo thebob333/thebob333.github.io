@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CalendarCheck, ChevronRight, Star } from 'lucide-react';
+import { CalendarCheck, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGoals } from '@/hooks/useGoals';
 import { useWorkouts, useActiveWorkout, activeWorkoutActions } from '@/hooks/useWorkouts';
@@ -10,22 +10,19 @@ import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
 import { useSettings } from '@/hooks/useSettings';
-import { useWeeklyFocus } from '@/hooks/useWeeklyFocus';
 import { getExerciseLabel } from '@/types/workout';
-import { calculateGoalProgress, getDaysRemaining } from '@/types/goals';
+import { getDaysRemaining } from '@/types/goals';
 import { checkAchievements } from '@/lib/achievements';
 import { getTodaysHabits } from '@/lib/habits';
 import { flattenTodos } from '@/lib/goal-tree';
 import { stores } from '@/lib/storage';
 import { dateKeyOf, dayOfWeek, daysBetween, parseDateKey } from '@/lib/dates';
-import { computeRings } from '@/lib/today';
 import { quoteOfTheDay } from '@/lib/quotes';
 import { PageHeader } from '@/components/app/PageHeader';
-import { ListRow } from '@/components/app/ListRow';
-import { ProgressRing } from '@/components/ProgressRing';
-import { LifeRings } from '@/components/today/LifeRings';
 import { UpNext, type UpNextItem } from '@/components/today/UpNext';
-import { PeopleNudges } from '@/components/today/PeopleNudges';
+import { NowCard } from '@/components/today/NowCard';
+import { QuickLogSheet } from '@/components/people/QuickLogSheet';
+import type { Contact } from '@/lib/storage';
 import { SmartNudges } from '@/components/today/SmartNudges';
 import { WeeklyReview, isReviewDue } from '@/components/today/WeeklyReview';
 import { QuickAdd } from '@/components/today/QuickAdd';
@@ -48,9 +45,10 @@ export default function Index() {
   const { goals, toggleToDo } = useGoals();
   const { sessions } = useWorkouts();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
-  const { contacts, interactions, commitments, getStreakStatus, completeCommitment, uncompleteCommitment } = useContacts();
+  const { contacts, interactions, commitments, getStreakStatus, getDaysSinceLastInteraction, completeCommitment, uncompleteCommitment } = useContacts();
+  const [logFor, setLogFor] = useState<Contact | null>(null);
+  const [skipped, setSkipped] = useState<string[]>([]);
   const { settings } = useSettings();
-  const { focusIds } = useWeeklyFocus();
   const today = useTodayKey();
   const navigate = useNavigate();
   const customExercises = useStore(stores.CUSTOM_EXERCISES);
@@ -84,10 +82,6 @@ export default function Index() {
     }
     navigate('/gym');
   };
-
-  const rings = useMemo(() => computeRings({
-    today, goals, habits: todaysHabits, plan: todayPlan, sessions, contacts, interactions, commitments, streakStatus: getStreakStatus,
-  }), [today, goals, todaysHabits, todayPlan, sessions, contacts, interactions, commitments, getStreakStatus]);
 
   // ─── One list for everything due today ───
   const { items, later } = useMemo(() => {
@@ -137,6 +131,26 @@ export default function Index() {
       });
     }
 
+    // People due a check-in (closest first). Talked to today → completed.
+    const RANK = { core: 0, close: 1, extended: 2, distant: 3 } as const;
+    const talkedToday = new Set(interactions.filter(x => dateKeyOf(x.date) === today).map(x => x.contactId));
+    contacts
+      .filter(c => c.interactionGoalDays)
+      .map(c => ({ c, status: getStreakStatus(c), days: getDaysSinceLastInteraction(c.id) }))
+      .filter(x => talkedToday.has(x.c.id) || x.status === 'overdue' || x.status === 'due-soon')
+      .sort((a, b) => (RANK[a.c.circleRing] ?? 3) - (RANK[b.c.circleRing] ?? 3))
+      .slice(0, 4)
+      .forEach(({ c, status, days }) => {
+        const done = talkedToday.has(c.id);
+        items.push({
+          kind: 'person', id: c.id, initial: c.name.charAt(0).toUpperCase(),
+          title: done ? `Connected with ${c.name}` : `Check in with ${c.name}`,
+          subtitle: done ? 'Today' : days === null ? 'Not in touch yet' : `${days} day${days === 1 ? '' : 's'} since you connected`,
+          overdue: status === 'overdue', done,
+          onToggle: () => setLogFor(c),
+        });
+      });
+
     for (const h of todaysHabits) {
       items.push({
         kind: 'habit', id: h.habit.id,
@@ -147,14 +161,25 @@ export default function Index() {
     }
 
     // Workout first, then late to-dos, today's to-dos, promises, habits.
-    const rank = (i: UpNextItem) => (i.kind === 'workout' ? 0 : i.kind === 'todo' ? (i.days !== null && i.days < 0 ? 1 : 2) : i.kind === 'commitment' ? 3 : 4);
+    const rank = (i: UpNextItem) => (i.kind === 'workout' ? 0 : i.kind === 'todo' ? (i.days !== null && i.days < 0 ? 1 : 2) : i.kind === 'commitment' ? 3 : i.kind === 'person' ? 4 : 5);
     items.sort((a, b) => rank(a) - rank(b));
     later.sort((a, b) => ((a as { days: number }).days ?? 0) - ((b as { days: number }).days ?? 0));
     return { items, later };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers are stable store actions
-  }, [goals, todaysHabits, commitments, contacts, today, todayPlan, trainedToday, hasActiveWorkout, activeWorkout, customExercises]);
+  }, [goals, todaysHabits, commitments, contacts, interactions, today, todayPlan, trainedToday, hasActiveWorkout, activeWorkout, customExercises]);
 
-  const focusGoals = focusIds.map(id => goals.find(g => g.id === id)).filter(g => g && !g.archived);
+  // The one thing to do next (skipping ones you've set aside for now).
+  const open = items.filter(i => !i.done);
+  const hero = open.find(i => !skipped.includes(i.kind + i.id)) ?? open[0] ?? null;
+  const rest = items.filter(i => i !== hero);
+  const doneCount = items.filter(i => i.done).length;
+  const skip = hero && open.length > 1 ? () => setSkipped(s => {
+    const key = hero.kind + hero.id;
+    const next = [...s.filter(k => k !== key), key];
+    // Once everything has been skipped, start over.
+    return open.every(i => next.includes(i.kind + i.id)) ? [key] : next;
+  }) : undefined;
+
   const isNew = goals.length === 0 && sessions.length === 0;
   const [reviewOpen, setReviewOpen] = useState(false);
   const reviewDue = !isNew && isReviewDue(today, settings.lastReviewWeek);
@@ -191,41 +216,24 @@ export default function Index() {
             </div>
           )}
 
-          <div {...enter(2)}><LifeRings rings={rings} /></div>
-          <div {...enter(3)}><SmartNudges today={today} /></div>
-          <div {...enter(4)}><UpNext items={items} later={later} /></div>
-          <div {...enter(5)}><PeopleNudges /></div>
-
-          <section {...enter(6)} aria-label="Focus" className="rise-in space-y-2">
-            <h2 className="section-label">Focus</h2>
-            <div className="list-group">
-              {focusGoals.length > 0 ? focusGoals.map(g => {
-                const p = calculateGoalProgress(g!);
-                return (
-                  <ListRow key={g!.id} onClick={() => navigate('/goals')} chevron
-                    leading={<ProgressRing value={p} size={34} strokeWidth={3.5} showPercent={false} />}
-                    title={g!.title}
-                    subtitle={`${p}% complete`}
-                  />
-                );
-              }) : (
-                <ListRow onClick={() => navigate('/goals')} chevron
-                  leading={<span className="flex h-[34px] w-[34px] items-center justify-center rounded-full bg-secondary text-muted-foreground"><Star className="h-4 w-4" /></span>}
-                  title="Choose up to 3 focus goals"
-                  subtitle="Star them in Goals to keep them here"
-                />
-              )}
-            </div>
-          </section>
+          <div {...enter(2)}>
+            <NowCard
+              item={hero}
+              done={doneCount}
+              total={items.length}
+              onSkip={skip}
+              quote={settings.quotesEnabled ? quoteOfTheDay(settings.customQuotes, today) : undefined}
+            />
+          </div>
+          <div {...enter(3)}><UpNext items={rest} later={later} /></div>
+          <div {...enter(4)}><SmartNudges today={today} kinds={['backup']} /></div>
         </>
       )}
 
-      {settings.quotesEnabled && !isNew && (
-        <p className="px-1 text-center text-footnote italic text-muted-foreground">“{quoteOfTheDay(settings.customQuotes, today)}”</p>
-      )}
 
       <WeeklyReview open={reviewOpen} onClose={() => setReviewOpen(false)} today={today} />
       {!isNew && <QuickAdd onStartWorkout={startWorkout} onReview={() => setReviewOpen(true)} />}
+      <QuickLogSheet contact={logFor} onClose={() => setLogFor(null)} />
       {showOnboarding && <Onboarding />}
     </div>
   );

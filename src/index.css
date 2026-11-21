@@ -19,7 +19,7 @@
     --popover: 0 0% 100%;
     --popover-foreground: 240 10% 7%;
 
-    --primary: 238 78% 58%;
+    --primary: 240 90% 61%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 240 10% 94%;
@@ -36,24 +36,24 @@
 
     --border: 240 7% 90%;
     --input: 240 7% 88%;
-    --ring: 238 78% 58%;
+    --ring: 240 90% 61%;
 
     --radius: 1rem;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 240 10% 7%;
-    --sidebar-primary: 238 78% 58%;
+    --sidebar-primary: 240 90% 61%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 12% 95%;
     --sidebar-accent-foreground: 240 10% 7%;
     --sidebar-border: 240 7% 91%;
-    --sidebar-ring: 238 78% 58%;
+    --sidebar-ring: 240 90% 61%;
 
     /* Life-area colors (rings, icons, tints) */
-    --habits: 18 92% 56%;
-    --tasks: 238 78% 58%;
-    --move: 145 63% 42%;
-    --people: 190 85% 42%;
+    --habits: 20 100% 55%;
+    --tasks: 240 90% 61%;
+    --move: 145 75% 40%;
+    --people: 192 95% 42%;
 
     /* Legacy accent names, mapped onto the new palette */
     --coral: 18 92% 56%;
@@ -204,7 +204,7 @@
     @apply rounded-2xl bg-card shadow-[0_1px_2px_rgb(0_0_0/0.04),0_0_0_1px_hsl(var(--border)/0.7)];
   }
   .section-label {
-    @apply px-1 pb-2 text-[13px] font-semibold uppercase tracking-wide text-muted-foreground;
+    @apply px-1 pb-1 text-[22px] font-bold leading-7 tracking-[-0.02em] text-foreground;
   }
   .pressable {
     @apply transition-transform duration-100 active:scale-[0.98];
