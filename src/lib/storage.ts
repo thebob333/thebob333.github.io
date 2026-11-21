@@ -29,6 +29,8 @@ export const KEYS = {
   INTERACTIONS: 'telos_interactions',
   COMMITMENTS: 'telos_commitments',
   RELATIONSHIP_GOALS: 'telos_relationship_goals',
+  ACTIVE_WORKOUT: 'telos_active_workout',
+  PLAN_DISMISSED: 'telos_plan_dismissed',
 } as const;
 
 export type StoreName = keyof typeof KEYS;
@@ -123,6 +125,7 @@ export interface TimeBlock {
   startMinute: number; // 0 or 30
   durationMinutes: number; // multiples of 30
   todoId?: string; // optional link to a goal todo
+  sourceTemplateId?: string; // created from a repeatable routine
   habitId?: string; // optional link to a goal habit
   contactId?: string; // optional link to a contact
   done?: boolean;
@@ -163,6 +166,17 @@ export interface WorkoutTemplate {
 
 // Weekly Schedule (day → todo IDs)
 export type WeeklySchedule = Record<string, string[]>;
+
+/** The workout being logged right now — survives navigation and the app being closed. */
+export interface ActiveWorkout {
+  splitDay: string;
+  exercises: { id: string; exercise: string; sets: { reps: number; weight: number; rpe: number }[] }[];
+  notes: string;
+  startedAt: string;
+}
+
+/** Per day (YYYY-MM-DD): auto-created Plan blocks you removed, so they aren't re-created. */
+export type PlanDismissed = Record<string, string[]>;
 
 // Goal Templates
 export interface GoalTemplate {
@@ -212,6 +226,8 @@ export const stores = {
   INTERACTIONS: arrayStore<Interaction>(KEYS.INTERACTIONS, 'Interactions'),
   COMMITMENTS: arrayStore<Commitment>(KEYS.COMMITMENTS, 'Commitments'),
   RELATIONSHIP_GOALS: arrayStore<RelationshipGoal>(KEYS.RELATIONSHIP_GOALS, 'Relationship goals'),
+  ACTIVE_WORKOUT: createStore<ActiveWorkout | null>({ key: KEYS.ACTIVE_WORKOUT, label: 'Workout in progress', kind: 'nullable', fallback: () => null }),
+  PLAN_DISMISSED: createStore<PlanDismissed>({ key: KEYS.PLAN_DISMISSED, label: 'Removed plan blocks', kind: 'object', fallback: () => ({}) }),
 } satisfies { [K in StoreName]: Store<unknown> };
 
 // ─── Legacy load/save helpers ───────────────────────────────────────────────

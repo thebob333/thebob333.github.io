@@ -2,18 +2,19 @@ import { useGoals } from '@/hooks/useGoals';
 import { useWorkouts } from '@/hooks/useWorkouts';
 import { useHabits } from '@/hooks/useHabits';
 import { getPersonalRecords, getWeeklyVolume } from '@/lib/progressive-overload';
-import { EXERCISE_LABELS } from '@/types/workout';
+import { EXERCISE_LABELS, getExerciseLabel, isBodyweightExercise } from '@/types/workout';
+import { useActiveWorkout, activeWorkoutActions } from '@/hooks/useWorkouts';
 import { calculateGoalProgress, getDaysRemaining, getUrgencyColor } from '@/types/goals';
 import { checkAchievements } from '@/lib/achievements';
 import { getTodaysHabits } from '@/lib/habits';
 import { Target, Dumbbell, Trophy, TrendingUp, Settings, Moon, Flame, CheckCircle2, ChevronRight, Clock, AlertCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { BodyDiagram } from '@/components/BodyDiagram';
 import { stores } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
-import { dayOfWeek } from '@/lib/dates';
+import { dayOfWeek, startOfWeekKey } from '@/lib/dates';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,8 +37,13 @@ export default function Index() {
   const { sessions } = useWorkouts();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
   const today = useTodayKey();
-  const prs = useMemo(() => getPersonalRecords(sessions), [sessions]);
   const customExercises = useStore(stores.CUSTOM_EXERCISES);
+  const prs = useMemo(
+    () => getPersonalRecords(sessions, id => isBodyweightExercise(id, customExercises)),
+    [sessions, customExercises],
+  );
+  const activeWorkout = useActiveWorkout();
+  const navigate = useNavigate();
   const settings = useStore(stores.SETTINGS);
   const weeklyVolume = useMemo(() => getWeeklyVolume(sessions), [sessions]);
   const latestVolume = weeklyVolume[weeklyVolume.length - 1]?.volume || 0;
@@ -83,12 +89,30 @@ export default function Index() {
   const hasPlan = useStore(stores.WEEKLY_PLAN) !== null;
   const todayPlan = hasPlan ? planDays[(dayOfWeek(today) + 6) % 7] : null;
 
+  const activeGoals = goals.filter(g => !g.archived);
+  const latestWeek = weeklyVolume[weeklyVolume.length - 1]?.week;
+  const volumeIsThisWeek = latestWeek && latestWeek >= startOfWeekKey(today, 0);
   const stats = [
-    { icon: Target, value: goals.length, label: 'Goals' },
+    { icon: Target, value: activeGoals.length, label: 'Goals' },
     { icon: Dumbbell, value: sessions.length, label: 'Sessions' },
     { icon: Trophy, value: `${unlockedCount}/${achievements.length}`, label: 'Badges' },
-    { icon: TrendingUp, value: latestVolume.toLocaleString(), label: 'Volume' },
+    {
+      icon: TrendingUp,
+      value: volumeIsThisWeek ? (latestVolume >= 10000 ? `${Math.round(latestVolume / 1000)}k` : latestVolume.toLocaleString()) : '0',
+      label: 'Lbs / wk',
+    },
   ];
+
+  /** Start today's planned workout with every exercise prefilled. */
+  const startTodaysWorkout = () => {
+    if (activeWorkout && activeWorkout.exercises.length > 0) {
+      navigate('/workouts');
+      return;
+    }
+    activeWorkoutActions.load(todayPlan?.splitDay ?? 'push', []);
+    (todayPlan?.exercises ?? []).forEach(ex => activeWorkoutActions.addExercise(ex, customExercises));
+    navigate('/workouts');
+  };
 
   return (
     <div className="max-w-lg mx-auto px-4 pb-8 space-y-6">
@@ -130,6 +154,22 @@ export default function Index() {
         </motion.div>
       )}
 
+      {/* Workout in progress */}
+      {activeWorkout && activeWorkout.exercises.length > 0 && (
+        <Link to="/workouts" className="block">
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-4 shadow-sm flex items-center gap-3">
+            <Dumbbell className="h-5 w-5 text-primary shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">Workout in progress</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {activeWorkout.exercises.map(e => getExerciseLabel(e.exercise, customExercises)).join(' · ')}
+              </p>
+            </div>
+            <span className="text-sm font-semibold text-primary">Resume</span>
+          </div>
+        </Link>
+      )}
+
       {/* Today's Workout Card */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
         {todayPlan && todayPlan.splitDay !== 'rest' ? (
@@ -141,16 +181,14 @@ export default function Index() {
                 </p>
                 <p className="text-lg font-semibold text-foreground capitalize mt-0.5">{todayPlan.splitDay} Day</p>
               </div>
-              <Link to="/workouts">
-                <Button size="sm" className="bg-primary text-primary-foreground font-semibold">
-                  Start
-                </Button>
-              </Link>
+              <Button size="sm" className="bg-primary text-primary-foreground font-semibold h-10 px-4" onClick={startTodaysWorkout}>
+                {activeWorkout && activeWorkout.exercises.length > 0 ? 'Resume' : 'Start'}
+              </Button>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {todayPlan.exercises.map((ex: string) => (
                 <Badge key={ex} variant="secondary" className="text-xs font-medium">
-                  {EXERCISE_LABELS[ex as keyof typeof EXERCISE_LABELS] || ex}
+                  {getExerciseLabel(ex, customExercises)}
                 </Badge>
               ))}
             </div>
@@ -276,7 +314,7 @@ export default function Index() {
       )}
 
       {/* Goal Progress Cards */}
-      {goals.length > 0 && (
+      {activeGoals.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs text-muted-foreground uppercase tracking-wider">Goals</p>
@@ -285,7 +323,7 @@ export default function Index() {
             </Link>
           </div>
           <div className="space-y-2">
-            {goals.filter(g => !g.archived).slice(0, 4).map(goal => {
+            {activeGoals.slice(0, 4).map(goal => {
               const progress = calculateGoalProgress(goal);
               return (
                 <Link key={goal.id} to="/goals">
@@ -305,10 +343,19 @@ export default function Index() {
         </motion.div>
       )}
 
-      {/* Body Diagram */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-        <BodyDiagram prs={prs} customExercises={customExercises} bodyweight={settings.bodyweight} goldTargets={settings.goldTargets} />
-      </motion.div>
+      {/* Body Diagram — only once there's something to show */}
+      {sessions.length > 0 ? (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+          <BodyDiagram prs={prs} customExercises={customExercises} bodyweight={settings.bodyweight} goldTargets={settings.goldTargets} />
+        </motion.div>
+      ) : (
+        <Link to="/workouts" className="block">
+          <div className="rounded-xl border border-dashed border-border p-4 text-center">
+            <p className="text-sm text-muted-foreground">Your strength map fills in as you log workouts</p>
+            <p className="text-xs text-primary mt-1 font-medium">Log your first session →</p>
+          </div>
+        </Link>
+      )}
     </div>
   );
 }

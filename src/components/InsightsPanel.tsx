@@ -1,4 +1,5 @@
 import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
+import { energyEmoji } from '@/lib/people';
 import { useMemo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Contact, Interaction, InfluenceTag } from '@/lib/storage';
@@ -102,7 +103,8 @@ export default function InsightsPanel({
   // --- Recent Activity Timeline ---
   const recentActivity = useMemo(() => {
     const contactMap = new Map(contacts.map(c => [c.id, c]));
-    return interactions
+    return [...interactions]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 15)
       .map(i => ({ ...i, contact: contactMap.get(i.contactId) }))
       .filter(i => i.contact);
@@ -302,7 +304,7 @@ export default function InsightsPanel({
                         )}
                         {interaction.energyAfter && (
                           <span className="ml-1">
-                            {interaction.energyAfter <= 2 ? '😮‍💨' : interaction.energyAfter === 3 ? '🙂' : interaction.energyAfter === 4 ? '😊' : '🔥'}
+                            {energyEmoji(interaction.energyAfter)}
                           </span>
                         )}
                         {interaction.note && (

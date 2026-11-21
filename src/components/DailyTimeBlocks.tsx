@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { TimeBlock, BlockCategory, DEFAULT_CATEGORIES, stores, generateId, Contact } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
+import { autofillDay, dismissBlock, undismissBlock } from '@/lib/plan-autofill';
+import { todayKey } from '@/lib/dates';
 import { shouldShowOnDay } from '@/components/RepeatableBlockManager';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -162,6 +164,8 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   
   // Resize state
   const [resizeDrag, setResizeDrag] = useState<{ blockId: string; startY: number; startDuration: number } | null>(null);
+  // Live preview while resizing; saved once on release instead of on every pointer move.
+  const [resizePreview, setResizePreview] = useState<number | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -170,69 +174,15 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
     [blocks, dayName]
   );
 
-  // Auto-populate from repeatable templates and deadline todos. One atomic
-  // update from the latest blocks; returns `prev` (no write) when nothing changes.
+  // Auto-fill from routines and due to-dos. One atomic update from the latest
+  // blocks; no write when nothing changes. Removed blocks stay removed.
+  const dismissed = useStore(stores.PLAN_DISMISSED);
   const deadlineKey = deadlineTodos.map(t => t.todoId).join('|');
   useEffect(() => {
-    const applicableTemplates = repeatableBlocks.filter(t => shouldShowOnDay(t, dayName));
-    TB.update(prev => {
-      // Habits live in the checklist now, not the planner — drop leftover habit blocks.
-      const all = prev.some(b => b.dayName === dayName && b.habitId)
-        ? prev.filter(b => !(b.dayName === dayName && b.habitId))
-        : prev;
-      const existingBlocks = all.filter(b => b.dayName === dayName);
-      const newBlocks: TimeBlock[] = [];
-
-    // 1) Repeatable templates
-    for (const tpl of applicableTemplates) {
-      const alreadyExists = existingBlocks.some(b =>
-        b.title === tpl.title && b.startHour === tpl.startHour && b.startMinute === tpl.startMinute
-      );
-      if (!alreadyExists) {
-        newBlocks.push({
-          id: generateId(),
-          dayName,
-          categoryId: tpl.categoryId,
-          title: tpl.title,
-          startHour: tpl.startHour,
-          startMinute: tpl.startMinute,
-          durationMinutes: tpl.durationMinutes,
-        });
-      }
-    }
-
-    // 2) Deadline todos — auto-create blocks for todos due on this day
-    let todoSlotHour = 9;
-    let todoSlotMinute = 0;
-    for (const todo of deadlineTodos) {
-      const alreadyExists = existingBlocks.some(b => b.todoId === todo.todoId) ||
-                            newBlocks.some(b => b.todoId === todo.todoId);
-      if (!alreadyExists) {
-        const duration = todo.effort === 'LOW' ? 15 : todo.effort === 'HIGH' ? 60 : 30;
-        newBlocks.push({
-          id: generateId(),
-          dayName,
-          categoryId: 'goals',
-          title: todo.title,
-          startHour: todoSlotHour,
-          startMinute: todoSlotMinute,
-          durationMinutes: duration,
-          todoId: todo.todoId,
-        });
-        // Advance slot
-        todoSlotMinute += duration;
-        while (todoSlotMinute >= 60) {
-          todoSlotMinute -= 60;
-          todoSlotHour += 1;
-        }
-      }
-    }
-
-      if (newBlocks.length === 0) return all;
-      return [...all, ...newBlocks];
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only when the day, routines or due to-dos change
-  }, [dayName, repeatableBlocks, deadlineKey]);
+    const routines = repeatableBlocks.filter(t => shouldShowOnDay(t, dayName));
+    TB.update(prev => autofillDay(prev, dayName, routines, deadlineTodos, stores.PLAN_DISMISSED.get(), generateId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-run only when the day, routines, due to-dos or dismissals change
+  }, [dayName, repeatableBlocks, deadlineKey, dismissed]);
 
   const columnLayout = useMemo(() => computeColumns(dayBlocks), [dayBlocks]);
 
@@ -256,9 +206,21 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   }, []);
 
   const deleteBlock = useCallback((blockId: string) => {
+    const removed = TB.get().find(b => b.id === blockId);
+    if (!removed) return;
     TB.update(prev => prev.filter(b => b.id !== blockId));
+    // Auto-created blocks are remembered so they don't come straight back.
+    stores.PLAN_DISMISSED.update(d => dismissBlock(d, removed, todayKey()));
     setEditingBlock(null);
-    toast.success('Block removed');
+    toast.success('Block removed', {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          stores.PLAN_DISMISSED.update(d => undismissBlock(d, removed));
+          TB.update(prev => (prev.some(b => b.id === removed.id) ? prev : [...prev, removed]));
+        },
+      },
+    });
   }, []);
 
   const linkTodo = useCallback((blockId: string, todoId: string, title: string) => {
@@ -304,8 +266,15 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
       toast.error("Can't delete default categories");
       return;
     }
+    // Never delete people's blocks along with a category — move them to Personal.
+    const fallback = 'personal';
+    const moved = TB.get().filter(b => b.categoryId === catId).length;
     CATS.update(prev => prev.filter(c => c.id !== catId));
-    TB.update(prev => prev.filter(b => b.categoryId !== catId));
+    TB.update(prev => (moved ? prev.map(b => (b.categoryId === catId ? { ...b, categoryId: fallback } : b)) : prev));
+    stores.REPEATABLE_BLOCKS.update(prev =>
+      prev.some(r => r.categoryId === catId) ? prev.map(r => (r.categoryId === catId ? { ...r, categoryId: fallback } : r)) : prev,
+    );
+    toast.success(moved ? `Category deleted — ${moved} block${moved !== 1 ? 's' : ''} moved to Personal` : 'Category deleted');
   }, []);
 
   const getCat = (catId: string) => categories.find(c => c.id === catId) || categories[0] || DEFAULT_CATEGORIES[0];
@@ -355,9 +324,9 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
       const newDuration = snapMinutes(Math.max(MIN_DURATION, resizeDrag.startDuration + deltaMin));
       const maxDuration = END_HOUR * 60 - startMin;
       const clampedDuration = Math.min(newDuration, maxDuration);
-      updateBlock(resizeDrag.blockId, { durationMinutes: clampedDuration });
+      setResizePreview(clampedDuration);
     }
-  }, [dragging, resizeDrag, blocks, updateBlock]);
+  }, [dragging, resizeDrag, blocks]);
 
   const handlePointerUp = useCallback(() => {
     if (dragging && dragPreviewMin !== null) {
@@ -367,10 +336,14 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
         startMinute: snapped % 60,
       });
     }
+    if (resizeDrag && resizePreview !== null) {
+      updateBlock(resizeDrag.blockId, { durationMinutes: resizePreview });
+    }
     setDragging(null);
     setDragPreviewMin(null);
     setResizeDrag(null);
-  }, [dragging, dragPreviewMin, updateBlock]);
+    setResizePreview(null);
+  }, [dragging, dragPreviewMin, resizeDrag, resizePreview, updateBlock]);
 
   const handleResizePointerDown = useCallback((e: React.PointerEvent, blockId: string) => {
     e.stopPropagation();
@@ -505,7 +478,8 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
             
             const startMin = isDragging && dragPreviewMin !== null ? dragPreviewMin : blockStartMinutes(block);
             const top = minutesToTop(startMin);
-            const height = Math.max(block.durationMinutes * PIXEL_PER_MINUTE, MIN_DURATION * PIXEL_PER_MINUTE);
+            const duration = resizeDrag?.blockId === block.id && resizePreview !== null ? resizePreview : block.durationMinutes;
+            const height = Math.max(duration * PIXEL_PER_MINUTE, MIN_DURATION * PIXEL_PER_MINUTE);
             
             const availableWidth = `calc(100% - ${LABEL_WIDTH + 8}px)`;
             const colWidth = `calc(${availableWidth} / ${layout.totalColumns})`;

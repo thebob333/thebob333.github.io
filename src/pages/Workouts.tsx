@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { useWorkouts } from '@/hooks/useWorkouts';
-import { CompoundExercise, EXERCISE_LABELS, SetLog, ExerciseLog, SplitDay, CustomExercise, getExerciseLabel, isBuiltInExercise, EquipmentType, MuscleGroup, ALL_MUSCLE_GROUPS } from '@/types/workout';
+import { useEffect, useMemo, useState } from 'react';
+import { useWorkouts, useActiveWorkout, activeWorkoutActions, workoutActions } from '@/hooks/useWorkouts';
+import { EXERCISE_LABELS, SetLog, SplitDay, CustomExercise, getExerciseLabel, isBuiltInExercise, isBodyweightExercise, EquipmentType, MuscleGroup, ALL_MUSCLE_GROUPS } from '@/types/workout';
 import { getProgressionSuggestion, getExerciseHistory, getPersonalRecords, getWeeklyVolume, calculateVolumeLoad } from '@/lib/progressive-overload';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,28 +22,35 @@ const EQUIPMENT_LABELS: Record<EquipmentType, string> = {
   machine: 'Machine', bodyweight: 'Bodyweight', other: 'Other',
 };
 
-function RestTimer({ onRunningChange }: { onRunningChange: (running: boolean) => void }) {
+/** Timestamp-based so it stays accurate when the phone locks; cleans up on unmount. */
+function RestTimer() {
   const [seconds, setSeconds] = useState(90);
-  const [running, setRunning] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(90);
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
-  const start = () => {
-    setTimeLeft(seconds);
-    setRunning(true);
-    onRunningChange(true);
-    const interval = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setRunning(false);
-          onRunningChange(false);
-          toast.success('Rest complete! Time to lift! 💪');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
+  useEffect(() => {
+    if (endsAt === null) return;
+    const tick = () => {
+      const t = Date.now();
+      setNow(t);
+      if (t >= endsAt) {
+        setEndsAt(null);
+        toast.success('Rest complete — time to lift! 💪');
+        navigator.vibrate?.(200);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 250);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [endsAt]);
+
+  const running = endsAt !== null;
+  const left = running ? Math.max(0, Math.ceil((endsAt - now) / 1000)) : seconds;
+  const fmt = (n: number) => `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
 
   return (
     <Card className="shadow-sm">
@@ -53,13 +60,17 @@ function RestTimer({ onRunningChange }: { onRunningChange: (running: boolean) =>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center gap-3">
-          <Input type="number" value={seconds} onChange={e => setSeconds(Number(e.target.value))} className="w-20" min={10} max={300} disabled={running} />
-          <span className="text-sm text-muted-foreground">sec</span>
-          <Button size="sm" onClick={start} disabled={running}>
-            {running ? `${timeLeft}s` : 'Start'}
+        <div className="flex items-center gap-2">
+          {[60, 90, 120, 180].map(p => (
+            <Button key={p} size="sm" variant={seconds === p && !running ? 'default' : 'outline'} className="h-9 px-2.5 text-xs" disabled={running} onClick={() => setSeconds(p)}>
+              {fmt(p)}
+            </Button>
+          ))}
+          <Button size="sm" className="h-9 min-w-[72px] font-semibold tabular-nums" variant={running ? 'secondary' : 'default'} onClick={() => (running ? setEndsAt(null) : setEndsAt(Date.now() + seconds * 1000))}>
+            {running ? fmt(left) : 'Start'}
           </Button>
         </div>
+        {running && <p className="mt-2 text-xs text-muted-foreground">Tap the timer to stop it.</p>}
       </CardContent>
     </Card>
   );
@@ -67,16 +78,19 @@ function RestTimer({ onRunningChange }: { onRunningChange: (running: boolean) =>
 
 export default function WorkoutsPage() {
   const customExercises = useStore(stores.CUSTOM_EXERCISES);
-  const { sessions, configs, addSession, deleteSession, updateConfig, addConfig, deleteConfig } = useWorkouts(customExercises);
-  const prs = getPersonalRecords(sessions);
-  const weeklyVolume = getWeeklyVolume(sessions);
+  const activeCustom = useMemo(() => customExercises.filter(e => !e.archived), [customExercises]);
+  const { sessions, configs, deleteSession, updateConfig, addConfig } = useWorkouts(customExercises);
+  const isBodyweight = (id: string) => isBodyweightExercise(id, customExercises);
+  const prs = useMemo(() => getPersonalRecords(sessions, id => isBodyweightExercise(id, customExercises)), [sessions, customExercises]);
+  const weeklyVolume = useMemo(() => getWeeklyVolume(sessions), [sessions]);
 
+  // Includes archived exercises so old sessions keep their names.
   const label = (id: string) => getExerciseLabel(id, customExercises);
 
-  // Combined exercise options: built-in + custom
+  // Combined exercise options: built-in + active custom
   const allExerciseOptions: { id: string; label: string }[] = [
     ...Object.entries(EXERCISE_LABELS).map(([id, name]) => ({ id, label: name })),
-    ...customExercises.map(e => ({ id: e.id, label: e.name })),
+    ...activeCustom.map(e => ({ id: e.id, label: e.name })),
   ];
 
   // Custom exercise management
@@ -110,10 +124,13 @@ export default function WorkoutsPage() {
     toast.success(`Added "${exercise.name}"`);
   };
 
+  // Archive rather than delete, so past sessions and PRs keep the exercise's name.
   const handleDeleteCustomExercise = (id: string) => {
-    stores.CUSTOM_EXERCISES.update(prev => prev.filter(e => e.id !== id));
-    deleteConfig(id);
-    toast.success('Exercise removed');
+    stores.CUSTOM_EXERCISES.update(prev => prev.map(e => (e.id === id ? { ...e, archived: true } : e)));
+    toast.success('Exercise removed', {
+      description: 'Your past sessions with it are kept.',
+      action: { label: 'Undo', onClick: () => stores.CUSTOM_EXERCISES.update(prev => prev.map(e => (e.id === id ? { ...e, archived: false } : e))) },
+    });
   };
 
   const toggleMuscle = (m: MuscleGroup) => {
@@ -161,9 +178,13 @@ RULES:
 - Rep range should be 6-12 for hypertrophy, 3-6 for strength, 12-20 for endurance`;
   };
 
-  const copyAIConfigPrompt = () => {
-    navigator.clipboard.writeText(generateAIConfigPrompt());
-    toast.success('AI prompt copied to clipboard!');
+  const copyAIConfigPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(generateAIConfigPrompt());
+      toast.success('AI prompt copied to clipboard!');
+    } catch {
+      toast.error("Couldn't copy — your browser blocked clipboard access.");
+    }
   };
 
   const parseAIConfigResponse = () => {
@@ -196,14 +217,15 @@ RULES:
     setAiConfigResponse('');
   };
 
-  const [splitDay, setSplitDay] = useState<SplitDay>('push');
-  const [sessionExercises, setSessionExercises] = useState<{
-    exercise: string;
-    sets: SetLog[];
-  }[]>([]);
-  const [sessionNotes, setSessionNotes] = useState('');
+  // The workout in progress is saved continuously, so leaving the page or
+  // closing the app never loses it.
+  const active = useActiveWorkout();
+  const splitDay = (active?.splitDay ?? 'push') as SplitDay;
+  const sessionExercises = active?.exercises ?? [];
+  const sessionNotes = active?.notes ?? '';
   const [expandedSessions, setExpandedSessions] = useState<Set<string>>(new Set());
   const templates = useStore(stores.TEMPLATES);
+  const [templateName, setTemplateName] = useState<string | null>(null);
 
   const toggleSession = (id: string) => {
     const next = new Set(expandedSessions);
@@ -212,92 +234,65 @@ RULES:
     setExpandedSessions(next);
   };
 
-  const addExerciseToSession = (exercise: string) => {
-    const config = configs.find(c => c.exercise === exercise);
-    if (!config) return;
-
-    // Pre-populate from last session if available, otherwise use config defaults
-    const lastSession = getExerciseHistory(sessions, exercise)[0];
-    let sets: SetLog[];
-    if (lastSession && lastSession.sets.length > 0) {
-      sets = lastSession.sets.map(s => ({
-        reps: s.reps,
-        weight: Math.max(s.weight, config.currentWeight), // use config weight if bumped
-        rpe: s.rpe,
-      }));
-    } else {
-      sets = Array.from({ length: config.targetSets }, () => ({
-        reps: config.repRangeMin, weight: config.currentWeight, rpe: 3,
-      }));
-    }
-    setSessionExercises([...sessionExercises, { exercise, sets }]);
-  };
-
-  const updateSet = (exIdx: number, setIdx: number, field: keyof SetLog, value: number) => {
-    const updated = [...sessionExercises];
-    updated[exIdx].sets[setIdx] = { ...updated[exIdx].sets[setIdx], [field]: value };
-    setSessionExercises(updated);
-  };
-
-  const removeExercise = (idx: number) => {
-    setSessionExercises(sessionExercises.filter((_, i) => i !== idx));
-  };
-
   const logSession = () => {
     if (sessionExercises.length === 0) { toast.error('Add at least one exercise!'); return; }
-    const exercises: ExerciseLog[] = sessionExercises.map(e => ({
-      exercise: e.exercise, sets: e.sets, date: new Date().toISOString(), notes: sessionNotes || undefined,
-    }));
-    addSession({ date: new Date().toISOString(), splitDay, exercises, notes: sessionNotes || undefined });
-    setSessionExercises([]);
-    setSessionNotes('');
+    if (sessionExercises.every(e => e.sets.length === 0)) { toast.error('Add at least one set!'); return; }
+    activeWorkoutActions.finish(customExercises);
     toast.success('Session logged! 🔥');
   };
 
-  const saveAsTemplate = () => {
-    if (sessionExercises.length === 0) return;
-    const name = prompt('Template name:');
-    if (!name) return;
+  const saveAsTemplate = (name: string) => {
+    if (sessionExercises.length === 0 || !name.trim()) return;
     const template: WorkoutTemplate = {
-      id: generateId(), name, splitDay,
+      id: generateId(), name: name.trim(), splitDay,
       exercises: sessionExercises.map(e => ({
         exercise: e.exercise, sets: e.sets.length, weight: e.sets[0]?.weight || 0, reps: e.sets[0]?.reps || 0,
       })),
     };
     stores.TEMPLATES.update(prev => [...prev, template]);
-    toast.success(`Template "${name}" saved!`);
+    setTemplateName(null);
+    toast.success(`Saved "${template.name}"`);
   };
 
   const loadFromTemplate = (template: WorkoutTemplate) => {
-    setSplitDay(template.splitDay as SplitDay);
     const exercises = template.exercises.map(e => {
       const config = configs.find(c => c.exercise === e.exercise);
       return {
         exercise: e.exercise,
         sets: Array.from({ length: e.sets }, () => ({
-          reps: e.reps || config?.repRangeMin || 6, weight: config?.currentWeight || e.weight, rpe: 3,
+          reps: e.reps || config?.repRangeMin || 6, weight: config?.currentWeight ?? e.weight, rpe: 3,
         })),
       };
     });
-    setSessionExercises(exercises);
-    toast.success(`Loaded template "${template.name}"`);
+    activeWorkoutActions.load(template.splitDay, exercises);
+    toast.success(`Loaded "${template.name}"`);
   };
 
   const deleteTemplate = (id: string) => {
+    const removed = templates.find(t => t.id === id);
     stores.TEMPLATES.update(prev => prev.filter(t => t.id !== id));
-    toast.success('Template deleted');
+    toast.success('Saved workout deleted', removed ? {
+      action: { label: 'Undo', onClick: () => stores.TEMPLATES.update(prev => (prev.some(t => t.id === id) ? prev : [...prev, removed])) },
+    } : undefined);
   };
 
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [selectedExercise, setSelectedExercise] = useState<string>('squat');
-  const history = getExerciseHistory(sessions, selectedExercise);
-  const chartData = history.slice().reverse().map(h => ({
-    date: new Date(h.date).toLocaleDateString(),
-    weight: Math.max(...h.sets.map(s => s.weight)),
-    volume: calculateVolumeLoad(h.sets),
-  }));
+  const handleDeleteSession = (id: string) => {
+    const removed = sessions.find(x => x.id === id);
+    deleteSession(id);
+    toast.success('Session deleted', removed ? { action: { label: 'Undo', onClick: () => workoutActions.restoreSession(removed) } } : undefined);
+  };
 
-  const sortedSessions = [...sessions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const [selectedExercise, setSelectedExercise] = useState<string>('squat');
+  const selectedIsBodyweight = isBodyweight(selectedExercise);
+  const chartData = useMemo(() => getExerciseHistory(sessions, selectedExercise)
+    .filter(h => h.sets.length > 0)
+    .slice().reverse().map(h => ({
+      date: new Date(h.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      weight: selectedIsBodyweight ? Math.max(...h.sets.map(s => s.reps)) : Math.max(...h.sets.map(s => s.weight)),
+      volume: calculateVolumeLoad(h.sets),
+    })), [sessions, selectedExercise, selectedIsBodyweight]);
+
+  const sortedSessions = useMemo(() => [...sessions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()), [sessions]);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -321,7 +316,7 @@ RULES:
           <div className="flex gap-4 flex-wrap items-end">
             <div>
               <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Split Day</label>
-              <Select value={splitDay} onValueChange={(v) => setSplitDay(v as SplitDay)}>
+              <Select value={splitDay} onValueChange={(v) => activeWorkoutActions.setSplitDay(v)}>
                 <SelectTrigger className="w-32 mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {['push', 'pull', 'legs', 'upper', 'lower'].map(s => (
@@ -332,7 +327,8 @@ RULES:
             </div>
             <div>
               <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Add Exercise</label>
-              <Select onValueChange={(v) => addExerciseToSession(v)}>
+              {/* Controlled + reset after each pick, so the same exercise can be added again. */}
+              <Select value="" onValueChange={(v) => v && activeWorkoutActions.addExercise(v, customExercises)}>
                 <SelectTrigger className="w-48 mt-1"><SelectValue placeholder="Select..." /></SelectTrigger>
                 <SelectContent>
                   {allExerciseOptions.map(({ id, label: name }) => (
@@ -341,23 +337,25 @@ RULES:
                 </SelectContent>
               </Select>
             </div>
-            <RestTimer onRunningChange={setTimerRunning} />
+            <RestTimer />
           </div>
 
-          {sessionExercises.map((ex, exIdx) => {
+          {sessionExercises.map((ex) => {
             const config = configs.find(c => c.exercise === ex.exercise);
             const recentHistory = getExerciseHistory(sessions, ex.exercise);
-            const suggestion = config ? getProgressionSuggestion(config, recentHistory) : null;
+            const suggestion = config ? getProgressionSuggestion(config, recentHistory, { bodyweight: isBodyweight(ex.exercise) }) : null;
+            const canApplyDeload = !!suggestion && (suggestion.type === 'deload' || suggestion.type === 'fatigue_warning')
+              && suggestion.suggestedWeight !== undefined && config && suggestion.suggestedWeight < config.currentWeight;
 
             return (
-              <Card key={exIdx} className="shadow-sm">
+              <Card key={ex.id} className="shadow-sm">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Dumbbell className="h-4 w-4 text-primary" />
                       {label(ex.exercise)}
                     </CardTitle>
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeExercise(exIdx)}>
+                    <Button size="sm" variant="ghost" className="text-destructive" aria-label={`Remove ${label(ex.exercise)}`} onClick={() => activeWorkoutActions.removeExercise(ex.id)}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
@@ -374,22 +372,42 @@ RULES:
                       {suggestion.type === 'hold' && <Minus className="h-3 w-3 inline mr-1" />}
                       {suggestion.type === 'increase_reps' && <ArrowUp className="h-3 w-3 inline mr-1" />}
                       {suggestion.message}
+                      {canApplyDeload && (
+                        <button
+                          type="button"
+                          className="ml-1 font-semibold underline underline-offset-2"
+                          onClick={() => {
+                            workoutActions.applyDeload(ex.exercise, suggestion.suggestedWeight!);
+                            ex.sets.forEach((_, i) => activeWorkoutActions.updateSet(ex.id, i, 'weight', suggestion.suggestedWeight!));
+                            toast.success(`${label(ex.exercise)} set to ${suggestion.suggestedWeight} lbs`);
+                          }}
+                        >
+                          Apply
+                        </button>
+                      )}
                     </div>
                   )}
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    <div className="grid grid-cols-4 gap-2 text-xs text-muted-foreground uppercase tracking-wider font-medium">
-                      <span>Set</span><span>Weight</span><span>Reps</span><span>RPE</span>
+                    <div className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 text-xs text-muted-foreground uppercase tracking-wider font-medium">
+                      <span>Set</span><span>{isBodyweight(ex.exercise) ? '+ lbs' : 'Weight'}</span><span>Reps</span><span>Effort</span><span />
                     </div>
                     {ex.sets.map((set, setIdx) => (
-                      <div key={setIdx} className="grid grid-cols-4 gap-2">
+                      <div key={setIdx} className="grid grid-cols-[2rem_1fr_1fr_1fr_2rem] gap-2 items-center">
                         <span className="text-sm flex items-center font-bold text-primary">{setIdx + 1}</span>
-                        <Input type="number" inputMode="decimal" value={set.weight || ''} onChange={e => updateSet(exIdx, setIdx, 'weight', e.target.value === '' ? 0 : Number(e.target.value))} className="h-8" />
-                        <Input type="number" inputMode="numeric" value={set.reps || ''} onChange={e => updateSet(exIdx, setIdx, 'reps', e.target.value === '' ? 0 : Number(e.target.value))} className="h-8" />
-                        <Input type="number" inputMode="numeric" value={set.rpe || ''} onChange={e => updateSet(exIdx, setIdx, 'rpe', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={e => { const v = Number(e.target.value); updateSet(exIdx, setIdx, 'rpe', Math.min(5, Math.max(1, v || 3))); }} className="h-8" min={1} max={5} />
+                        <Input type="number" inputMode="decimal" aria-label={`Set ${setIdx + 1} weight`} value={set.weight || ''} onChange={e => activeWorkoutActions.updateSet(ex.id, setIdx, 'weight', e.target.value === '' ? 0 : Number(e.target.value))} className="h-10" />
+                        <Input type="number" inputMode="numeric" aria-label={`Set ${setIdx + 1} reps`} value={set.reps || ''} onChange={e => activeWorkoutActions.updateSet(ex.id, setIdx, 'reps', e.target.value === '' ? 0 : Number(e.target.value))} className="h-10" />
+                        <Input type="number" inputMode="numeric" aria-label={`Set ${setIdx + 1} effort, 1 to 5`} value={set.rpe || ''} onChange={e => activeWorkoutActions.updateSet(ex.id, setIdx, 'rpe', e.target.value === '' ? 0 : Number(e.target.value))} onBlur={e => { const v = Number(e.target.value); activeWorkoutActions.updateSet(ex.id, setIdx, 'rpe', Math.min(5, Math.max(1, v || 3))); }} className="h-10" min={1} max={5} />
+                        <button type="button" aria-label={`Remove set ${setIdx + 1}`} onClick={() => activeWorkoutActions.removeSet(ex.id, setIdx)} className="flex h-10 items-center justify-center rounded-md text-muted-foreground hover:bg-accent">
+                          <X className="h-4 w-4" />
+                        </button>
                       </div>
                     ))}
+                    <Button type="button" variant="ghost" size="sm" className="h-9 w-full text-xs" onClick={() => activeWorkoutActions.addSet(ex.id)}>
+                      <Plus className="mr-1 h-3.5 w-3.5" /> Add set
+                    </Button>
+                    <p className="text-[11px] text-muted-foreground">Effort: 1 = easy, 3 = solid, 5 = all-out.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -403,17 +421,35 @@ RULES:
                   <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium flex items-center gap-1.5">
                     <FileText className="h-3 w-3" /> Session Notes
                   </label>
-                  <Textarea className="mt-1 h-20 text-xs" placeholder="How did it feel? Any pain? Energy level?" value={sessionNotes} onChange={e => setSessionNotes(e.target.value)} />
+                  <Textarea className="mt-1 h-20 text-xs" placeholder="How did it feel? Any pain? Energy level?" value={sessionNotes} onChange={e => activeWorkoutActions.setNotes(e.target.value)} />
                 </CardContent>
               </Card>
               <div className="flex gap-3">
-                <Button onClick={logSession} disabled={timerRunning} className="flex-1 font-bold text-lg py-6" title={timerRunning ? 'Wait for rest timer to finish' : undefined}>
-                  {timerRunning ? 'Resting...' : 'Log Session'}
+                <Button onClick={logSession} className="flex-1 font-bold text-lg py-6">
+                  Log Session
                 </Button>
-                <Button onClick={saveAsTemplate} variant="outline">
-                  <Save className="h-4 w-4 mr-1" /> Save Template
+                <Button onClick={() => setTemplateName('')} variant="outline" className="h-auto">
+                  <Save className="h-4 w-4 mr-1" /> Save
                 </Button>
               </div>
+              {templateName !== null && (
+                <form className="flex gap-2" onSubmit={e => { e.preventDefault(); saveAsTemplate(templateName); }}>
+                  <Input autoFocus value={templateName} onChange={e => setTemplateName(e.target.value)} placeholder="Name this workout, e.g. Push A" className="h-11 text-base" />
+                  <Button type="submit" className="h-11" disabled={!templateName.trim()}>Save</Button>
+                  <Button type="button" variant="ghost" className="h-11" onClick={() => setTemplateName(null)}>Cancel</Button>
+                </form>
+              )}
+              <button
+                type="button"
+                className="w-full text-center text-xs text-muted-foreground underline underline-offset-2"
+                onClick={() => {
+                  const draft = active;
+                  activeWorkoutActions.discard();
+                  toast('Workout discarded', { action: draft ? { label: 'Undo', onClick: () => stores.ACTIVE_WORKOUT.set(draft) } : undefined });
+                }}
+              >
+                Discard this workout
+              </button>
             </div>
           )}
 
@@ -499,7 +535,7 @@ RULES:
                               </p>
                             </div>
                           </div>
-                          <Button size="sm" variant="ghost" className="text-destructive h-7" onClick={(e) => { e.stopPropagation(); deleteSession(session.id); toast.success('Session deleted'); }}>
+                          <Button size="sm" variant="ghost" className="text-destructive h-7" aria-label="Delete session" onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}>
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -562,7 +598,7 @@ RULES:
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-primary" /> Weight Progression
+                <TrendingUp className="h-4 w-4 text-primary" /> {selectedIsBodyweight ? 'Best Reps' : 'Weight Progression'}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -616,7 +652,9 @@ RULES:
                     <Trophy className="h-8 w-8 text-coral" />
                     <div>
                       <p className="font-semibold text-lg">{label(pr.exercise)}</p>
-                      <p className="text-3xl font-bold text-primary">{pr.weight} × {pr.reps}</p>
+                      <p className="text-3xl font-bold text-primary">
+                        {isBodyweight(pr.exercise) ? `${pr.reps} reps${pr.weight ? ` +${pr.weight}` : ''}` : `${pr.weight} × ${pr.reps}`}
+                      </p>
                       <p className="text-xs text-muted-foreground">Vol: {pr.volumeLoad} lbs · {new Date(pr.date).toLocaleDateString()}</p>
                     </div>
                   </div>
@@ -635,7 +673,7 @@ RULES:
 
         {/* CONFIG TAB */}
         <TabsContent value="config" className="space-y-4">
-          {configs.map(config => {
+          {configs.filter(c => !customExercises.find(e => e.id === c.exercise)?.archived).map(config => {
             const isCustom = !isBuiltInExercise(config.exercise);
             const customEx = isCustom ? customExercises.find(e => e.id === config.exercise) : null;
             return (
@@ -667,23 +705,23 @@ RULES:
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                     <div>
                       <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Sets</label>
-                      <Input type="number" inputMode="numeric" value={config.targetSets || ''} onChange={e => updateConfig(config.exercise, { targetSets: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-8 mt-1" min={1} max={10} />
+                      <Input type="number" inputMode="numeric" value={config.targetSets || ''} onChange={e => updateConfig(config.exercise, { targetSets: e.target.value === '' ? 0 : Number(e.target.value) })} onBlur={() => workoutActions.sanitizeConfig(config.exercise)} className="h-8 mt-1" min={1} max={10} />
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Weight</label>
-                      <Input type="number" inputMode="decimal" value={config.currentWeight || ''} onChange={e => updateConfig(config.exercise, { currentWeight: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-8 mt-1" />
+                      <Input type="number" inputMode="decimal" value={config.currentWeight || ''} onChange={e => updateConfig(config.exercise, { currentWeight: e.target.value === '' ? 0 : Number(e.target.value) })} onBlur={() => workoutActions.sanitizeConfig(config.exercise)} className="h-8 mt-1" />
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Increment</label>
-                      <Input type="number" inputMode="decimal" value={config.weightIncrement || ''} onChange={e => updateConfig(config.exercise, { weightIncrement: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-8 mt-1" step={2.5} />
+                      <Input type="number" inputMode="decimal" value={config.weightIncrement || ''} onChange={e => updateConfig(config.exercise, { weightIncrement: e.target.value === '' ? 0 : Number(e.target.value) })} onBlur={() => workoutActions.sanitizeConfig(config.exercise)} className="h-8 mt-1" step={2.5} />
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Rep Min</label>
-                      <Input type="number" inputMode="numeric" value={config.repRangeMin || ''} onChange={e => updateConfig(config.exercise, { repRangeMin: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-8 mt-1" />
+                      <Input type="number" inputMode="numeric" value={config.repRangeMin || ''} onChange={e => updateConfig(config.exercise, { repRangeMin: e.target.value === '' ? 0 : Number(e.target.value) })} onBlur={() => workoutActions.sanitizeConfig(config.exercise)} className="h-8 mt-1" />
                     </div>
                     <div>
                       <label className="text-xs text-muted-foreground uppercase tracking-wider font-medium">Rep Max</label>
-                      <Input type="number" inputMode="numeric" value={config.repRangeMax || ''} onChange={e => updateConfig(config.exercise, { repRangeMax: e.target.value === '' ? 0 : Number(e.target.value) })} className="h-8 mt-1" />
+                      <Input type="number" inputMode="numeric" value={config.repRangeMax || ''} onChange={e => updateConfig(config.exercise, { repRangeMax: e.target.value === '' ? 0 : Number(e.target.value) })} onBlur={() => workoutActions.sanitizeConfig(config.exercise)} className="h-8 mt-1" />
                     </div>
                   </div>
                 </CardContent>

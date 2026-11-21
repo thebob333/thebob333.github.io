@@ -5,6 +5,7 @@ import {
 } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { isDateKey, weekdayName } from '@/lib/dates';
+import { DAY_END_MIN } from '@/lib/plan-autofill';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -86,6 +87,14 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
 
   const handleSave = () => {
     if (!form.title?.trim()) { toast.error('Title required'); return; }
+    // The planner ends at 11 PM — keep routines inside the day.
+    const startMin = (form.startHour ?? 6) * 60 + (form.startMinute ?? 0);
+    const maxDuration = DAY_END_MIN - startMin;
+    if (maxDuration <= 0) { toast.error('Pick a start time before 11 PM'); return; }
+    if ((form.durationMinutes ?? 30) > maxDuration) {
+      form.durationMinutes = maxDuration;
+      toast(`Shortened to ${maxDuration} min so it ends by 11 PM`);
+    }
     if (editing) {
       persist(blocks.map(b => b.id === editing.id ? { ...b, ...form } as RepeatableBlock : b));
       toast.success('Template updated');
@@ -107,8 +116,12 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
   };
 
   const handleDelete = (id: string) => {
-    persist(blocks.filter(b => b.id !== id));
-    toast.success('Template removed');
+    const removed = blocks.find(b => b.id === id);
+    stores.REPEATABLE_BLOCKS.update(prev => prev.filter(b => b.id !== id));
+    onChanged?.();
+    toast.success('Routine removed', removed ? {
+      action: { label: 'Undo', onClick: () => stores.REPEATABLE_BLOCKS.update(prev => (prev.some(b => b.id === id) ? prev : [...prev, removed])) },
+    } : undefined);
   };
 
   const toggleEnabled = (id: string) => {
@@ -123,7 +136,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
     });
   };
 
-  const hours = Array.from({ length: 19 }, (_, i) => i + 5); // 5 AM to 11 PM
+  const hours = Array.from({ length: 18 }, (_, i) => i + 5); // 5 AM to 10 PM starts (planner ends at 11 PM)
 
   return (
     <div className="space-y-3">

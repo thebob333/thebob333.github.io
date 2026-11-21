@@ -1,4 +1,5 @@
 import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
+import { ENERGY_LEVELS } from '@/lib/people';
 import { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -61,13 +62,6 @@ const INTERACTION_TYPES: { value: InteractionType; label: string; icon: typeof P
   { value: 'meeting', label: 'Meeting', icon: Briefcase },
 ];
 
-const ENERGY_LEVELS = [
-  { value: 1 as const, label: 'Drained', emoji: '😮‍💨' },
-  { value: 2 as const, label: 'Low', emoji: '😐' },
-  { value: 3 as const, label: 'Neutral', emoji: '🙂' },
-  { value: 4 as const, label: 'Good', emoji: '😊' },
-  { value: 5 as const, label: 'Energized', emoji: '🔥' },
-];
 
 const getTagInfo = (tag: RelationshipTag) =>
   RELATIONSHIP_TAGS.find(t => t.value === tag) || RELATIONSHIP_TAGS[RELATIONSHIP_TAGS.length - 1];

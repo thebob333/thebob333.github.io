@@ -55,9 +55,15 @@ Types and utility functions for this hierarchy live in `src/types/goals.ts`.
 ### Workout Domain
 
 Workout types are in `src/types/workout.ts`. Core domain logic lives in:
-- `src/lib/progressive-overload.ts` — weight/rep progression suggestions
+- `src/lib/progressive-overload.ts` — the single source of progression logic: `getProgressionSuggestion` (shown in the UI) and `planNextSession` (applied after logging; increases only, deloads are suggested). Bodyweight lifts progress by reps and their PRs are max reps.
+- The workout being logged lives in `stores.ACTIVE_WORKOUT` (`activeWorkoutActions` in `src/hooks/useWorkouts.ts`), so it survives navigation and the app being closed.
 - `src/lib/achievements.ts` — badge/milestone evaluation
 - `src/lib/strength-standards.ts` — strength benchmarks by bodyweight
+
+### Other domain modules
+
+- `src/lib/goal-plan-parser.ts` — parses AI-written goal plans (tolerant of markdown, missing dates) and merges them into a goal without duplicating phases/tasks/to-dos.
+- `src/lib/plan-autofill.ts` — fills a Plan day from routines and due to-dos; blocks remember their source (`sourceTemplateId` / `todoId`) and removed ones are remembered per day in `stores.PLAN_DISMISSED`.
 
 ### Storage Keys
 

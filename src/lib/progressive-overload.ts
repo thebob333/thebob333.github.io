@@ -24,116 +24,181 @@ export interface ProgressionSuggestion {
   e1rm?: number;
 }
 
-function getSessionAvgRpe(session: ExerciseLog): number {
-  return session.sets.reduce((s, set) => s + set.rpe, 0) / session.sets.length;
+export interface ProgressionOptions {
+  /** Bodyweight movements progress by reps rather than added weight. */
+  bodyweight?: boolean;
 }
 
-function getBestSetE1RM(session: ExerciseLog): number {
+const DELOAD_FACTOR = 0.9; // a normal deload takes ~10% off, not 40%+
+
+function avgRpe(session: ExerciseLog): number {
+  return session.sets.reduce((s, set) => s + (set.rpe || 0), 0) / session.sets.length;
+}
+
+function bestSetE1RM(session: ExerciseLog): number {
   return Math.max(...session.sets.map(s => estimateE1RM(s.weight, s.reps)));
 }
 
+function roundTo(weight: number, step: number): number {
+  const s = step > 0 ? step : 5;
+  return Math.max(0, Math.round(weight / s) * s);
+}
+
+const withSets = (logs: ExerciseLog[]) => logs.filter(l => Array.isArray(l.sets) && l.sets.length > 0);
+
+/**
+ * What to do next session for one exercise. This is the single source of
+ * truth: the UI shows it, and `planNextSession` applies it after logging.
+ */
 export function getProgressionSuggestion(
   config: ExerciseConfig,
-  recentSessions: ExerciseLog[]
+  history: ExerciseLog[],
+  opts: ProgressionOptions = {},
 ): ProgressionSuggestion {
+  const recentSessions = withSets(history);
   if (recentSessions.length === 0) {
     return { type: 'hold', message: 'No data yet. Complete your first session!' };
   }
 
   const latest = recentSessions[0];
+  const unit = opts.bodyweight && config.currentWeight === 0 ? '' : ' lbs';
   const latestMaxWeight = Math.max(...latest.sets.map(s => s.weight));
   const allSetsHitMax = latest.sets.every(s => s.reps >= config.repRangeMax);
   const allSetsHitMin = latest.sets.every(s => s.reps >= config.repRangeMin);
-  const avgRpe = getSessionAvgRpe(latest);
-  const e1rm = getBestSetE1RM(latest);
+  const rpe = avgRpe(latest);
+  const e1rm = opts.bodyweight ? 0 : bestSetE1RM(latest);
   const e1rmStr = e1rm > 0 ? ` (e1RM: ${e1rm} lbs)` : '';
+  const weightStr = (w: number) => (opts.bodyweight && w === 0 ? 'bodyweight' : `${w}${unit}`);
 
-  // ─── Already bumped check ───
-  // If config weight is higher than what was lifted, a bump already happened
-  if (latestMaxWeight < config.currentWeight) {
+  // ─── The plan was already adjusted after the last session ───
+  const adj = config.lastAdjustment;
+  if (adj && new Date(adj.at).getTime() >= new Date(latest.date).getTime()) {
+    const verb = adj.type === 'deload' ? 'Deloaded' : adj.type === 'increase_reps' ? 'Rep target raised' : 'Weight increased';
     return {
       type: 'hold',
-      message: `Weight bumped to ${config.currentWeight} lbs. Hit ${config.repRangeMin}–${config.repRangeMax} reps at new weight.${e1rmStr}`,
+      message: `${verb} — aim for ${config.repRangeMin}–${config.repRangeMax} reps at ${weightStr(config.currentWeight)}.${e1rmStr}`,
       suggestedWeight: config.currentWeight,
       suggestedReps: config.repRangeMin,
       e1rm,
     };
   }
 
-  // ─── Fatigue detection (RPE trending up across 3+ sessions at same weight) ───
+  // ─── Fatigue (RPE climbing across 3 sessions at the same weight) ───
   if (recentSessions.length >= 3) {
-    const sameWeightSessions = recentSessions.slice(0, 4).filter(s =>
-      Math.max(...s.sets.map(set => set.weight)) === latestMaxWeight
-    );
-    if (sameWeightSessions.length >= 3) {
-      const rpes = sameWeightSessions.map(getSessionAvgRpe);
-      // Check if RPE is consistently climbing (each session higher than the previous)
-      const isClimbing = rpes.length >= 3 && rpes[0] > rpes[1] && rpes[1] > rpes[2];
-      if (isClimbing && avgRpe >= 4.5) {
-        const deloadWeight = Math.round(config.currentWeight * 0.6 / 5) * 5;
+    const sameWeight = recentSessions.slice(0, 4).filter(s => Math.max(...s.sets.map(x => x.weight)) === latestMaxWeight);
+    if (sameWeight.length >= 3) {
+      const rpes = sameWeight.map(avgRpe);
+      const climbing = rpes[0] > rpes[1] && rpes[1] > rpes[2];
+      if (climbing && rpe >= 4.5) {
+        const deloadWeight = roundTo(config.currentWeight * DELOAD_FACTOR, config.weightIncrement);
         return {
           type: 'fatigue_warning',
-          message: `Fatigue building — RPE climbing across sessions (${rpes.slice(0, 3).map(r => r.toFixed(1)).join(' → ')}). Consider a deload to ${deloadWeight} lbs or a rest day.${e1rmStr}`,
-          suggestedWeight: deloadWeight,
+          message: `Fatigue building — effort climbing across sessions (${rpes.slice(0, 3).map(r => r.toFixed(1)).join(' → ')}). Take a rest day${config.currentWeight > 0 ? ` or drop to ${deloadWeight} lbs for a session` : ''}.${e1rmStr}`,
+          suggestedWeight: config.currentWeight > 0 ? deloadWeight : undefined,
           e1rm,
         };
       }
     }
   }
 
-  // ─── Stalling (2+ sessions not hitting min reps) ───
-  const stalledSessions = recentSessions.slice(0, 3).filter(session =>
-    session.sets.some(s => s.reps < config.repRangeMin)
-  );
-  if (stalledSessions.length >= 2) {
-    const deloadWeight = Math.round(config.currentWeight * 0.55 / 5) * 5;
+  // ─── Stalling (2 of the last 3 sessions missed the minimum reps) ───
+  const stalled = recentSessions.slice(0, 3).filter(session => session.sets.some(s => s.reps < config.repRangeMin));
+  if (stalled.length >= 2) {
+    if (config.currentWeight > 0) {
+      const deloadWeight = roundTo(config.currentWeight * DELOAD_FACTOR, config.weightIncrement);
+      return {
+        type: 'deload',
+        message: `Stalled for a couple of sessions. Drop to ${deloadWeight} lbs (about 10% lighter), then build back up.${e1rmStr}`,
+        suggestedWeight: deloadWeight,
+        e1rm,
+      };
+    }
     return {
-      type: 'deload',
-      message: `Stalling detected. Deload to ${deloadWeight} lbs for a recovery week, then build back up.${e1rmStr}`,
-      suggestedWeight: deloadWeight,
-      e1rm,
+      type: 'hold',
+      message: `Reps have stalled. Rest well, keep form strict, and aim for ${config.repRangeMin} reps on every set.`,
     };
   }
 
-  // ─── All sets hit max reps + RPE ≤ 4 → increase weight ───
-  if (allSetsHitMax && avgRpe <= 4) {
+  // ─── Every set hit the top of the range with effort to spare ───
+  if (allSetsHitMax && rpe <= 4) {
+    if (opts.bodyweight && config.currentWeight === 0) {
+      return {
+        type: 'increase_reps',
+        message: `All sets at ${config.repRangeMax}+ reps (effort ${rpe.toFixed(1)})! Raise your target to ${config.repRangeMin + 1}–${config.repRangeMax + 1} reps, or add weight.`,
+        suggestedReps: config.repRangeMin + 1,
+      };
+    }
     const newWeight = config.currentWeight + config.weightIncrement;
     return {
       type: 'increase_weight',
-      message: `All sets at ${config.repRangeMax} reps (RPE ${avgRpe.toFixed(1)})! Increase to ${newWeight} lbs and reset to ${config.repRangeMin} reps.${e1rmStr}`,
+      message: `All sets at ${config.repRangeMax} reps (effort ${rpe.toFixed(1)})! Increase to ${newWeight} lbs and reset to ${config.repRangeMin} reps.${e1rmStr}`,
       suggestedWeight: newWeight,
       suggestedReps: config.repRangeMin,
       e1rm,
     };
   }
 
-  // ─── All sets hit max BUT RPE is high → hold weight, reduce RPE first ───
-  if (allSetsHitMax && avgRpe > 4) {
+  if (allSetsHitMax) {
     return {
       type: 'hold',
-      message: `Hit max reps but RPE is high (${avgRpe.toFixed(1)}). Repeat at ${config.currentWeight} lbs — when RPE drops below 4, you'll progress.${e1rmStr}`,
+      message: `Hit max reps but effort was high (${rpe.toFixed(1)}). Repeat at ${weightStr(config.currentWeight)} — when it feels easier, you'll progress.${e1rmStr}`,
       suggestedWeight: config.currentWeight,
       e1rm,
     };
   }
 
-  // ─── Hitting minimum but not max → increase reps ───
   if (allSetsHitMin) {
-    const targetReps = Math.min(latest.sets[0].reps + 1, config.repRangeMax);
+    const targetReps = Math.min(Math.min(...latest.sets.map(s => s.reps)) + 1, config.repRangeMax);
     return {
       type: 'increase_reps',
-      message: `Good work at RPE ${avgRpe.toFixed(1)}! Add 1 rep per set next session. Target: ${targetReps} reps at ${config.currentWeight} lbs.${e1rmStr}`,
+      message: `Good work at effort ${rpe.toFixed(1)}! Add 1 rep per set next time. Target: ${targetReps} reps at ${weightStr(config.currentWeight)}.${e1rmStr}`,
       suggestedReps: targetReps,
       e1rm,
     };
   }
 
-  // ─── Not hitting minimum → hold ───
   return {
     type: 'hold',
-    message: `Keep at ${config.currentWeight} lbs. Focus on hitting ${config.repRangeMin} reps on all sets (current RPE: ${avgRpe.toFixed(1)}).${e1rmStr}`,
+    message: `Stay at ${weightStr(config.currentWeight)}. Focus on hitting ${config.repRangeMin} reps on every set (effort ${rpe.toFixed(1)}).${e1rmStr}`,
     e1rm,
   };
+}
+
+/**
+ * After a session is logged: the config change to apply automatically, if any.
+ * Increases are applied (you earned them); deloads are only suggested.
+ */
+export function planNextSession(
+  config: ExerciseConfig,
+  historyIncludingNew: ExerciseLog[],
+  opts: ProgressionOptions = {},
+  now = new Date(),
+): { config: ExerciseConfig; change: 'increase_weight' | 'increase_reps' } | null {
+  const s = getProgressionSuggestion({ ...config, lastAdjustment: undefined }, historyIncludingNew, opts);
+  const at = now.toISOString();
+  if (s.type === 'increase_weight' && s.suggestedWeight !== undefined && s.suggestedWeight > config.currentWeight) {
+    return {
+      change: 'increase_weight',
+      config: { ...config, currentWeight: s.suggestedWeight, lastAdjustment: { type: 'increase_weight', at, from: config.currentWeight } },
+    };
+  }
+  if (s.type === 'increase_reps' && opts.bodyweight && config.currentWeight === 0 && s.suggestedReps === config.repRangeMin + 1) {
+    return {
+      change: 'increase_reps',
+      config: {
+        ...config,
+        repRangeMin: config.repRangeMin + 1,
+        repRangeMax: config.repRangeMax + 1,
+        lastAdjustment: { type: 'increase_reps', at, from: config.repRangeMin },
+      },
+    };
+  }
+  return null;
+}
+
+/** Apply a suggested deload chosen by the user. */
+export function applyDeload(config: ExerciseConfig, weight: number, now = new Date()): ExerciseConfig {
+  return { ...config, currentWeight: weight, lastAdjustment: { type: 'deload', at: now.toISOString(), from: config.currentWeight } };
 }
 
 export function getExerciseHistory(
@@ -145,21 +210,32 @@ export function getExerciseHistory(
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
-export function getPersonalRecords(sessions: WorkoutSession[]): PersonalRecord[] {
+/**
+ * Best set per exercise. Weighted lifts: heaviest weight (then reps).
+ * Bodyweight lifts: most reps (then weight) — so a weighted set with fewer
+ * reps no longer replaces your max-reps record.
+ */
+export function getPersonalRecords(
+  sessions: WorkoutSession[],
+  isBodyweight: (exercise: string) => boolean = id => id === 'pull_up',
+): PersonalRecord[] {
   const prMap = new Map<string, PersonalRecord>();
 
   for (const session of sessions) {
     for (const ex of session.exercises) {
+      const bw = isBodyweight(ex.exercise);
       for (const set of ex.sets) {
-        const volume = set.weight * set.reps;
         const current = prMap.get(ex.exercise);
-        if (!current || set.weight > current.weight || (set.weight === current.weight && set.reps > current.reps)) {
+        const better = !current || (bw
+          ? set.reps > current.reps || (set.reps === current.reps && set.weight > current.weight)
+          : set.weight > current.weight || (set.weight === current.weight && set.reps > current.reps));
+        if (better) {
           prMap.set(ex.exercise, {
             exercise: ex.exercise,
             weight: set.weight,
             reps: set.reps,
             date: ex.date,
-            volumeLoad: volume,
+            volumeLoad: set.weight * set.reps,
           });
         }
       }

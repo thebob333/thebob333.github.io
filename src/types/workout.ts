@@ -29,6 +29,14 @@ export interface CustomExercise {
   equipment: EquipmentType;
   muscleGroups: MuscleGroup[];
   notes?: string;
+  /** Removed from pickers but kept so old sessions still show its name. */
+  archived?: boolean;
+}
+
+/** Bodyweight movements progress by reps, and their PRs are max reps. */
+export function isBodyweightExercise(id: string, customExercises: CustomExercise[] = []): boolean {
+  if (id === 'pull_up') return true;
+  return customExercises.find(e => e.id === id)?.equipment === 'bodyweight';
 }
 
 // ─── Labels ───
@@ -78,6 +86,29 @@ export interface ExerciseConfig {
   repRangeMax: number;
   currentWeight: number;
   weightIncrement: number; // lbs/kg to jump
+  /** Set when the app (or you) changed the plan after a session, so the next suggestion knows. */
+  lastAdjustment?: { type: 'increase_weight' | 'increase_reps' | 'deload'; at: string; from: number };
+}
+
+export function defaultConfigFor(exercise: string, bodyweight = false): ExerciseConfig {
+  return bodyweight
+    ? { exercise, targetSets: 3, repRangeMin: 6, repRangeMax: 10, currentWeight: 0, weightIncrement: 5 }
+    : { exercise, targetSets: 3, repRangeMin: 8, repRangeMax: 12, currentWeight: 45, weightIncrement: 5 };
+}
+
+/** Keep configs sane: at least 1 set, rep min ≤ rep max, no negative weights. */
+export function sanitizeConfig(c: ExerciseConfig): ExerciseConfig {
+  const targetSets = Math.min(10, Math.max(1, Math.round(c.targetSets || 1)));
+  const repRangeMin = Math.max(1, Math.round(c.repRangeMin || 1));
+  const repRangeMax = Math.max(repRangeMin, Math.round(c.repRangeMax || repRangeMin));
+  return {
+    ...c,
+    targetSets,
+    repRangeMin,
+    repRangeMax,
+    currentWeight: Math.max(0, Number(c.currentWeight) || 0),
+    weightIncrement: Math.max(0, Number(c.weightIncrement) || 0),
+  };
 }
 
 export interface WeeklyPlan {

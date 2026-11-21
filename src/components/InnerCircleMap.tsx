@@ -15,21 +15,60 @@ const RING_LABELS: Record<CircleRing, string> = {
   distant: 'Distant',
 };
 
-const INFLUENCE_COLORS: Record<InfluenceTag, string> = {
-  energizer: 'hsl(45, 90%, 50%)',
-  challenger: 'hsl(280, 80%, 55%)',
-  supporter: 'hsl(210, 80%, 50%)',
-  drainer: 'hsl(0, 70%, 50%)',
-  neutral: 'hsl(200, 10%, 50%)',
+const INFLUENCE_HSL: Record<InfluenceTag, string> = {
+  energizer: '45 90% 50%',
+  challenger: '280 80% 55%',
+  supporter: '210 80% 50%',
+  drainer: '0 70% 50%',
+  neutral: '200 10% 50%',
 };
+const hsl = (tag: InfluenceTag, alpha = 1) => `hsl(${INFLUENCE_HSL[tag]} / ${alpha})`;
+const INFLUENCE_COLORS = Object.fromEntries(Object.keys(INFLUENCE_HSL).map(k => [k, hsl(k as InfluenceTag)])) as Record<InfluenceTag, string>;
+const INFLUENCE_BG = Object.fromEntries(Object.keys(INFLUENCE_HSL).map(k => [k, hsl(k as InfluenceTag, 0.15)])) as Record<InfluenceTag, string>;
 
-const INFLUENCE_BG: Record<InfluenceTag, string> = {
-  energizer: 'hsl(45, 90%, 50%, 0.15)',
-  challenger: 'hsl(280, 80%, 55%, 0.15)',
-  supporter: 'hsl(210, 80%, 50%, 0.15)',
-  drainer: 'hsl(0, 70%, 50%, 0.15)',
-  neutral: 'hsl(200, 10%, 50%, 0.15)',
-};
+// Ring radii as % of the map (from center).
+const RING_RADII: Record<CircleRing, number> = { core: 15, close: 27, extended: 38, distant: 46 };
+const RING_CIRCLE_RADII: Record<CircleRing, number> = { core: 14, close: 26, extended: 37, distant: 47 };
+const AVATAR_SPACING = 7; // % of map width between avatar centers
+
+interface Placed { contact: Contact; x: number; y: number; size: number; index: number }
+interface Overflow { ring: CircleRing; x: number; y: number; count: number }
+
+/**
+ * Spread a ring's people evenly. If they don't fit, use two lanes with smaller
+ * avatars; anything beyond that collapses into a "+N" bubble instead of piling up.
+ */
+function layoutRing(ring: CircleRing, people: Contact[]): { placed: Placed[]; overflow?: Overflow } {
+  const r = RING_RADII[ring];
+  const capacity = Math.max(1, Math.floor((2 * Math.PI * r) / AVATAR_SPACING));
+  const placed: Placed[] = [];
+  const toXY = (radius: number, angle: number) => ({ x: 50 + radius * Math.cos(angle), y: 50 + radius * Math.sin(angle) });
+
+  if (people.length <= capacity) {
+    people.forEach((contact, i) => {
+      const { x, y } = toXY(r, (2 * Math.PI * i) / Math.max(people.length, 1) - Math.PI / 2);
+      placed.push({ contact, x, y, size: 28, index: i });
+    });
+    return { placed };
+  }
+
+  const lanes = [r + 2, r - 3];
+  const perLane = Math.floor((2 * Math.PI * (r - 3)) / (AVATAR_SPACING * 0.8));
+  const max = perLane * lanes.length;
+  const shown = people.length > max ? people.slice(0, max - 1) : people;
+  shown.forEach((contact, i) => {
+    const lane = i % lanes.length;
+    const slot = Math.floor(i / lanes.length);
+    const inLane = Math.ceil(shown.length / lanes.length);
+    const angle = (2 * Math.PI * slot) / inLane - Math.PI / 2 + (lane ? Math.PI / inLane : 0);
+    const { x, y } = toXY(lanes[lane], angle);
+    placed.push({ contact, x, y, size: 22, index: i });
+  });
+  const overflow = people.length > max
+    ? { ring, ...toXY(r, -Math.PI / 2 - 0.0001), count: people.length - shown.length }
+    : undefined;
+  return { placed, overflow };
+}
 
 interface InnerCircleMapProps {
   contacts: Contact[];
@@ -55,31 +94,22 @@ export default function InnerCircleMap({
   // Group contacts by ring
   const byRing = useMemo(() => {
     const groups: Record<CircleRing, Contact[]> = { core: [], close: [], extended: [], distant: [] };
-    contacts.forEach(c => groups[c.circleRing].push(c));
+    contacts.forEach(c => (groups[c.circleRing] ?? groups.distant).push(c));
     return groups;
   }, [contacts]);
 
   // Ring counts for stats
   const ringCounts = RING_ORDER.map(r => ({ ring: r, count: byRing[r].length }));
 
-  // Calculate positions for contacts on each ring
-  // Ring radii as percentages of container (from center)
-  const RING_RADII = { core: 15, close: 27, extended: 38, distant: 48 };
-  const RING_CIRCLE_RADII = { core: 14, close: 26, extended: 37, distant: 47 };
-
-  const positionedContacts = useMemo(() => {
-    const result: { contact: Contact; x: number; y: number; ring: CircleRing }[] = [];
+  const { positionedContacts, overflows } = useMemo(() => {
+    const placed: Placed[] = [];
+    const overflows: Overflow[] = [];
     RING_ORDER.forEach(ring => {
-      const ringContacts = byRing[ring];
-      const radius = RING_RADII[ring];
-      ringContacts.forEach((contact, i) => {
-        const angle = (2 * Math.PI * i) / Math.max(ringContacts.length, 1) - Math.PI / 2;
-        const x = 50 + radius * Math.cos(angle);
-        const y = 50 + radius * Math.sin(angle);
-        result.push({ contact, x, y, ring });
-      });
+      const res = layoutRing(ring, byRing[ring]);
+      placed.push(...res.placed);
+      if (res.overflow) overflows.push(res.overflow);
     });
-    return result;
+    return { positionedContacts: placed, overflows };
   }, [byRing]);
 
   return (
@@ -124,40 +154,53 @@ export default function InnerCircleMap({
           </svg>
 
           {/* Contact avatars */}
-          {positionedContacts.map(({ contact, x, y }) => {
+          {positionedContacts.map(({ contact, x, y, size, index }) => {
             const streak = streakStatus(contact);
             const isSelected = selectedId === contact.id;
             const streakColor = STREAK_RING_COLORS[streak];
-            const influenceColor = INFLUENCE_COLORS[contact.influenceTag];
-            const influenceBg = INFLUENCE_BG[contact.influenceTag];
+            const tag = INFLUENCE_HSL[contact.influenceTag] ? contact.influenceTag : 'neutral';
 
             return (
-              <motion.button
+              // The wrapper owns positioning; framer-motion owns scale (so they don't fight over `transform`).
+              <div
                 key={contact.id}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: isSelected ? 1.3 : 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 20, delay: Math.random() * 0.3 }}
-                className="absolute flex items-center justify-center rounded-full cursor-pointer z-10"
-                style={{
-                  left: `${x}%`,
-                  top: `${y}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: '28px',
-                  height: '28px',
-                  backgroundColor: influenceBg,
-                  color: influenceColor,
-                  border: streak !== 'no-goal' ? `2px solid ${streakColor}` : `1.5px solid ${influenceColor}40`,
-                  boxShadow: isSelected ? `0 0 12px ${influenceColor}40` : 'none',
-                  fontSize: '11px',
-                  fontWeight: 600,
-                }}
-                onClick={() => setSelectedId(isSelected ? null : contact.id)}
-                title={contact.name}
+                className="absolute z-10"
+                style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)', zIndex: isSelected ? 20 : 10 }}
               >
-                {contact.name.charAt(0).toUpperCase()}
-              </motion.button>
+                <motion.button
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: isSelected ? 1.3 : 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 20, delay: Math.min(index * 0.02, 0.3) }}
+                  className="flex items-center justify-center rounded-full cursor-pointer"
+                  style={{
+                    width: size,
+                    height: size,
+                    backgroundColor: hsl(tag, 0.15),
+                    color: hsl(tag),
+                    border: streak !== 'no-goal' ? `2px solid ${streakColor}` : `1.5px solid ${hsl(tag, 0.25)}`,
+                    boxShadow: isSelected ? `0 0 12px ${hsl(tag, 0.25)}` : 'none',
+                    fontSize: size < 26 ? 9 : 11,
+                    fontWeight: 600,
+                  }}
+                  onClick={() => setSelectedId(isSelected ? null : contact.id)}
+                  title={contact.name}
+                  aria-label={contact.name}
+                >
+                  {contact.name.charAt(0).toUpperCase()}
+                </motion.button>
+              </div>
             );
           })}
+          {overflows.map(o => (
+            <div
+              key={o.ring}
+              className="absolute z-10 flex h-7 min-w-7 items-center justify-center rounded-full border border-border bg-card px-1.5 text-[10px] font-semibold text-muted-foreground shadow-sm"
+              style={{ left: `${o.x}%`, top: `${o.y}%`, transform: 'translate(-50%, -50%)' }}
+              title={`${o.count} more in ${RING_LABELS[o.ring]} — see the list view`}
+            >
+              +{o.count}
+            </div>
+          ))}
         </div>
       </div>
 

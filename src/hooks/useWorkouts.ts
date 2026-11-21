@@ -1,39 +1,46 @@
-import { WorkoutSession, ExerciseConfig, getExerciseLabel, CustomExercise } from '@/types/workout';
-import { stores, generateId } from '@/lib/storage';
+import {
+  WorkoutSession, ExerciseConfig, getExerciseLabel, CustomExercise, SetLog, SplitDay,
+  isBodyweightExercise, sanitizeConfig, defaultConfigFor,
+} from '@/types/workout';
+import { stores, generateId, type ActiveWorkout } from '@/lib/storage';
+import { getExerciseHistory, getProgressionSuggestion, planNextSession, applyDeload } from '@/lib/progressive-overload';
 import { useStore } from '@/hooks/useStore';
 import { toast } from 'sonner';
 
 const S = stores.SESSIONS;
 const CFG = stores.EXERCISE_CONFIGS;
+const AW = stores.ACTIVE_WORKOUT;
 
 export const workoutActions = {
+  /** Log a session, then apply any earned progression (one source of truth: progressive-overload.ts). */
   addSession(session: Omit<WorkoutSession, 'id'>, customExercises: CustomExercise[] = stores.CUSTOM_EXERCISES.get()): WorkoutSession {
-    const newSession = { ...session, id: generateId() };
+    const newSession: WorkoutSession = {
+      ...session,
+      id: generateId(),
+      exercises: session.exercises.filter(e => e.sets.length > 0),
+    };
     S.update(list => [...list, newSession]);
 
-    // Auto-update configs based on performance
-    const bumped: string[] = [];
+    const allSessions = S.get();
+    const changes: string[] = [];
     CFG.update(configs => {
       let changed = false;
       const next = configs.map(config => {
-        const log = session.exercises.find(e => e.exercise === config.exercise);
-        if (!log || log.sets.length === 0) return config;
-        const allHitMax = log.sets.every(s => s.reps >= config.repRangeMax);
-        const avgRpe = log.sets.reduce((s, set) => s + set.rpe, 0) / log.sets.length;
-        if (allHitMax && avgRpe <= 4) {
-          bumped.push(config.exercise);
-          changed = true;
-          return { ...config, currentWeight: config.currentWeight + config.weightIncrement };
-        }
-        return config;
+        if (!newSession.exercises.some(e => e.exercise === config.exercise)) return config;
+        const bodyweight = isBodyweightExercise(config.exercise, customExercises);
+        const plan = planNextSession(config, getExerciseHistory(allSessions, config.exercise), { bodyweight });
+        if (!plan) return config;
+        changed = true;
+        const name = getExerciseLabel(config.exercise, customExercises);
+        changes.push(plan.change === 'increase_weight'
+          ? `${name} → ${plan.config.currentWeight} lbs`
+          : `${name} → ${plan.config.repRangeMin}–${plan.config.repRangeMax} reps`);
+        return plan.config;
       });
       return changed ? next : configs;
     });
 
-    if (bumped.length > 0) {
-      const labels = bumped.map(e => getExerciseLabel(e, customExercises)).join(', ');
-      toast.success(`Weight increased for next session: ${labels} 📈`);
-    }
+    if (changes.length > 0) toast.success('Level up for next session 📈', { description: changes.join(' · ') });
     return newSession;
   },
 
@@ -41,18 +48,139 @@ export const workoutActions = {
     S.update(list => list.filter(s => s.id !== id));
   },
 
+  restoreSession(session: WorkoutSession) {
+    S.update(list => (list.some(s => s.id === session.id) ? list : [...list, session]));
+  },
+
   updateConfig(exercise: string, updates: Partial<ExerciseConfig>) {
     CFG.update(list => list.map(c => (c.exercise === exercise ? { ...c, ...updates } : c)));
   },
 
+  /** Clamp a config to sane values (run on blur so typing isn't interrupted). */
+  sanitizeConfig(exercise: string) {
+    CFG.update(list => {
+      const i = list.findIndex(c => c.exercise === exercise);
+      if (i < 0) return list;
+      const clean = sanitizeConfig(list[i]);
+      if (JSON.stringify(clean) === JSON.stringify(list[i])) return list;
+      return list.map((c, j) => (j === i ? clean : c));
+    });
+  },
+
   addConfig(config: ExerciseConfig) {
-    CFG.update(list => (list.some(c => c.exercise === config.exercise) ? list : [...list, config]));
+    CFG.update(list => (list.some(c => c.exercise === config.exercise) ? list : [...list, sanitizeConfig(config)]));
   },
 
   deleteConfig(exercise: string) {
     CFG.update(list => list.filter(c => c.exercise !== exercise));
   },
+
+  applyDeload(exercise: string, weight: number) {
+    CFG.update(list => list.map(c => (c.exercise === exercise ? applyDeload(c, weight) : c)));
+  },
+
+  /** Config for an exercise, creating a sensible default if it has none. */
+  ensureConfig(exercise: string, customExercises: CustomExercise[] = stores.CUSTOM_EXERCISES.get()): ExerciseConfig {
+    const existing = CFG.get().find(c => c.exercise === exercise);
+    if (existing) return existing;
+    const created = defaultConfigFor(exercise, isBodyweightExercise(exercise, customExercises));
+    CFG.update(list => [...list, created]);
+    return created;
+  },
 };
+
+// ─── Workout in progress (saved continuously) ────────────────────────────────
+
+function emptyWorkout(splitDay = 'push'): ActiveWorkout {
+  return { splitDay, exercises: [], notes: '', startedAt: new Date().toISOString() };
+}
+
+function updateActive(fn: (w: ActiveWorkout) => ActiveWorkout) {
+  AW.update(w => fn(w ?? emptyWorkout()));
+}
+
+export const activeWorkoutActions = {
+  setSplitDay(splitDay: SplitDay | string) {
+    updateActive(w => ({ ...w, splitDay }));
+  },
+
+  setNotes(notes: string) {
+    updateActive(w => ({ ...w, notes }));
+  },
+
+  /** Add an exercise prefilled from your last session (or your config). */
+  addExercise(exercise: string, customExercises: CustomExercise[] = stores.CUSTOM_EXERCISES.get()) {
+    const config = workoutActions.ensureConfig(exercise, customExercises);
+    const last = getExerciseHistory(S.get(), exercise).find(l => l.sets.length > 0);
+    const bodyweight = isBodyweightExercise(exercise, customExercises);
+    const suggestion = getProgressionSuggestion(config, getExerciseHistory(S.get(), exercise), { bodyweight });
+    // Prefill with exactly what the coach suggests: the current planned weight and target reps.
+    const sets: SetLog[] = last
+      ? last.sets.map(s => ({ reps: suggestion.suggestedReps ?? s.reps, weight: config.currentWeight, rpe: 3 }))
+      : Array.from({ length: config.targetSets }, () => ({ reps: config.repRangeMin, weight: config.currentWeight, rpe: 3 }));
+    updateActive(w => ({ ...w, exercises: [...w.exercises, { id: generateId(), exercise, sets }] }));
+  },
+
+  /** Replace the whole workout (e.g. from a saved workout or today's split). */
+  load(splitDay: string, exercises: { exercise: string; sets: SetLog[] }[]) {
+    AW.set({ ...emptyWorkout(splitDay), exercises: exercises.map(e => ({ id: generateId(), ...e })) });
+  },
+
+  updateSet(exerciseId: string, setIdx: number, field: keyof SetLog, value: number) {
+    updateActive(w => ({
+      ...w,
+      exercises: w.exercises.map(e => e.id !== exerciseId ? e : {
+        ...e,
+        sets: e.sets.map((s, i) => (i === setIdx ? { ...s, [field]: value } : s)),
+      }),
+    }));
+  },
+
+  addSet(exerciseId: string) {
+    updateActive(w => ({
+      ...w,
+      exercises: w.exercises.map(e => {
+        if (e.id !== exerciseId) return e;
+        const last = e.sets[e.sets.length - 1] ?? { reps: 8, weight: 0, rpe: 3 };
+        return { ...e, sets: [...e.sets, { ...last }] };
+      }),
+    }));
+  },
+
+  removeSet(exerciseId: string, setIdx: number) {
+    updateActive(w => ({
+      ...w,
+      exercises: w.exercises.map(e => (e.id !== exerciseId ? e : { ...e, sets: e.sets.filter((_, i) => i !== setIdx) })),
+    }));
+  },
+
+  removeExercise(exerciseId: string) {
+    updateActive(w => ({ ...w, exercises: w.exercises.filter(e => e.id !== exerciseId) }));
+  },
+
+  discard() {
+    AW.set(null);
+  },
+
+  /** Log it as a session and clear the draft. */
+  finish(customExercises?: CustomExercise[]): WorkoutSession | null {
+    const w = AW.get();
+    if (!w || w.exercises.length === 0) return null;
+    const date = new Date().toISOString();
+    const session = workoutActions.addSession({
+      date,
+      splitDay: w.splitDay as SplitDay,
+      exercises: w.exercises.map(e => ({ exercise: e.exercise, sets: e.sets, date, notes: w.notes || undefined })),
+      notes: w.notes || undefined,
+    }, customExercises);
+    AW.set(null);
+    return session;
+  },
+};
+
+export function useActiveWorkout() {
+  return useStore(AW);
+}
 
 export function useWorkouts(customExercises?: CustomExercise[]) {
   const sessions = useStore(S);

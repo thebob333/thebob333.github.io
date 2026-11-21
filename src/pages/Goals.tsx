@@ -20,93 +20,8 @@ import { toast } from 'sonner';
 import { ProgressRing } from '@/components/ProgressRing';
 import { WeeklyFocus, FocusStar } from '@/components/WeeklyFocus';
 
-// --- Parser types ---
-import type { EffortLevel, HabitEvolution, AdaptationProtocol } from '@/types/goals';
-
-interface ParsedHabit { title: string; frequency: string; target: string; evolution?: HabitEvolution; }
-interface ParsedTodo { title: string; deadline: string; effort?: EffortLevel; isBenchmark?: boolean; }
-interface ParsedTask { title: string; description: string; deadline: string; todos: ParsedTodo[]; habits: ParsedHabit[]; }
-interface ParsedPhase { title: string; description: string; deadline: string; tasks: ParsedTask[]; }
-interface ParseResult { phases: ParsedPhase[]; warnings: string[]; adaptationProtocol?: AdaptationProtocol; }
-
-function parseAIResponse(text: string): ParseResult {
-  const lines = text.split('\n');
-  const phases: ParsedPhase[] = [];
-  let currentPhase: ParsedPhase | null = null;
-  let currentTask: ParsedTask | null = null;
-  const warnings: string[] = [];
-  let adaptationProtocol: AdaptationProtocol | undefined;
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i];
-    const trimmed = raw.trim();
-    if (!trimmed) continue;
-
-    // Parse ADAPTATION PROTOCOL section
-    if (trimmed.startsWith('ADAPTATION PROTOCOL:') || trimmed === 'ADAPTATION PROTOCOL:') {
-      const proto: AdaptationProtocol = { ahead: '', behind: '', blocked: '' };
-      for (let j = i + 1; j < lines.length && j <= i + 10; j++) {
-        const line = lines[j]?.trim();
-        if (!line) continue;
-        if (line.startsWith('IF AHEAD:')) proto.ahead = line.replace('IF AHEAD:', '').trim();
-        else if (line.startsWith('IF BEHIND:')) proto.behind = line.replace('IF BEHIND:', '').trim();
-        else if (line.startsWith('IF BLOCKED:')) proto.blocked = line.replace('IF BLOCKED:', '').trim();
-      }
-      if (proto.ahead || proto.behind || proto.blocked) adaptationProtocol = proto;
-      break; // adaptation protocol is always at the end
-    }
-
-    const phaseMatch = trimmed.match(/^PHASE:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*$/);
-    if (phaseMatch) {
-      currentPhase = { title: phaseMatch[1].trim(), description: phaseMatch[2].trim(), deadline: phaseMatch[3], tasks: [] };
-      phases.push(currentPhase);
-      currentTask = null;
-      continue;
-    }
-
-    const taskMatch = trimmed.match(/^TASK:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*$/);
-    if (taskMatch) {
-      if (!currentPhase) { warnings.push(`Line ${i + 1}: TASK found before any PHASE, skipped`); continue; }
-      currentTask = { title: taskMatch[1].trim(), description: taskMatch[2].trim(), deadline: taskMatch[3], todos: [], habits: [] };
-      currentPhase.tasks.push(currentTask);
-      continue;
-    }
-
-    // Updated TODO parser: supports effort tags [LOW], [MED], [HIGH]
-    const todoMatch = trimmed.match(/^TODO:\s*(.+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*(?:\|\s*\[(LOW|MED|HIGH)\]\s*)?$/);
-    if (todoMatch) {
-      if (!currentTask) { warnings.push(`Line ${i + 1}: TODO found before any TASK, skipped`); continue; }
-      const title = todoMatch[1].trim();
-      const isBenchmark = /^Benchmark\s*[—–-]\s*/i.test(title);
-      currentTask.todos.push({
-        title,
-        deadline: todoMatch[2],
-        effort: (todoMatch[3] as EffortLevel) || undefined,
-        isBenchmark: isBenchmark || undefined,
-      });
-      continue;
-    }
-
-    // Updated HABIT parser: supports evolution markers [NEW], [CARRY], [INCREASE], [REPLACE]
-    const habitMatch = trimmed.match(/^HABIT:\s*(.+?)\s*\|\s*(.+?)\s*\|\s*(.+?)\s*(?:\|\s*\[(NEW|CARRY|INCREASE|REPLACE)\]\s*)?$/);
-    if (habitMatch) {
-      if (!currentTask) { warnings.push(`Line ${i + 1}: HABIT found before any TASK, skipped`); continue; }
-      currentTask.habits.push({
-        title: habitMatch[1].trim(),
-        frequency: habitMatch[2].trim(),
-        target: habitMatch[3].trim(),
-        evolution: (habitMatch[4] as HabitEvolution) || undefined,
-      });
-      continue;
-    }
-  }
-
-  if (phases.length === 0) {
-    warnings.push('No PHASE: lines found. Make sure the AI response follows the exact format.');
-  }
-
-  return { phases, warnings, adaptationProtocol };
-}
+import { parseGoalPlan, applyPlanToGoal, type ParseResult } from '@/lib/goal-plan-parser';
+import type { EffortLevel, HabitEvolution } from '@/types/goals';
 
 const statusColors: Record<string, string> = {
   not_started: 'bg-muted text-muted-foreground',
@@ -206,7 +121,8 @@ export default function GoalsPage() {
   const [newTodoDeadline, setNewTodoDeadline] = useState('');
   const [addHabitTarget, setAddHabitTarget] = useState<{ goalId: string; phaseId: string; taskId: string } | null>(null);
   const [newHabit, setNewHabit] = useState({ title: '', frequency: 'daily', target: '' });
-  const [noteText, setNoteText] = useState('');
+  // One draft per task, so typing a note in one task doesn't show up in every other one.
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [showTemplates, setShowTemplates] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const activeGoals = goals.filter(g => !g.archived);
@@ -493,13 +409,17 @@ RULES:
 - Output ONLY the plan followed by the ADAPTATION PROTOCOL`;
   };
 
-  const copyPrompt = (goal: Goal) => {
-    navigator.clipboard.writeText(generateAIPrompt(goal));
-    toast.success('AI prompt copied to clipboard!');
+  const copyPrompt = async (goal: Goal) => {
+    try {
+      await navigator.clipboard.writeText(generateAIPrompt(goal));
+      toast.success('AI prompt copied to clipboard!');
+    } catch {
+      toast.error("Couldn't copy — your browser blocked clipboard access.");
+    }
   };
 
   const handleParseResponse = () => {
-    const result = parseAIResponse(aiResponseText);
+    const result = parseGoalPlan(aiResponseText);
     setParsedResult(result);
     if (result.phases.length === 0) {
       toast.error('No phases found — check the format and try again.');
@@ -514,67 +434,18 @@ RULES:
     if (!promptGoal || !parsedResult) return;
     const goal = goals.find(g => g.id === promptGoal.id);
     if (!goal) return;
-
-    let totalTasks = 0, totalTodos = 0;
-    const updatedPhases = [...goal.phases];
-
-    for (const pp of parsedResult.phases) {
-      const existingIdx = updatedPhases.findIndex(p => p.title.toLowerCase() === pp.title.toLowerCase());
-      const tasks = pp.tasks.map((pt, ti) => ({
-        id: generateId(),
-        title: pt.title,
-        description: pt.description,
-        status: 'not_started' as const,
-        deadline: pt.deadline,
-        order: ti,
-        todos: pt.todos.map((ptd, tdi) => ({
-          id: generateId(),
-          title: ptd.title,
-          done: false,
-          order: tdi,
-          deadline: ptd.deadline,
-          effort: ptd.effort,
-          isBenchmark: ptd.isBenchmark,
-        })),
-        habits: (pt.habits || []).map(ph => ({
-          id: generateId(),
-          title: ph.title,
-          frequency: ph.frequency,
-          target: ph.target,
-          active: true,
-          evolution: ph.evolution,
-        })),
-      }));
-
-      totalTasks += tasks.length;
-      totalTodos += tasks.reduce((sum, t) => sum + t.todos.length, 0);
-      const totalHabits = tasks.reduce((sum, t) => sum + t.habits.length, 0);
-
-      if (existingIdx >= 0) {
-        const existing = updatedPhases[existingIdx];
-        updatedPhases[existingIdx] = {
-          ...existing,
-          deadline: existing.deadline || pp.deadline,
-          tasks: [...existing.tasks, ...tasks.map((t, i) => ({ ...t, order: existing.tasks.length + i }))],
-        };
-      } else {
-        updatedPhases.push({
-          id: generateId(),
-          title: pp.title,
-          description: pp.description,
-          deadline: pp.deadline,
-          tasks,
-          order: updatedPhases.length,
-        });
-      }
-    }
-
-    updateGoal(promptGoal.id, {
-      phases: updatedPhases,
-      ...(parsedResult.adaptationProtocol && { adaptationProtocol: parsedResult.adaptationProtocol }),
+    // Merges into same-named phases/tasks and skips duplicates, so re-importing is safe.
+    const { goal: merged, stats } = applyPlanToGoal(goal, parsedResult, generateId);
+    updateGoal(goal.id, { phases: merged.phases, adaptationProtocol: merged.adaptationProtocol });
+    const parts = [
+      stats.phases && `${stats.phases} phase${stats.phases !== 1 ? 's' : ''}`,
+      stats.tasks && `${stats.tasks} task${stats.tasks !== 1 ? 's' : ''}`,
+      stats.todos && `${stats.todos} to-do${stats.todos !== 1 ? 's' : ''}`,
+      stats.habits && `${stats.habits} habit${stats.habits !== 1 ? 's' : ''}`,
+    ].filter(Boolean);
+    toast.success(parts.length ? `Added ${parts.join(', ')}` : 'Nothing new to add', {
+      description: stats.skipped ? `${stats.skipped} item${stats.skipped !== 1 ? 's were' : ' was'} already in this goal and skipped.` : undefined,
     });
-    const totalHabitsAll = parsedResult.phases.reduce((s, p) => s + p.tasks.reduce((s2, t) => s2 + (t.habits || []).length, 0), 0);
-    toast.success(`Imported ${parsedResult.phases.length} phases, ${totalTasks} tasks, ${totalTodos} todos, ${totalHabitsAll} habits!`);
     setParsedResult(null);
     setAiResponseText('');
     setPromptGoal(null);
@@ -665,6 +536,17 @@ RULES:
             <Button onClick={() => setShowNewGoal(true)} className="font-semibold mt-2">
               <Plus className="h-4 w-4 mr-2" /> Create Your First Goal
             </Button>
+          </CardContent>
+        </Card>
+      ) : activeGoals.length === 0 && !showArchived ? (
+        <Card className="border-dashed border-2 border-primary/20">
+          <CardContent className="flex flex-col items-center justify-center py-10 space-y-3 text-center">
+            <Archive className="h-10 w-10 text-primary/30" />
+            <p className="text-foreground font-semibold">All your goals are archived</p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowArchived(true)}>Show archived</Button>
+              <Button onClick={() => setShowNewGoal(true)} className="font-semibold"><Plus className="h-4 w-4 mr-1" /> New goal</Button>
+            </div>
           </CardContent>
         </Card>
       ) : (
@@ -916,13 +798,13 @@ RULES:
                                             <div className="flex gap-1 mt-1">
                                               <Input
                                                 placeholder="Add a note..."
-                                                value={noteText}
-                                                onChange={e => setNoteText(e.target.value)}
+                                                value={noteDrafts[task.id] ?? ''}
+                                                onChange={e => setNoteDrafts(d => ({ ...d, [task.id]: e.target.value }))}
                                                 className="h-7 text-xs"
                                                 onKeyDown={e => {
-                                                  if (e.key === 'Enter' && noteText.trim()) {
-                                                    addNote(goal.id, phase.id, task.id, noteText.trim());
-                                                    setNoteText('');
+                                                  if (e.key === 'Enter' && (noteDrafts[task.id] ?? '').trim()) {
+                                                    addNote(goal.id, phase.id, task.id, noteDrafts[task.id].trim());
+                                                    setNoteDrafts(d => ({ ...d, [task.id]: '' }));
                                                   }
                                                 }}
                                               />
@@ -930,11 +812,11 @@ RULES:
                                                 size="sm"
                                                 variant="ghost"
                                                 className="h-7 w-7 p-0"
-                                                disabled={!noteText.trim()}
+                                                disabled={!(noteDrafts[task.id] ?? '').trim()}
                                                 onClick={() => {
-                                                  if (noteText.trim()) {
-                                                    addNote(goal.id, phase.id, task.id, noteText.trim());
-                                                    setNoteText('');
+                                                  if ((noteDrafts[task.id] ?? '').trim()) {
+                                                    addNote(goal.id, phase.id, task.id, noteDrafts[task.id].trim());
+                                                    setNoteDrafts(d => ({ ...d, [task.id]: '' }));
                                                   }
                                                 }}
                                               >
