@@ -24,11 +24,15 @@ export function PageHeader({ title, subtitle, eyebrow, actions, settings = true,
   return (
     <header className="pt-1">
       {back && (
-        <button type="button" onClick={goBack} className="-ml-2 mb-1 flex h-9 items-center gap-0.5 rounded-lg pr-2 text-body font-medium text-primary">
-          <ChevronLeft className="h-5 w-5" /> Back
-        </button>
+        <div className="mb-1 flex items-center justify-between">
+          <button type="button" onClick={goBack} className="-ml-2 flex h-9 items-center gap-0.5 rounded-lg pr-2 text-body font-medium text-primary">
+            <ChevronLeft className="h-5 w-5" /> Back
+          </button>
+          {/* Detail screens without a title keep their actions on the Back row. */}
+          {!title && <div className="flex items-center gap-2">{actions}</div>}
+        </div>
       )}
-      <div className="flex items-end justify-between gap-3">
+      {(title || !back) && <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           {eyebrow && <p className="text-footnote font-semibold uppercase tracking-wide text-muted-foreground">{eyebrow}</p>}
           <h1 className="truncate text-large-title text-foreground">{title}</h1>
@@ -45,7 +49,7 @@ export function PageHeader({ title, subtitle, eyebrow, actions, settings = true,
             </Link>
           )}
         </div>
-      </div>
+      </div>}
       {subtitle && <p className="mt-1 text-body text-muted-foreground">{subtitle}</p>}
     </header>
   );

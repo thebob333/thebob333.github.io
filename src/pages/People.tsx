@@ -1,1150 +1,198 @@
-import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
-import { ENERGY_LEVELS } from '@/lib/people';
-import { PageHeader } from '@/components/app/PageHeader';
-import { RowMenu } from '@/components/app/RowMenu';
-import { RelationshipGoals } from '@/components/people/RelationshipGoals';
-import { contactActions } from '@/hooks/useContacts';
-import { useState, useRef } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
-import { Label } from '@/components/ui/label';
-import {
-  Contact, RelationshipTag, CircleRing, InfluenceTag, InteractionType, Commitment, Interaction,
-} from '@/lib/storage';
-import { useContacts } from '@/hooks/useContacts';
-import {
-  Users, Plus, Phone, Mail, Edit2, Trash2, Search, User, Target,
-  Zap, Shield, AlertTriangle, Minus, Clock, MessageSquare,
-  PhoneCall, Coffee, Briefcase, Activity, CheckCircle2, Circle,
-  CalendarClock, Repeat, HandHeart, List, CircleDot, BarChart3, Upload, Download,
-} from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Download, Plus, Search, UserPlus, Users } from 'lucide-react';
 import { toast } from 'sonner';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useContacts } from '@/hooks/useContacts';
+import { PageHeader, HeaderButton } from '@/components/app/PageHeader';
+import { ListRow } from '@/components/app/ListRow';
+import { Avatar } from '@/components/people/Avatar';
+import { ContactFormSheet } from '@/components/people/ContactFormSheet';
+import { LogInteractionSheet } from '@/components/people/LogInteractionSheet';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
+import { Button } from '@/components/ui/button';
 import InnerCircleMap from '@/components/InnerCircleMap';
 import InsightsPanel from '@/components/InsightsPanel';
+import { RINGS, lastSeenText, relationshipLabel } from '@/lib/people';
 import {
-  isContactPickerSupported, pickContactsFromPhone,
-  parseVCard, readVCardFile, findDuplicates, importedToContacts,
+  findDuplicates, importedToContacts, isContactPickerSupported, parseVCard, pickContactsFromPhone, readVCardFile,
   type ImportedContact,
 } from '@/lib/contact-import';
+import type { Contact } from '@/lib/storage';
+import { cn } from '@/lib/utils';
 
-const RELATIONSHIP_TAGS: { value: RelationshipTag; label: string; color: string }[] = [
-  { value: 'family', label: 'Family', color: '350 80% 55%' },
-  { value: 'friend', label: 'Friend', color: '210 80% 50%' },
-  { value: 'coworker', label: 'Coworker', color: '170 70% 40%' },
-  { value: 'mentor', label: 'Mentor', color: '38 90% 55%' },
-  { value: 'mentee', label: 'Mentee', color: '280 80% 55%' },
-  { value: 'partner', label: 'Partner', color: '220 60% 30%' },
-  { value: 'acquaintance', label: 'Acquaintance', color: '60 20% 40%' },
-  { value: 'other', label: 'Other', color: '200 20% 50%' },
-];
-
-const CIRCLE_RINGS: { value: CircleRing; label: string; description: string }[] = [
-  { value: 'core', label: 'Core', description: 'Daily influence' },
-  { value: 'close', label: 'Close', description: 'Weekly contact' },
-  { value: 'extended', label: 'Extended', description: 'Monthly contact' },
-  { value: 'distant', label: 'Distant', description: 'Occasional' },
-];
-
-const INFLUENCE_TAGS: { value: InfluenceTag; label: string; icon: typeof Zap; color: string }[] = [
-  { value: 'energizer', label: 'Energizer', icon: Zap, color: '45 90% 50%' },
-  { value: 'challenger', label: 'Challenger', icon: AlertTriangle, color: '280 80% 55%' },
-  { value: 'supporter', label: 'Supporter', icon: Shield, color: '210 80% 50%' },
-  { value: 'drainer', label: 'Drainer', icon: AlertTriangle, color: '0 70% 50%' },
-  { value: 'neutral', label: 'Neutral', icon: Minus, color: '200 10% 50%' },
-];
-
-const INTERACTION_TYPES: { value: InteractionType; label: string; icon: typeof Phone }[] = [
-  { value: 'call', label: 'Call', icon: PhoneCall },
-  { value: 'text', label: 'Text', icon: MessageSquare },
-  { value: 'hangout', label: 'Hangout', icon: Coffee },
-  { value: 'meeting', label: 'Meeting', icon: Briefcase },
-];
-
-
-const getTagInfo = (tag: RelationshipTag) =>
-  RELATIONSHIP_TAGS.find(t => t.value === tag) || RELATIONSHIP_TAGS[RELATIONSHIP_TAGS.length - 1];
-
-const getInfluenceInfo = (tag: InfluenceTag) =>
-  INFLUENCE_TAGS.find(t => t.value === tag) || INFLUENCE_TAGS[INFLUENCE_TAGS.length - 1];
-
-const getRingInfo = (ring: CircleRing) =>
-  CIRCLE_RINGS.find(r => r.value === ring) || CIRCLE_RINGS[CIRCLE_RINGS.length - 1];
-
-const getInteractionTypeInfo = (type: InteractionType) =>
-  INTERACTION_TYPES.find(t => t.value === type) || INTERACTION_TYPES[0];
-
-type ContactForm = {
-  name: string;
-  relationship: RelationshipTag;
-  circleRing: CircleRing;
-  influenceTag: InfluenceTag;
-  phone: string;
-  email: string;
-  notes: string;
-  plan: string;
-  interactionGoalDays: string;
-};
-
-type InteractionForm = {
-  type: InteractionType;
-  durationMinutes: string;
-  energyAfter: 1 | 2 | 3 | 4 | 5 | null;
-  note: string;
-  date: string; // YYYY-MM-DD — defaults to today, can be backdated
-};
-
-type CommitmentForm = {
-  text: string;
-  dueDate: string;
-  recurring: '' | 'weekly' | 'biweekly' | 'monthly';
-};
-
-const emptyForm = (): ContactForm => ({
-  name: '', relationship: 'friend', circleRing: 'distant', influenceTag: 'neutral',
-  phone: '', email: '', notes: '', plan: '', interactionGoalDays: '',
-});
-
-const emptyInteractionForm = (): InteractionForm => ({
-  type: 'hangout', durationMinutes: '', energyAfter: null, note: '', date: todayKey(),
-});
-
-const emptyCommitmentForm = (): CommitmentForm => ({
-  text: '', dueDate: '', recurring: '',
-});
-
-const contactToForm = (c: Contact): ContactForm => ({
-  name: c.name,
-  relationship: c.relationship,
-  circleRing: c.circleRing,
-  influenceTag: c.influenceTag,
-  phone: c.phone || '',
-  email: c.email || '',
-  notes: c.notes,
-  plan: c.plan,
-  interactionGoalDays: c.interactionGoalDays ? String(c.interactionGoalDays) : '',
-});
-
-const STREAK_COLORS = {
-  'on-track': 'text-success',
-  'due-soon': 'text-warning',
-  'overdue': 'text-destructive',
-  'no-goal': 'text-muted-foreground',
-};
-
-const STREAK_BG = {
-  'on-track': 'bg-success/10',
-  'due-soon': 'bg-warning/10',
-  'overdue': 'bg-destructive/10',
-  'no-goal': '',
-};
-
-const STREAK_LABELS = {
-  'on-track': 'On track',
-  'due-soon': 'Due soon',
-  'overdue': 'Overdue',
-  'no-goal': '',
-};
-
-/** "Today", "3d ago", or for future dates "Tomorrow" / "in 3d". Calendar days, local time. */
-function formatRelativeDate(iso: string): string {
-  const diffDays = daysBetween(dateKeyOf(iso), todayKey());
-  if (diffDays < 0) {
-    const ahead = -diffDays;
-    if (ahead === 1) return 'Tomorrow';
-    if (ahead < 7) return `in ${ahead}d`;
-    if (ahead < 30) return `in ${Math.round(ahead / 7)}w`;
-    return `in ${Math.round(ahead / 30)}mo`;
-  }
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays}d ago`;
-  if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-  return `${Math.floor(diffDays / 30)}mo ago`;
-}
+type View = 'people' | 'circle' | 'insights';
 
 export default function PeoplePage() {
-  const {
-    contacts, interactions, addContact, addContacts, updateContact, deleteContact,
-    addInteraction, deleteInteraction, getInteractionsForContact,
-    getDaysSinceLastInteraction, getStreakStatus,
-    addCommitment, completeCommitment, uncompleteCommitment, deleteCommitment, getCommitmentsForContact,
-  } = useContacts();
+  const navigate = useNavigate();
+  const { contacts, interactions, getStreakStatus, getDaysSinceLastInteraction, addContacts } = useContacts();
+  const [view, setView] = useState<View>('people');
+  const [query, setQuery] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [logFor, setLogFor] = useState<Contact | null>(null);
+  const [preview, setPreview] = useState<{ unique: ImportedContact[]; duplicates: ImportedContact[] } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  const [view, setView] = useState<'list' | 'circle' | 'insights'>('list');
-  const [search, setSearch] = useState('');
-  const [filterTag, setFilterTag] = useState<RelationshipTag | 'all'>('all');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Contact | null>(null);
-  const [form, setForm] = useState<ContactForm>(emptyForm());
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter(c => [c.name, c.notes, c.plan, c.phone, c.email].some(v => (v || '').toLowerCase().includes(q)));
+  }, [contacts, query]);
 
-  // Interaction logging state
-  const [interactionDialogOpen, setInteractionDialogOpen] = useState(false);
-  const [interactionContactId, setInteractionContactId] = useState<string | null>(null);
-  const [interactionForm, setInteractionForm] = useState<InteractionForm>(emptyInteractionForm());
+  const dueCount = contacts.filter(c => ['overdue', 'due-soon'].includes(getStreakStatus(c))).length;
 
-  // Commitment state
-  const [commitmentDialogOpen, setCommitmentDialogOpen] = useState(false);
-  const [commitmentContactId, setCommitmentContactId] = useState<string | null>(null);
-  const [commitmentForm, setCommitmentForm] = useState<CommitmentForm>(emptyCommitmentForm());
-
-  // Import state
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importPreview, setImportPreview] = useState<ImportedContact[] | null>(null);
-  const [importDuplicates, setImportDuplicates] = useState<ImportedContact[]>([]);
-
-  const handleSave = () => {
-    if (!form.name.trim()) { toast.error('Name is required'); return; }
-    const data = {
-      name: form.name.trim(),
-      relationship: form.relationship,
-      circleRing: form.circleRing,
-      influenceTag: form.influenceTag,
-      phone: form.phone || undefined,
-      email: form.email || undefined,
-      notes: form.notes,
-      plan: form.plan,
-      interactionGoalDays: form.interactionGoalDays ? Number(form.interactionGoalDays) : undefined,
-    };
-    if (editing) {
-      updateContact(editing.id, data);
-      toast.success('Contact updated');
-    } else {
-      addContact(data as Omit<Contact, 'id' | 'createdAt'>);
-      toast.success('Contact added');
+  // ─── Import ───
+  const startImport = async () => {
+    if (isContactPickerSupported()) {
+      try {
+        const picked = await pickContactsFromPhone();
+        if (picked.length) setPreview(findDuplicates(picked, contacts));
+        return;
+      } catch { /* fall back to a file */ }
     }
-    setDialogOpen(false);
-    setEditing(null);
-    setForm(emptyForm());
+    fileRef.current?.click();
   };
-
-  const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
-  const handleDelete = (id: string) => {
-    const snap = contactActions.snapshotContact(id);
-    deleteContact(id);
-    toast.success(`${snap.contact?.name ?? 'Contact'} removed`, { action: { label: 'Undo', onClick: () => contactActions.restoreContact(snap) } });
-  };
-  const removeCommitment = (c: Commitment) => {
-    deleteCommitment(c.id);
-    toast.success('Commitment deleted', { action: { label: 'Undo', onClick: () => contactActions.restoreCommitment(c) } });
-  };
-  const removeInteraction = (i: Interaction) => {
-    deleteInteraction(i.id);
-    toast.success('Interaction deleted', { action: { label: 'Undo', onClick: () => contactActions.restoreInteraction(i) } });
-  };
-
-  const openEdit = (contact: Contact) => {
-    setEditing(contact);
-    setForm(contactToForm(contact));
-    setDialogOpen(true);
-  };
-
-  const openNew = () => {
-    setEditing(null);
-    setForm(emptyForm());
-    setDialogOpen(true);
-  };
-
-  const [editingInteraction, setEditingInteraction] = useState<Interaction | null>(null);
-  const openLogInteraction = (contactId: string) => {
-    setEditingInteraction(null);
-    setInteractionContactId(contactId);
-    setInteractionForm(emptyInteractionForm());
-    setInteractionDialogOpen(true);
-  };
-  const openEditInteraction = (i: Interaction) => {
-    setEditingInteraction(i);
-    setInteractionContactId(i.contactId);
-    setInteractionForm({
-      type: i.type,
-      durationMinutes: i.durationMinutes ? String(i.durationMinutes) : '',
-      energyAfter: i.energyAfter ?? null,
-      note: i.note ?? '',
-      date: dateKeyOf(i.date),
-    });
-    setInteractionDialogOpen(true);
-  };
-
-  const handleLogInteraction = () => {
-    if (!interactionContactId) return;
-    const today = todayKey();
-    const pickedDate = interactionForm.date && interactionForm.date <= today ? interactionForm.date : today;
-    // Today keeps the exact time; a backdated entry is stored as that calendar day.
-    const date = pickedDate === today
-      ? (editingInteraction && dateKeyOf(editingInteraction.date) === today ? editingInteraction.date : new Date().toISOString())
-      : pickedDate;
-    const fields = {
-      type: interactionForm.type,
-      durationMinutes: interactionForm.durationMinutes ? Number(interactionForm.durationMinutes) : undefined,
-      energyAfter: interactionForm.energyAfter || undefined,
-      note: interactionForm.note || undefined,
-      date,
-    };
-    const contact = contacts.find(c => c.id === interactionContactId);
-    if (editingInteraction) {
-      contactActions.updateInteraction(editingInteraction.id, fields);
-      toast.success('Interaction updated');
-    } else {
-      addInteraction({ contactId: interactionContactId, ...fields });
-      toast.success(`Logged ${interactionForm.type} with ${contact?.name || 'contact'}`);
-    }
-    setInteractionDialogOpen(false);
-    setInteractionContactId(null);
-    setEditingInteraction(null);
-  };
-
-  const [editingCommitment, setEditingCommitment] = useState<Commitment | null>(null);
-  const openAddCommitment = (contactId: string) => {
-    setEditingCommitment(null);
-    setCommitmentContactId(contactId);
-    setCommitmentForm(emptyCommitmentForm());
-    setCommitmentDialogOpen(true);
-  };
-  const openEditCommitment = (c: Commitment) => {
-    setEditingCommitment(c);
-    setCommitmentContactId(c.contactId);
-    setCommitmentForm({ text: c.text, dueDate: c.dueDate ?? '', recurring: c.recurring ?? '' });
-    setCommitmentDialogOpen(true);
-  };
-
-  const handleAddCommitment = () => {
-    if (!commitmentContactId || !commitmentForm.text.trim()) {
-      toast.error('Commitment text is required');
-      return;
-    }
-    const fields = {
-      text: commitmentForm.text.trim(),
-      dueDate: commitmentForm.dueDate || undefined,
-      recurring: commitmentForm.recurring || undefined,
-    };
-    if (editingCommitment) {
-      contactActions.updateCommitment(editingCommitment.id, fields);
-      toast.success('Commitment updated');
-    } else {
-      addCommitment({ contactId: commitmentContactId, ...fields });
-      const contact = contacts.find(c => c.id === commitmentContactId);
-      toast.success(`Commitment added for ${contact?.name || 'contact'}`);
-    }
-    setCommitmentDialogOpen(false);
-    setCommitmentContactId(null);
-    setEditingCommitment(null);
-  };
-
-  const handleCompleteCommitment = (c: Commitment) => {
-    const next = completeCommitment(c.id);
-    toast.success(next?.dueDate ? `Done — next one scheduled for ${formatRelativeDate(next.dueDate)}` : 'Commitment done', {
-      action: { label: 'Undo', onClick: () => uncompleteCommitment(c.id) },
-    });
-  };
-
-  // --- Import handlers ---
-  const handleImportFromPhone = async () => {
-    try {
-      const picked = await pickContactsFromPhone();
-      if (picked.length === 0) return;
-      const { unique, duplicates } = findDuplicates(picked, contacts);
-      setImportPreview(unique);
-      setImportDuplicates(duplicates);
-    } catch {
-      toast.error('Contact import not supported on this device. Try importing a .vcf file instead.');
-    }
-  };
-
-  const handleVcfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ''; // allow choosing the same file again
+    e.target.value = '';
     if (!file) return;
     try {
-      const text = await readVCardFile(file);
-      const parsed = parseVCard(text);
-      if (parsed.length === 0) {
-        toast.error('No contacts found in that file');
-        return;
-      }
-      const { unique, duplicates } = findDuplicates(parsed, contacts);
-      setImportPreview(unique);
-      setImportDuplicates(duplicates);
+      const parsed = parseVCard(await readVCardFile(file));
+      if (parsed.length === 0) { toast.error('No contacts found in that file'); return; }
+      setPreview(findDuplicates(parsed, contacts));
     } catch {
       toast.error("Couldn't read that file");
     }
   };
-
-  const handleConfirmImport = () => {
-    if (!importPreview || importPreview.length === 0) return;
-    // One write for the whole batch — every contact is saved.
-    const saved = addContacts(importedToContacts(importPreview));
-    toast.success(`Imported ${saved.length} ${saved.length === 1 ? 'person' : 'people'}`);
-    setImportPreview(null);
-    setImportDuplicates([]);
+  const confirmImport = () => {
+    if (!preview?.unique.length) return;
+    const saved = addContacts(importedToContacts(preview.unique));
+    toast.success(`Imported ${saved.length} ${saved.length === 1 ? 'person' : 'people'}`, { description: 'They start in your Distant circle — move people closer any time.' });
+    setPreview(null);
   };
 
-  const filtered = contacts.filter(c => {
-    const q = search.toLowerCase();
-    const matchesSearch = !q || (c.name || '').toLowerCase().includes(q) ||
-      (c.notes || '').toLowerCase().includes(q) ||
-      (c.plan || '').toLowerCase().includes(q);
-    const matchesTag = filterTag === 'all' || c.relationship === filterTag;
-    return matchesSearch && matchesTag;
-  });
-
-  const interactionContactName = interactionContactId
-    ? contacts.find(c => c.id === interactionContactId)?.name || ''
-    : '';
-
-  const commitmentContactName = commitmentContactId
-    ? contacts.find(c => c.id === commitmentContactId)?.name || ''
-    : '';
+  const row = (c: Contact) => {
+    const status = getStreakStatus(c);
+    const days = getDaysSinceLastInteraction(c.id);
+    return (
+      <ListRow
+        key={c.id}
+        onClick={() => navigate(`/people/${c.id}`)}
+        chevron
+        leading={<Avatar contact={c} size={40} />}
+        title={c.name}
+        subtitle={`${relationshipLabel(c.relationship)} · ${lastSeenText(days)}`}
+        trailing={
+          status === 'overdue' ? <span className="rounded-full bg-destructive/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-destructive">Overdue</span>
+            : status === 'due-soon' ? <span className="rounded-full bg-warning/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-warning">Due</span>
+              : null
+        }
+      />
+    );
+  };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-4 md:space-y-6">
+    <div className="mx-auto max-w-lg space-y-5 pb-24">
       <PageHeader
         title="People"
-        subtitle="Stay close to the people who matter"
+        subtitle={contacts.length ? (dueCount ? `${dueCount} ${dueCount === 1 ? 'person' : 'people'} to check in with` : 'Everyone is up to date') : undefined}
         actions={
           <>
-            <Button
-              onClick={() => {
-                if (isContactPickerSupported()) handleImportFromPhone();
-                else fileInputRef.current?.click();
-              }}
-              size="icon"
-              variant="outline"
-              className="h-10 w-10"
-              aria-label="Import contacts"
-              title="Import contacts (.vcf)"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button onClick={openNew} className="h-10 gap-1.5 font-semibold">
-              <Plus className="h-4 w-4" /> Add
-            </Button>
+            <HeaderButton label="Import contacts" onClick={startImport}><Download className="h-[18px] w-[18px]" /></HeaderButton>
+            <HeaderButton label="Add person" primary onClick={() => setAddOpen(true)}><Plus className="h-5 w-5" /></HeaderButton>
           </>
         }
       />
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".vcf,.vcard,text/vcard,text/x-vcard"
-        className="hidden"
-        onChange={handleVcfFileChange}
-      />
-      {/* Labelled view switcher — clearer than three bare icons */}
-      <div role="tablist" aria-label="People views" className="grid grid-cols-3 gap-1 rounded-xl bg-muted p-1">
-        {([
-          { id: 'list', label: 'List', icon: List },
-          { id: 'circle', label: 'Inner circle', icon: CircleDot },
-          { id: 'insights', label: 'Insights', icon: BarChart3 },
-        ] as const).map(v => (
-          <button
-            key={v.id}
-            role="tab"
-            aria-selected={view === v.id}
-            onClick={() => setView(v.id)}
-            className={`flex h-9 items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-colors ${view === v.id ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
-          >
-            <v.icon className="h-4 w-4" /> {v.label}
-          </button>
-        ))}
-      </div>
+      <input ref={fileRef} type="file" accept=".vcf,.vcard,text/vcard,text/x-vcard" className="hidden" onChange={onFile} />
 
-      {/* Search & Filter (list view only) */}
-      {view !== 'list' ? null : (
+      {contacts.length === 0 ? (
+        <div className="relative overflow-hidden rounded-[28px] p-6 text-white" style={{ background: 'linear-gradient(135deg, hsl(192 95% 42%), hsl(236 90% 62%))' }}>
+          <Users className="h-8 w-8" />
+          <h2 className="mt-3 text-[26px] font-bold leading-tight tracking-tight">Stay close to your people.</h2>
+          <p className="mt-1 text-body text-white/85">Add the people who matter and TELOS reminds you when it's time to reach out.</p>
+          <div className="mt-5 flex gap-2">
+            <button type="button" onClick={() => setAddOpen(true)} className="pressable flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-white text-headline text-neutral-900"><UserPlus className="h-4 w-4" /> Add someone</button>
+            <button type="button" onClick={startImport} className="pressable h-12 rounded-2xl bg-white/20 px-4 text-body font-semibold">Import</button>
+          </div>
+        </div>
+      ) : (
         <>
-          <div className="flex gap-2 items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search people..." className="pl-9 h-9 text-sm" />
-            </div>
-            <Select value={filterTag} onValueChange={v => setFilterTag(v as RelationshipTag | 'all')}>
-              <SelectTrigger className="w-36 h-9 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tags</SelectItem>
-                {RELATIONSHIP_TAGS.map(t => (
-                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div role="tablist" aria-label="People views" className="grid grid-cols-3 rounded-xl bg-secondary p-1">
+            {([['people', 'People'], ['circle', 'Circle'], ['insights', 'Insights']] as [View, string][]).map(([v, label]) => (
+              <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+                className={cn('h-9 rounded-lg text-footnote font-semibold transition-colors', view === v ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground')}>
+                {label}
+              </button>
+            ))}
           </div>
 
-          {/* Stats */}
-          <div className="flex gap-4 text-[11px] font-medium text-muted-foreground">
-            <span>{contacts.length} people</span>
-            <span>{contacts.filter(c => c.circleRing === 'core').length} in core</span>
-            <span>{contacts.filter(c => c.plan).length} with plans</span>
-          </div>
+          {view === 'people' && (
+            <>
+              <label className="flex h-11 items-center gap-2 rounded-xl bg-secondary px-3">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search" className="h-full flex-1 bg-transparent text-body outline-none placeholder:text-muted-foreground" />
+              </label>
+              {RINGS.map(ring => {
+                const people = filtered.filter(c => c.circleRing === ring.value).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+                if (!people.length) return null;
+                return (
+                  <section key={ring.value} className="space-y-2">
+                    <h2 className="flex items-baseline gap-2 px-1">
+                      <span className="text-[20px] font-bold tracking-tight">{ring.label}</span>
+                      <span className="text-footnote text-muted-foreground">{people.length}</span>
+                    </h2>
+                    <div className="list-group">{people.map(row)}</div>
+                  </section>
+                );
+              })}
+              {filtered.length === 0 && <p className="py-8 text-center text-body text-muted-foreground">No one matches “{query}”.</p>}
+            </>
+          )}
+
+          {view === 'circle' && (
+            <div className="surface p-3">
+              <InnerCircleMap
+                contacts={contacts}
+                streakStatus={getStreakStatus}
+                daysSince={getDaysSinceLastInteraction}
+                onLogInteraction={id => setLogFor(contacts.find(c => c.id === id) ?? null)}
+                onEdit={c => navigate(`/people/${c.id}`)}
+              />
+            </div>
+          )}
+
+          {view === 'insights' && (
+            <InsightsPanel
+              contacts={contacts}
+              interactions={interactions}
+              streakStatus={getStreakStatus}
+              daysSince={getDaysSinceLastInteraction}
+              onLogInteraction={id => setLogFor(contacts.find(c => c.id === id) ?? null)}
+            />
+          )}
         </>
       )}
 
-      {/* Circle View */}
-      {view === 'circle' && (
-        <InnerCircleMap
-          contacts={contacts}
-          streakStatus={getStreakStatus}
-          daysSince={getDaysSinceLastInteraction}
-          onLogInteraction={openLogInteraction}
-          onEdit={openEdit}
-        />
-      )}
+      <ContactFormSheet open={addOpen} onClose={() => setAddOpen(false)} onCreated={c => navigate(`/people/${c.id}`)} />
+      <LogInteractionSheet contact={logFor} onClose={() => setLogFor(null)} />
 
-      {/* Insights View */}
-      {view === 'insights' && (
-        <InsightsPanel
-          contacts={contacts}
-          interactions={interactions}
-          streakStatus={getStreakStatus}
-          daysSince={getDaysSinceLastInteraction}
-          onLogInteraction={openLogInteraction}
-        />
-      )}
-
-      {/* List View - Contact Cards */}
-      {view === 'list' && (filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center space-y-3">
-            <Users className="h-10 w-10 mx-auto text-muted-foreground/30" />
-            {contacts.length === 0 ? (
-              <div>
-                <p className="text-foreground font-semibold">No contacts yet</p>
-                <p className="text-sm text-muted-foreground mt-1 max-w-xs mx-auto">
-                  Keep track of the people who matter. Add contacts with notes, plans, and relationship tags.
-                </p>
-                <Button onClick={openNew} size="sm" className="mt-3 font-semibold">
-                  <Plus className="h-4 w-4 mr-1" /> Add Your First Contact
-                </Button>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No matches found.</p>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-3">
-          <AnimatePresence>
-            {filtered.map((contact, i) => {
-              const tag = getTagInfo(contact.relationship);
-              const influence = getInfluenceInfo(contact.influenceTag);
-              const ring = getRingInfo(contact.circleRing);
-              const isExpanded = expandedId === contact.id;
-              const streak = getStreakStatus(contact);
-              const daysSince = getDaysSinceLastInteraction(contact.id);
-              const InfluenceIcon = influence.icon;
-              const recentInteractions = isExpanded ? getInteractionsForContact(contact.id).slice(0, 5) : [];
-              const contactCommitments = isExpanded ? getCommitmentsForContact(contact.id) : [];
-              const activeCommits = contactCommitments.filter(c => !c.completedAt);
-              const doneCommits = contactCommitments.filter(c => c.completedAt);
-
-              return (
-                <motion.div
-                  key={contact.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ delay: i * 0.03 }}
-                >
-                  <Card
-                    className={`shadow-sm cursor-pointer transition-all ${isExpanded ? 'ring-1 ring-primary/20' : 'hover:shadow-md'}`}
-                    onClick={() => setExpandedId(isExpanded ? null : contact.id)}
-                  >
-                    <CardContent className="pt-3 pb-3">
-                      <div className="flex items-center gap-3">
-                        {/* Avatar with streak ring */}
-                        <div className="relative flex-shrink-0">
-                          <div
-                            className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold ${streak !== 'no-goal' ? 'ring-2 ' + (streak === 'on-track' ? 'ring-success' : streak === 'due-soon' ? 'ring-warning' : 'ring-destructive') : ''}`}
-                            style={{ backgroundColor: `hsl(${tag.color} / 0.15)`, color: `hsl(${tag.color})` }}
-                          >
-                            {contact.name.charAt(0).toUpperCase()}
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm truncate">{contact.name}</span>
-                            <Badge
-                              variant="outline"
-                              className="text-[11px] px-1.5 py-0"
-                              style={{
-                                backgroundColor: `hsl(${tag.color} / 0.1)`,
-                                borderColor: `hsl(${tag.color} / 0.3)`,
-                                color: `hsl(${tag.color})`,
-                              }}
-                            >
-                              {tag.label}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className="text-[11px] px-1.5 py-0 gap-0.5"
-                              style={{
-                                backgroundColor: `hsl(${influence.color} / 0.1)`,
-                                borderColor: `hsl(${influence.color} / 0.3)`,
-                                color: `hsl(${influence.color})`,
-                              }}
-                            >
-                              <InfluenceIcon className="h-2.5 w-2.5" />
-                              {influence.label}
-                            </Badge>
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {contact.plan && (
-                              <div className="flex items-center gap-1">
-                                <Target className="h-3 w-3 text-primary flex-shrink-0" />
-                                <span className="text-[11px] text-muted-foreground truncate">{contact.plan}</span>
-                              </div>
-                            )}
-                            {streak !== 'no-goal' && (
-                              <Badge variant="outline" className={`text-[11px] px-1.5 py-0 gap-0.5 border-0 ${STREAK_COLORS[streak]} ${STREAK_BG[streak]}`}>
-                                <Clock className="h-2.5 w-2.5" />
-                                {daysSince !== null ? `${daysSince}d` : 'Never'} · {STREAK_LABELS[streak]}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <Badge variant="outline" className="text-[11px] px-1.5 py-0 text-muted-foreground">
-                            {ring.label}
-                          </Badge>
-                          <button
-                            onClick={e => { e.stopPropagation(); openLogInteraction(contact.id); }}
-                            className="flex h-10 w-10 items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors"
-                            aria-label={`Log time with ${contact.name}`}
-                            title="Log interaction"
-                          >
-                            <Activity className="h-4 w-4" />
-                          </button>
-                          <RowMenu
-                            label={`Actions for ${contact.name}`}
-                            items={[
-                              ...(contact.phone ? [
-                                { label: 'Call', icon: Phone, onSelect: () => { window.location.href = `tel:${contact.phone}`; } },
-                                { label: 'Text', icon: MessageSquare, onSelect: () => { window.location.href = `sms:${contact.phone}`; } },
-                              ] : []),
-                              ...(contact.email ? [{ label: 'Email', icon: Mail, onSelect: () => { window.location.href = `mailto:${contact.email}`; } }] : []),
-                              { label: 'Add commitment', icon: Plus, onSelect: () => openAddCommitment(contact.id) },
-                              { label: 'Edit', icon: Edit2, separated: true, onSelect: () => openEdit(contact) },
-                              { label: 'Delete…', icon: Trash2, destructive: true, onSelect: () => setConfirmDelete(contact) },
-                            ]}
-                          />
-                        </div>
-                      </div>
-
-                      <AnimatePresence>
-                        {isExpanded && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="mt-3 pt-3 border-t border-border space-y-3"
-                          >
-                            {/* Contact details */}
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                              {contact.phone && (
-                                <span className="flex items-center gap-1 text-muted-foreground">
-                                  <Phone className="h-3 w-3" /> {contact.phone}
-                                </span>
-                              )}
-                              {contact.email && (
-                                <span className="flex items-center gap-1 text-muted-foreground">
-                                  <Mail className="h-3 w-3" /> {contact.email}
-                                </span>
-                              )}
-                              <span className="text-muted-foreground">
-                                <span className="font-semibold text-foreground/70">Circle:</span> {ring.label}
-                              </span>
-                              {contact.interactionGoalDays && (
-                                <span className="text-muted-foreground">
-                                  <span className="font-semibold text-foreground/70">Goal:</span> Every {contact.interactionGoalDays}d
-                                </span>
-                              )}
-                            </div>
-                            {contact.notes && (
-                              <div className="text-xs text-muted-foreground">
-                                <span className="text-foreground/70 font-semibold">Notes:</span> {contact.notes}
-                              </div>
-                            )}
-                            {contact.plan && (
-                              <div className="text-xs">
-                                <span className="text-primary font-semibold">Plan:</span> {contact.plan}
-                              </div>
-                            )}
-
-                            <RelationshipGoals contactId={contact.id} />
-
-                            {/* Commitments */}
-                            <div className="pt-1">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-[11px] font-semibold text-foreground/70 flex items-center gap-1">
-                                  <HandHeart className="h-3 w-3" /> Commitments
-                                  {activeCommits.length > 0 && (
-                                    <span className="text-primary">({activeCommits.length})</span>
-                                  )}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 px-2 text-[11px] gap-1"
-                                  onClick={e => { e.stopPropagation(); openAddCommitment(contact.id); }}
-                                >
-                                  <Plus className="h-3 w-3" /> Add
-                                </Button>
-                              </div>
-                              {contactCommitments.length === 0 ? (
-                                <p className="text-[11px] text-muted-foreground/60 italic">No commitments yet</p>
-                              ) : (
-                                <div className="space-y-1.5">
-                                  {activeCommits.map(commitment => {
-                                    const isOverdue = !!commitment.dueDate && dateKeyOf(commitment.dueDate) < todayKey();
-                                    return (
-                                      <div key={commitment.id} className="flex items-center gap-2 text-[11px] group">
-                                        <button
-                                          onClick={e => { e.stopPropagation(); handleCompleteCommitment(commitment); }}
-                                          className="flex-shrink-0 hover:text-success transition-colors"
-                                        >
-                                          <Circle className="h-3.5 w-3.5 text-muted-foreground" />
-                                        </button>
-                                        <span className={`flex-1 ${isOverdue ? 'text-destructive' : 'text-foreground/80'}`}>
-                                          {commitment.text}
-                                        </span>
-                                        {commitment.recurring && (
-                                          <Repeat className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" aria-label={`Repeats ${commitment.recurring}`} />
-                                        )}
-                                        {commitment.dueDate && (
-                                          <span className={`flex-shrink-0 ${isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground/60'}`}>
-                                            {formatRelativeDate(commitment.dueDate)}
-                                          </span>
-                                        )}
-                                        <RowMenu label="Commitment actions" items={[
-                                          { label: 'Edit', icon: Edit2, onSelect: () => openEditCommitment(commitment) },
-                                          { label: 'Delete commitment', icon: Trash2, destructive: true, separated: true, onSelect: () => removeCommitment(commitment) },
-                                        ]} />
-                                      </div>
-                                    );
-                                  })}
-                                  {doneCommits.slice(0, 3).map(commitment => (
-                                    <div key={commitment.id} className="flex items-center gap-2 text-[11px] group opacity-50">
-                                      <button
-                                        onClick={e => { e.stopPropagation(); uncompleteCommitment(commitment.id); }}
-                                        className="flex-shrink-0 hover:text-warning transition-colors"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                                      </button>
-                                      <span className="flex-1 line-through text-muted-foreground">{commitment.text}</span>
-                                      <RowMenu label="Commitment actions" items={[
-                                          { label: 'Edit', icon: Edit2, onSelect: () => openEditCommitment(commitment) },
-                                          { label: 'Delete commitment', icon: Trash2, destructive: true, separated: true, onSelect: () => removeCommitment(commitment) },
-                                        ]} />
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Interaction History */}
-                            <div className="pt-1">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-[11px] font-semibold text-foreground/70">Recent Interactions</span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-6 px-2 text-[11px] gap-1"
-                                  onClick={e => { e.stopPropagation(); openLogInteraction(contact.id); }}
-                                >
-                                  <Plus className="h-3 w-3" /> Log
-                                </Button>
-                              </div>
-                              {recentInteractions.length === 0 ? (
-                                <p className="text-[11px] text-muted-foreground/60 italic">No interactions logged yet</p>
-                              ) : (
-                                <div className="space-y-1.5">
-                                  {recentInteractions.map(interaction => {
-                                    const typeInfo = getInteractionTypeInfo(interaction.type);
-                                    const TypeIcon = typeInfo.icon;
-                                    const energy = interaction.energyAfter
-                                      ? ENERGY_LEVELS.find(e => e.value === interaction.energyAfter)
-                                      : null;
-                                    return (
-                                      <div key={interaction.id} className="flex items-center gap-2 text-[11px] group">
-                                        <TypeIcon className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                        <span className="font-medium text-foreground/80">{typeInfo.label}</span>
-                                        {interaction.durationMinutes && (
-                                          <span className="text-muted-foreground">{interaction.durationMinutes}m</span>
-                                        )}
-                                        {energy && (
-                                          <span title={energy.label}>{energy.emoji}</span>
-                                        )}
-                                        {interaction.note && (
-                                          <span className="text-muted-foreground truncate flex-1">{interaction.note}</span>
-                                        )}
-                                        <span className="text-muted-foreground/60 ml-auto flex-shrink-0">
-                                          {formatRelativeDate(interaction.date)}
-                                        </span>
-                                        <RowMenu label="Interaction actions" items={[
-                                          { label: 'Edit', icon: Edit2, onSelect: () => openEditInteraction(interaction) },
-                                          { label: 'Delete interaction', icon: Trash2, destructive: true, separated: true, onSelect: () => removeInteraction(interaction) },
-                                        ]} />
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
-      ))}
-
-      {/* Add/Edit Contact Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={!!preview} onOpenChange={o => !o && setPreview(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold flex items-center gap-2">
-              <User className="h-5 w-5 text-primary" />
-              {editing ? 'Edit Person' : 'Add Person'}
-            </DialogTitle>
+            <DialogTitle className="text-title">Import {preview?.unique.length ?? 0} {preview?.unique.length === 1 ? 'person' : 'people'}</DialogTitle>
+            <DialogDescription>
+              {preview?.duplicates.length ? `${preview.duplicates.length} already in TELOS will be skipped. ` : ''}Everyone starts in your Distant circle.
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Name *</Label>
-              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Full name" className="h-9" />
+          {preview && preview.unique.length > 0 && (
+            <div className="list-group max-h-[45vh] overflow-y-auto">
+              {preview.unique.map((c, i) => (
+                <ListRow key={i} leading={<Avatar contact={{ name: c.name, circleRing: 'distant' }} size={34} />} title={c.name} subtitle={c.phone || c.email} />
+              ))}
             </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Relationship</Label>
-                <Select value={form.relationship} onValueChange={v => setForm({ ...form, relationship: v as RelationshipTag })}>
-                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {RELATIONSHIP_TAGS.map(t => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Inner Circle</Label>
-                <Select value={form.circleRing} onValueChange={v => setForm({ ...form, circleRing: v as CircleRing })}>
-                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {CIRCLE_RINGS.map(r => (
-                      <SelectItem key={r.value} value={r.value}>
-                        {r.label} — {r.description}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Influence</Label>
-                <Select value={form.influenceTag} onValueChange={v => setForm({ ...form, influenceTag: v as InfluenceTag })}>
-                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {INFLUENCE_TAGS.map(t => (
-                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> Connect Every (days)
-                </Label>
-                <Input
-                  value={form.interactionGoalDays}
-                  onChange={e => setForm({ ...form, interactionGoalDays: e.target.value.replace(/\D/g, '') })}
-                  placeholder="e.g. 7"
-                  inputMode="numeric"
-                  className="h-9"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Phone</Label>
-                <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="555-1234" className="h-9" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium">Email</Label>
-                <Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" className="h-9" />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs font-medium flex items-center gap-1">
-                <Target className="h-3 w-3 text-primary" /> Plan / Goal
-              </Label>
-              <Input value={form.plan} onChange={e => setForm({ ...form, plan: e.target.value })} placeholder="What's your goal with this person?" className="h-9" />
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Notes</Label>
-              <Textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Anything to remember..." className="min-h-[60px] text-xs" />
-            </div>
-            <Button onClick={handleSave} className="w-full font-semibold">
-              {editing ? 'Update' : 'Add Person'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Log Interaction Dialog */}
-      <Dialog open={interactionDialogOpen} onOpenChange={setInteractionDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <Activity className="h-5 w-5 text-primary" />
-              {editingInteraction ? 'Edit interaction' : 'Log interaction'}
-            </DialogTitle>
-            {interactionContactName && (
-              <p className="text-sm text-muted-foreground">with {interactionContactName}</p>
-            )}
-          </DialogHeader>
-          <div className="space-y-4">
-            {/* Interaction Type - button group */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Type</Label>
-              <div className="grid grid-cols-4 gap-2">
-                {INTERACTION_TYPES.map(t => {
-                  const Icon = t.icon;
-                  const selected = interactionForm.type === t.value;
-                  return (
-                    <button
-                      key={t.value}
-                      onClick={() => setInteractionForm({ ...interactionForm, type: t.value })}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-[11px] font-medium transition-all ${
-                        selected
-                          ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border text-muted-foreground hover:bg-accent'
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Duration */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Duration (minutes)</Label>
-              <Input
-                value={interactionForm.durationMinutes}
-                onChange={e => setInteractionForm({ ...interactionForm, durationMinutes: e.target.value.replace(/\D/g, '') })}
-                placeholder="e.g. 30"
-                inputMode="numeric"
-                className="h-9"
-              />
-            </div>
-
-            {/* Energy After */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">How did you feel after?</Label>
-              <div className="flex gap-1.5 justify-between">
-                {ENERGY_LEVELS.map(e => {
-                  const selected = interactionForm.energyAfter === e.value;
-                  return (
-                    <button
-                      key={e.value}
-                      onClick={() => setInteractionForm({
-                        ...interactionForm,
-                        energyAfter: selected ? null : e.value,
-                      })}
-                      className={`flex flex-col items-center gap-0.5 p-1.5 rounded-lg border flex-1 transition-all ${
-                        selected
-                          ? 'border-primary bg-primary/10'
-                          : 'border-border hover:bg-accent'
-                      }`}
-                    >
-                      <span className="text-lg">{e.emoji}</span>
-                      <span className="text-[11px] text-muted-foreground">{e.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Note */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Note (optional)</Label>
-              <Input
-                value={interactionForm.note}
-                onChange={e => setInteractionForm({ ...interactionForm, note: e.target.value })}
-                placeholder="What did you talk about?"
-                className="h-9"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="interaction-date" className="text-xs font-medium">When</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="interaction-date"
-                  type="date"
-                  max={todayKey()}
-                  value={interactionForm.date}
-                  onChange={e => setInteractionForm({ ...interactionForm, date: e.target.value })}
-                  className="h-10"
-                />
-                {interactionForm.date !== todayKey() && (
-                  <Button type="button" variant="ghost" className="h-10" onClick={() => setInteractionForm({ ...interactionForm, date: todayKey() })}>Today</Button>
-                )}
-              </div>
-            </div>
-
-            <Button onClick={handleLogInteraction} className="h-11 w-full font-semibold">
-              {editingInteraction ? 'Save changes' : 'Log interaction'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-      {/* Add Commitment Dialog */}
-      <Dialog open={commitmentDialogOpen} onOpenChange={setCommitmentDialogOpen}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-bold flex items-center gap-2">
-              <HandHeart className="h-5 w-5 text-primary" />
-              {editingCommitment ? 'Edit commitment' : 'Add commitment'}
-            </DialogTitle>
-            {commitmentContactName && (
-              <p className="text-sm text-muted-foreground">to {commitmentContactName}</p>
-            )}
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">What did you promise? *</Label>
-              <Input
-                value={commitmentForm.text}
-                onChange={e => setCommitmentForm({ ...commitmentForm, text: e.target.value })}
-                placeholder="e.g. Read that book they recommended"
-                className="h-9"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1">
-                  <CalendarClock className="h-3 w-3" /> Due Date
-                </Label>
-                <Input
-                  type="date"
-                  value={commitmentForm.dueDate}
-                  onChange={e => setCommitmentForm({ ...commitmentForm, dueDate: e.target.value })}
-                  className="h-9 text-xs"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1">
-                  <Repeat className="h-3 w-3" /> Recurring
-                </Label>
-                <Select
-                  value={commitmentForm.recurring || 'none'}
-                  onValueChange={v => setCommitmentForm({ ...commitmentForm, recurring: v === 'none' ? '' : v as 'weekly' | 'biweekly' | 'monthly' })}
-                >
-                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">One-time</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Biweekly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Button onClick={handleAddCommitment} className="h-11 w-full font-semibold">
-              {editingCommitment ? 'Save changes' : 'Add commitment'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Import Preview Dialog */}
-      <Dialog open={importPreview !== null} onOpenChange={open => { if (!open) { setImportPreview(null); setImportDuplicates([]); } }}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Upload className="h-4 w-4" /> Import Contacts
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {importPreview && importPreview.length > 0 ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  {importPreview.length} contact{importPreview.length !== 1 ? 's' : ''} ready to import
-                  {importDuplicates.length > 0 && (
-                    <span className="text-warning"> ({importDuplicates.length} duplicate{importDuplicates.length !== 1 ? 's' : ''} skipped)</span>
-                  )}
-                </p>
-                <div className="max-h-[40vh] overflow-y-auto space-y-1.5 border rounded-lg p-2">
-                  {importPreview.map((c, i) => (
-                    <div key={i} className="flex items-center gap-2 text-sm py-1.5 px-2 rounded-md bg-muted/30">
-                      <div className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                        {c.name.charAt(0).toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xs truncate">{c.name}</p>
-                        <div className="flex gap-2 text-[11px] text-muted-foreground">
-                          {c.phone && <span className="flex items-center gap-0.5"><Phone className="h-2.5 w-2.5" />{c.phone}</span>}
-                          {c.email && <span className="flex items-center gap-0.5 truncate"><Mail className="h-2.5 w-2.5" />{c.email}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Imported contacts will be added as <span className="font-medium">Distant</span> ring, <span className="font-medium">Neutral</span> influence. You can edit them after import.
-                </p>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="flex-1" onClick={() => { setImportPreview(null); setImportDuplicates([]); }}>
-                    Cancel
-                  </Button>
-                  <Button className="flex-1 font-semibold" onClick={handleConfirmImport}>
-                    Import {importPreview.length} Contact{importPreview.length !== 1 ? 's' : ''}
-                  </Button>
-                </div>
-              </>
-            ) : importPreview && importPreview.length === 0 ? (
-              <div className="text-center py-6">
-                <Users className="h-8 w-8 mx-auto text-muted-foreground/30 mb-2" />
-                <p className="text-sm font-medium">All contacts are duplicates</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {importDuplicates.length} contact{importDuplicates.length !== 1 ? 's' : ''} already exist in your list.
-                </p>
-                <Button variant="outline" className="mt-4" onClick={() => { setImportPreview(null); setImportDuplicates([]); }}>
-                  Close
-                </Button>
-              </div>
-            ) : null}
-          </div>
-        </DialogContent>
-      </Dialog>
-      {/* Delete person confirmation */}
-      <Dialog open={!!confirmDelete} onOpenChange={o => !o && setConfirmDelete(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Remove {confirmDelete?.name}?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">Their interactions and commitments are removed too. You can undo for a few seconds afterwards.</p>
-          <div className="mt-4 flex gap-2">
-            <Button variant="outline" className="h-11 flex-1" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-            <Button variant="destructive" className="h-11 flex-1 font-semibold" onClick={() => { const c = confirmDelete; setConfirmDelete(null); if (c) handleDelete(c.id); }}>
-              Remove
-            </Button>
-          </div>
+          )}
+          <Button className="mt-2 h-12 w-full rounded-xl text-body font-semibold" disabled={!preview?.unique.length} onClick={confirmImport}>
+            Import
+          </Button>
         </DialogContent>
       </Dialog>
     </div>

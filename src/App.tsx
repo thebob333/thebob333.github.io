@@ -14,6 +14,7 @@ const GoalDetail = lazy(() => import("./pages/GoalDetail"));
 const Workouts = lazy(() => import("./pages/Workouts"));
 const Program = lazy(() => import("./pages/Program"));
 const People = lazy(() => import("./pages/People"));
+const PersonDetail = lazy(() => import("./pages/PersonDetail"));
 const Settings = lazy(() => import("./pages/Settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -32,6 +33,7 @@ function AnimatedRoutes() {
           <Route path="/workouts" element={<Navigate to="/gym" replace />} />
           <Route path="/program" element={<Navigate to="/plan" replace />} />
           <Route path="/people" element={<People />} />
+          <Route path="/people/:contactId" element={<PersonDetail />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

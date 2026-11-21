@@ -27,9 +27,25 @@ export function ListRow({
       {chevron && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />}
     </>
   );
-  const cls = cn('flex min-h-[62px] w-full items-center gap-3.5 px-4 py-2.5 text-left', onClick && 'transition-colors active:bg-accent/70', className);
+  const cls = cn('flex min-h-[62px] w-full items-center gap-3.5 px-4 py-2.5 text-left', onClick && 'cursor-pointer transition-colors active:bg-accent/70 focus-visible:outline-none focus-visible:bg-accent/70', className);
+  // A div with button behavior (not a <button>), because rows can hold their own
+  // buttons (a check circle, a ⋯ menu) and buttons can't be nested.
   return onClick
-    ? <button type="button" onClick={onClick} aria-label={ariaLabel} className={cls}>{body}</button>
+    ? (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        onClick={onClick}
+        onKeyDown={e => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); }
+        }}
+        className={cls}
+      >
+        {body}
+      </div>
+    )
     : <div className={cls}>{body}</div>;
 }
 
