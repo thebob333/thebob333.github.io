@@ -4,16 +4,14 @@ import { useStore } from '@/hooks/useStore';
 import { autofillDay, dismissBlock, undismissBlock } from '@/lib/plan-autofill';
 import { QuickLogSheet } from '@/components/people/QuickLogSheet';
 import { todayKey } from '@/lib/dates';
-import { shouldShowOnDay } from '@/components/RepeatableBlockManager';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Badge } from '@/components/ui/badge';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Plus, X, Palette, Trash2, Link2, Unlink, Repeat, Target, User, Clock, Check } from 'lucide-react';
-import { getDaysRemaining, getUrgencyColor } from '@/types/goals';
-import { motion, AnimatePresence } from 'framer-motion';
+import { shouldShowOnDay } from '@/lib/routines';
+import { Check, Repeat, User } from 'lucide-react';
 import { toast } from 'sonner';
+import { BlockSheet, type BacklogTodo } from '@/components/plan/BlockSheet';
+import { CategoriesSheet } from '@/components/plan/CategoriesSheet';
+import { cn } from '@/lib/utils';
+
+export type { BacklogTodo };
 
 // 5 AM to 11 PM. Phones get a taller timeline and 15-minute snapping so blocks
 // are big enough to tap and easy to place with a thumb.
@@ -33,12 +31,15 @@ const SNAP_MINUTES = IS_PHONE ? 15 : 5;
 const LABEL_WIDTH = 56; // px for time labels column
 const MIN_DURATION = IS_PHONE ? 15 : 5;
 
+/** Room above the first hour so its label isn't clipped. */
+const TOP_PAD = 8;
+
 function minutesToTop(minutes: number): number {
-  return (minutes - START_HOUR * 60) * PIXEL_PER_MINUTE;
+  return (minutes - START_HOUR * 60) * PIXEL_PER_MINUTE + TOP_PAD;
 }
 
 function topToMinutes(top: number): number {
-  return Math.round(top / PIXEL_PER_MINUTE) + START_HOUR * 60;
+  return Math.round((top - TOP_PAD) / PIXEL_PER_MINUTE) + START_HOUR * 60;
 }
 
 function snapMinutes(m: number): number {
@@ -132,16 +133,6 @@ function computeColumns(blocks: TimeBlock[]): Map<string, LayoutInfo> {
   return result;
 }
 
-export interface BacklogTodo {
-  todoId: string;
-  title: string;
-  goalTitle: string;
-  goalId?: string;
-  phaseTitle?: string;
-  taskTitle?: string;
-  deadline?: string;
-  effort?: string;
-}
 
 interface DailyTimeBlocksProps {
   /** Local date key (YYYY-MM-DD) being planned. */
@@ -158,9 +149,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   const categories = useStore(CATS);
   const repeatableBlocks = useStore(stores.REPEATABLE_BLOCKS);
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
-  const [showCategoryManager, setShowCategoryManager] = useState(false);
-  const [newCatName, setNewCatName] = useState('');
-  const [newCatColor, setNewCatColor] = useState('200 70% 50%');
+  const [showCategories, setShowCategories] = useState(false);
   
   // Drag state
   const [dragging, setDragging] = useState<{ blockId: string; offsetMin: number } | null>(null);
@@ -226,60 +215,6 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
         },
       },
     });
-  }, []);
-
-  const linkTodo = useCallback((blockId: string, todoId: string, title: string) => {
-    updateBlock(blockId, { todoId, title });
-    toast.success('Todo linked');
-  }, [updateBlock]);
-
-  const unlinkTodo = useCallback((blockId: string) => {
-    updateBlock(blockId, { todoId: undefined, title: '' });
-  }, [updateBlock]);
-
-  const linkContact = useCallback((blockId: string, contactId: string, contactName: string) => {
-    const block = blocks.find(b => b.id === blockId);
-    const currentTitle = block?.title || '';
-    const newTitle = currentTitle ? `${currentTitle} w/ ${contactName}` : `w/ ${contactName}`;
-    updateBlock(blockId, { contactId, title: newTitle });
-    toast.success(`Linked ${contactName}`);
-  }, [blocks, updateBlock]);
-
-  const unlinkContact = useCallback((blockId: string) => {
-    const block = blocks.find(b => b.id === blockId);
-    if (!block) return;
-    let newTitle = block.title;
-    if (block.contactId) {
-      const contact = contacts.find(c => c.id === block.contactId);
-      if (contact) {
-        newTitle = newTitle.replace(` w/ ${contact.name}`, '').trim();
-      }
-    }
-    updateBlock(blockId, { contactId: undefined, title: newTitle });
-  }, [blocks, contacts, updateBlock]);
-
-  const addCategory = useCallback(() => {
-    if (!newCatName.trim()) return;
-    const cat: BlockCategory = { id: generateId(), name: newCatName.trim(), color: newCatColor };
-    CATS.update(prev => [...prev, cat]);
-    setNewCatName('');
-    toast.success(`Added "${cat.name}" category`);
-  }, [newCatName, newCatColor]);
-
-  const deleteCategory = useCallback((catId: string) => {
-    if (DEFAULT_CATEGORIES.some(c => c.id === catId)) {
-      toast.error("Can't delete default categories");
-      return;
-    }
-    // Never delete people's blocks along with a category — move them to Personal.
-    const fallback = 'personal';
-    const moved = TB.get().filter(b => b.categoryId === catId).length;
-    CATS.update(prev => prev.filter(c => c.id !== catId));
-    TB.update(prev => (moved ? prev.map(b => (b.categoryId === catId ? { ...b, categoryId: fallback } : b)) : prev));
-    stores.REPEATABLE_BLOCKS.update(prev =>
-      prev.some(r => r.categoryId === catId) ? prev.map(r => (r.categoryId === catId ? { ...r, categoryId: fallback } : r)) : prev,
-    );
-    toast.success(moved ? `Category deleted — ${moved} block${moved !== 1 ? 's' : ''} moved to Personal` : 'Category deleted');
   }, []);
 
   const getCat = (catId: string) => categories.find(c => c.id === catId) || categories[0] || DEFAULT_CATEGORIES[0];
@@ -430,431 +365,162 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
     return lines;
   }, []);
 
-  const COLOR_PRESETS = [
-    '130 100% 40%', '42 100% 50%', '280 80% 55%', '210 80% 50%',
-    '170 70% 40%', '350 80% 55%', '60 20% 40%', '20 90% 50%',
-    '300 70% 50%', '160 60% 45%',
-  ];
+
+  // ─── "Now" line and starting scroll position ───
+  const isToday = dayName === todayKey();
+  const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
+  useEffect(() => {
+    if (!isToday) return;
+    const id = setInterval(() => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); }, 60_000);
+    return () => clearInterval(id);
+  }, [isToday]);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    // Today: an hour before now. Other days: the first block, or 7 AM.
+    const first = TB.get().filter(b => b.dayName === dayName).map(blockStartMinutes).sort((a, b) => a - b)[0];
+    const d = new Date();
+    const target = isToday ? d.getHours() * 60 + d.getMinutes() - 60 : (first ?? 7 * 60) - 30;
+    el.scrollTop = Math.max(0, minutesToTop(target));
+  }, [dayName, isToday]);
+
+  const editing = editingBlock ? dayBlocks.find(b => b.id === editingBlock) ?? null : null;
+  const isDone = (b: TimeBlock) => (b.todoId && todoStates ? (todoStates[b.todoId] ?? false) : (b.done ?? false));
+  const toggleDone = (b: TimeBlock) => {
+    updateBlock(b.id, { done: !isDone(b) });
+    if (b.todoId) onToggleTodo?.(b.todoId);
+  };
 
   return (
-    <div className="flex flex-col h-full space-y-2 p-2">
-      {/* Header */}
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-[11px] md:text-xs text-muted-foreground"><span className="md:hidden">Tap empty time to add · hold a block to move it</span><span className="hidden md:inline">Click to add · drag to move</span></span>
-        <Button variant="ghost" size="sm" className="ml-auto text-xs gap-1" onClick={() => setShowCategoryManager(!showCategoryManager)}>
-          <Palette className="h-3.5 w-3.5" />
-          Categories
-        </Button>
-      </div>
-
-      {/* Category manager */}
-      <AnimatePresence>
-        {showCategoryManager && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
-            <div className="border border-border/30 rounded-lg p-3 space-y-3 bg-muted/10">
-              <div className="flex flex-wrap gap-1.5">
-                {categories.map(cat => (
-                  <div key={cat.id} className="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border/30" style={{ backgroundColor: `hsl(${cat.color} / 0.2)`, borderColor: `hsl(${cat.color} / 0.4)` }}>
-                    <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: `hsl(${cat.color})` }} />
-                    {cat.name}
-                    {!DEFAULT_CATEGORIES.some(c => c.id === cat.id) && (
-                      <button onClick={() => deleteCategory(cat.id)} className="ml-1 opacity-50 hover:opacity-100">
-                        <X className="h-3 w-3" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-2">
-                <Input value={newCatName} onChange={(e) => setNewCatName(e.target.value)} placeholder="New category..." className="h-7 text-xs flex-1" onKeyDown={(e) => e.key === 'Enter' && addCategory()} />
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button className="w-7 h-7 rounded border border-border/30 flex-shrink-0" style={{ backgroundColor: `hsl(${newCatColor})` }} />
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-2" align="end">
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {COLOR_PRESETS.map(c => (
-                        <button key={c} onClick={() => setNewCatColor(c)} className={`w-6 h-6 rounded-sm border-2 transition-all ${c === newCatColor ? 'border-foreground scale-110' : 'border-transparent'}`} style={{ backgroundColor: `hsl(${c})` }} />
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={addCategory}>
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Category legend — hidden on mobile */}
-      <div className="hidden md:flex flex-wrap gap-1 flex-shrink-0">
-        {categories.map(cat => (
-          <Badge key={cat.id} variant="outline" className="text-[11px] cursor-default" style={{ backgroundColor: `hsl(${cat.color} / 0.15)`, borderColor: `hsl(${cat.color} / 0.4)`, color: `hsl(${cat.color})` }}>
-            {cat.name}
-          </Badge>
-        ))}
-      </div>
-
-      {/* TIMELINE */}
+    <div className="flex h-full flex-col">
       <div
         ref={containerRef}
-        className="relative rounded-lg overflow-y-auto bg-card/30 select-none flex-1 min-h-0"
+        className="relative min-h-0 flex-1 select-none overflow-y-auto"
         style={{ cursor: dragging ? 'grabbing' : 'default' }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onClick={handleTimelineClick}
       >
-        <div className="relative" style={{ height: TOTAL_HEIGHT }}>
+        {dayBlocks.length === 0 && (
+          <div className="pointer-events-none sticky top-3 z-20 flex h-0 justify-center">
+            <span className="h-fit rounded-full bg-foreground/80 px-3.5 py-1.5 text-footnote font-medium text-background shadow-lg">
+              {IS_PHONE ? 'Tap any time to add a block' : 'Click any time to add a block'}
+            </span>
+          </div>
+        )}
+        <div className="relative" style={{ height: TOTAL_HEIGHT + TOP_PAD * 2 }}>
           {/* Hour lines & labels */}
           {hourLines.map(({ hour, top }) => (
             <div key={hour} className="absolute left-0 right-0" style={{ top }}>
               <div className="flex items-start">
-                <span className="text-[11px] text-muted-foreground text-right pr-2 -mt-1.5 flex-shrink-0" style={{ width: LABEL_WIDTH }}>
+                <span className="-mt-2 shrink-0 pr-2 text-right text-[11px] font-medium tabular-nums text-muted-foreground" style={{ width: LABEL_WIDTH }}>
                   {formatTime(hour * 60)}
                 </span>
-                <div className="flex-1 border-t border-border/30" />
+                <div className="flex-1 border-t border-border/70" />
               </div>
-              {/* 30-min dashed line */}
-              <div className="absolute right-0 border-t border-dashed border-border/15" style={{ top: 30 * PIXEL_PER_MINUTE, left: LABEL_WIDTH }} />
             </div>
           ))}
+
+          {/* Now */}
+          {isToday && nowMin >= START_HOUR * 60 && nowMin < END_HOUR * 60 && (
+            <div className="pointer-events-none absolute right-0 z-20 flex items-center" style={{ top: minutesToTop(nowMin) - 5, left: LABEL_WIDTH - 5 }}>
+              <span className="h-2.5 w-2.5 rounded-full bg-destructive" />
+              <span className="h-[2px] flex-1 bg-destructive" />
+            </div>
+          )}
 
           {/* Time Blocks */}
           {dayBlocks.map((block) => {
             const cat = getCat(block.categoryId);
             const layout = columnLayout.get(block.id) || { column: 0, totalColumns: 1 };
             const isDragging = dragging?.blockId === block.id;
-            const isEditing = editingBlock === block.id;
-            
             const startMin = isDragging && dragPreviewMin !== null ? dragPreviewMin : blockStartMinutes(block);
             const top = minutesToTop(startMin);
             const duration = resizeDrag?.blockId === block.id && resizePreview !== null ? resizePreview : block.durationMinutes;
-            const height = Math.max(duration * PIXEL_PER_MINUTE, MIN_DURATION * PIXEL_PER_MINUTE);
-            
-            const availableWidth = `calc(100% - ${LABEL_WIDTH + 8}px)`;
-            const colWidth = `calc(${availableWidth} / ${layout.totalColumns})`;
+            const height = Math.max(duration * PIXEL_PER_MINUTE, MIN_DURATION * PIXEL_PER_MINUTE) - 2;
+            const availableWidth = `calc(100% - ${LABEL_WIDTH + 6}px)`;
+            const colWidth = `calc(${availableWidth} / ${layout.totalColumns} - 2px)`;
             const colLeft = `calc(${LABEL_WIDTH}px + ${availableWidth} * ${layout.column} / ${layout.totalColumns})`;
+            const done = isDone(block);
+            const contact = block.contactId ? contacts.find(c => c.id === block.contactId) : undefined;
+            const compact = height < 34;
 
             return (
               <div
                 key={block.id}
                 data-block
-                className={`absolute rounded-md border-l-4 transition-shadow ${isDragging ? 'z-30 opacity-80 scale-[1.02] shadow-xl cursor-grabbing' : isEditing ? 'z-20 ring-1 ring-foreground/20' : 'z-10 hover:shadow-lg cursor-grab'}`}
+                role="button"
+                aria-label={`${block.title || cat.name}, ${formatTime(blockStartMinutes(block))}`}
+                className={cn('absolute overflow-hidden rounded-xl border-l-[4px] transition-shadow',
+                  isDragging ? 'z-30 scale-[1.02] cursor-grabbing opacity-90 shadow-xl' : 'z-10 cursor-pointer active:brightness-95')}
                 style={{
-                  top,
-                  height,
-                  left: colLeft,
-                  width: colWidth,
-                  backgroundColor: `hsl(${cat.color} / 0.2)`,
+                  top, height, left: colLeft, width: colWidth,
+                  backgroundColor: `hsl(${cat.color} / ${done ? 0.08 : 0.16})`,
                   borderLeftColor: `hsl(${cat.color})`,
                   // Allow normal scrolling; a long-press picks the block up.
                   touchAction: 'pan-y',
                   WebkitTouchCallout: 'none',
                 }}
                 onPointerDown={(e) => handleBlockPointerDown(e, block.id)}
-                onClick={(e) => { e.stopPropagation(); setEditingBlock(isEditing ? null : block.id); }}
+                onClick={(e) => { e.stopPropagation(); if (!dragging) setEditingBlock(block.id); }}
               >
-                <div className="px-2 py-1 h-full flex flex-col overflow-hidden">
-                  <div className="flex items-start gap-1.5 min-h-0">
-                    {/* Todo checkbox */}
-                    {block.todoId && onToggleTodo && (
-                      <Checkbox
-                        checked={todoStates ? (todoStates[block.todoId] ?? false) : (block.done ?? false)}
-                        onCheckedChange={() => {
-                          const newDone = todoStates ? !(todoStates[block.todoId] ?? false) : !block.done;
-                          updateBlock(block.id, { done: newDone });
-                          if (block.todoId) onToggleTodo(block.todoId);
-                        }}
-                        className="h-3.5 w-3.5 mt-0.5 flex-shrink-0"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    )}
-                    {/* Type icon */}
-                    {block.habitId && !block.todoId && (
-                      <Repeat className="h-3 w-3 mt-0.5 flex-shrink-0 text-amber" />
-                    )}
-                    {block.todoId && !block.habitId && (
-                      <Target className="h-3 w-3 mt-0.5 flex-shrink-0" style={{ color: `hsl(${cat.color})` }} />
-                    )}
-                    {isEditing ? (
-                      <Input
-                        autoFocus
-                        value={block.title}
-                        onChange={(e) => updateBlock(block.id, { title: e.target.value })}
-                        placeholder="Block title..."
-                        className="h-5 text-xs border-none bg-transparent p-0 focus-visible:ring-0"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.key === 'Enter' && setEditingBlock(null)}
-                      />
-                    ) : (
-                      <span className={`text-xs font-medium truncate ${(block.todoId && todoStates ? (todoStates[block.todoId] ?? false) : (block.done ?? false)) ? 'line-through opacity-50' : ''}`} style={{ color: `hsl(${cat.color})` }}>
-                        {block.title || cat.name}
+                <div className={cn('flex h-full gap-2 px-2', compact ? 'items-center py-0' : 'items-start py-1.5')}>
+                  {block.todoId && onToggleTodo && (
+                    <button type="button" role="checkbox" aria-checked={done} aria-label={`Done: ${block.title}`}
+                      onClick={(e) => { e.stopPropagation(); toggleDone(block); }}
+                      className="-m-1.5 flex h-8 w-8 shrink-0 items-center justify-center">
+                      <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-2"
+                        style={done ? { backgroundColor: `hsl(${cat.color})`, borderColor: `hsl(${cat.color})` } : { borderColor: `hsl(${cat.color})` }}>
+                        {done && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
                       </span>
+                    </button>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className={cn('truncate text-footnote font-semibold leading-tight text-foreground', done && 'text-muted-foreground line-through')}>
+                      {block.sourceTemplateId && <Repeat className="mr-1 inline h-3 w-3 align-[-1px] text-muted-foreground" />}
+                      {block.title || <span className="text-muted-foreground">{cat.name}</span>}
+                    </p>
+                    {!compact && (
+                      <p className="mt-0.5 truncate text-[11px] tabular-nums text-muted-foreground">
+                        {formatTime(blockStartMinutes(block))} – {formatTime(blockEndMinutes(block))}
+                        {contact && <><User className="ml-1.5 mr-0.5 inline h-3 w-3 align-[-2px]" />{contact.name}</>}
+                      </p>
                     )}
                   </div>
-
-                  {/* Contact badge */}
-                  {block.contactId && (() => {
-                    const contact = contacts.find(c => c.id === block.contactId);
-                    return contact ? (
-                      <div className="flex items-center gap-1 mt-0.5">
-                        <User className="h-2.5 w-2.5 text-amber" />
-                        <span className="text-[11px] font-medium text-amber truncate">{contact.name}</span>
-                      </div>
-                    ) : null;
-                  })()}
-
-                  {/* Time label */}
-                  {height >= 30 && (
-                    <span className="text-[11px] text-muted-foreground mt-auto">
-                      {formatTime(blockStartMinutes(block))} — {formatTime(blockEndMinutes(block))}
-                    </span>
-                  )}
                 </div>
 
-                {/* Edit controls */}
-                <AnimatePresence>
-                  {isEditing && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="absolute -right-1 top-0 flex flex-col items-center gap-1 pr-1 pt-1 z-40"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {/* Link todo */}
-                      {!block.todoId && backlogTodos.length > 0 && (
-                        <TodoLinkPicker
-                          backlogTodos={backlogTodos}
-                          onLink={(todoId, title) => linkTodo(block.id, todoId, title)}
-                        />
-                      )}
-                      {block.todoId && (
-                        <button onClick={() => unlinkTodo(block.id)} className="p-0.5 rounded bg-background/80 border border-border/30 hover:bg-muted/50" title="Unlink todo">
-                          <Unlink className="h-3 w-3" />
-                        </button>
-                      )}
-                      {/* Link contact */}
-                      {!block.contactId && contacts.length > 0 && (
-                        <ContactLinkPicker
-                          contacts={contacts}
-                          onLink={(contactId, name) => linkContact(block.id, contactId, name)}
-                        />
-                      )}
-                      {block.contactId && (() => {
-                        const person = contacts.find(c => c.id === block.contactId);
-                        return (
-                          <>
-                            {person && (
-                              <button
-                                onClick={() => setLogContact(person)}
-                                className="flex h-8 w-8 items-center justify-center rounded bg-primary/15 border border-primary/30 hover:bg-primary/25"
-                                title={`Log time with ${person.name}`}
-                                aria-label={`Log time with ${person.name}`}
-                              >
-                                <Check className="h-3.5 w-3.5 text-primary" />
-                              </button>
-                            )}
-                            <button onClick={() => unlinkContact(block.id)} className="p-0.5 rounded bg-amber/20 border border-amber/30 hover:bg-amber/40" title="Unlink contact">
-                              <User className="h-3 w-3 text-amber" />
-                            </button>
-                          </>
-                        );
-                      })()}
-                      <button onClick={() => deleteBlock(block.id)} className="p-0.5 rounded bg-destructive/20 border border-destructive/30 hover:bg-destructive/40">
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Category picker */}
-                {isEditing && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="absolute left-0 right-0 -bottom-7 flex gap-1 px-1 z-30"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {categories.map(c => (
-                      <button
-                        key={c.id}
-                        onClick={() => updateBlock(block.id, { categoryId: c.id })}
-                        className={`w-4 h-4 rounded-sm border-2 transition-all ${c.id === block.categoryId ? 'border-foreground scale-125' : 'border-transparent'}`}
-                        style={{ backgroundColor: `hsl(${c.color})` }}
-                        title={c.name}
-                      />
-                    ))}
-                  </motion.div>
-                )}
-
-                {/* Resize handle at bottom */}
+                {/* Drag the bottom edge to change the length */}
                 <div
                   data-resize-handle
-                  className="absolute -bottom-2 left-0 right-0 flex h-6 cursor-ns-resize items-center justify-center group"
+                  className="group absolute -bottom-1 left-0 right-0 flex h-5 cursor-ns-resize items-end justify-center pb-1.5"
                   style={{ touchAction: 'none' }}
                   onPointerDown={(e) => handleResizePointerDown(e, block.id)}
+                  onClick={(e) => e.stopPropagation()}
                   aria-label="Drag to change length"
                 >
-                  <div className="w-10 h-1.5 rounded-full bg-foreground/25 group-hover:bg-foreground/45 transition-colors" />
+                  <div className="h-1 w-8 rounded-full bg-foreground/20 group-hover:bg-foreground/40" />
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      <BlockSheet
+        block={editing}
+        contacts={contacts}
+        backlogTodos={backlogTodos}
+        todoDone={editing ? isDone(editing) : false}
+        onUpdate={patch => editing && updateBlock(editing.id, patch)}
+        onDelete={() => editing && deleteBlock(editing.id)}
+        onToggleTodo={() => editing && toggleDone(editing)}
+        onLogContact={c => setLogContact(c)}
+        onEditCategories={() => setShowCategories(true)}
+        onClose={() => setEditingBlock(null)}
+      />
+      <CategoriesSheet open={showCategories} onClose={() => setShowCategories(false)} />
       <QuickLogSheet contact={logContact} onClose={() => setLogContact(null)} />
     </div>
-  );
-}
-
-/* ─── Todo Link Picker — grouped by goal with search ─── */
-function TodoLinkPicker({ backlogTodos, onLink }: {
-  backlogTodos: BacklogTodo[];
-  onLink: (todoId: string, title: string) => void;
-}) {
-  const [search, setSearch] = useState('');
-  const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
-
-  const filtered = search
-    ? backlogTodos.filter(t =>
-        t.title.toLowerCase().includes(search.toLowerCase()) ||
-        t.goalTitle.toLowerCase().includes(search.toLowerCase())
-      )
-    : backlogTodos;
-
-  // Group by goal
-  const grouped = filtered.reduce<Record<string, { goalTitle: string; todos: BacklogTodo[] }>>((acc, t) => {
-    const key = t.goalId || t.goalTitle;
-    if (!acc[key]) acc[key] = { goalTitle: t.goalTitle, todos: [] };
-    acc[key].todos.push(t);
-    return acc;
-  }, {});
-
-  const goalEntries = Object.entries(grouped);
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button className="p-0.5 rounded bg-background/80 border border-border/30 hover:bg-muted/50">
-          <Link2 className="h-3 w-3" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="end">
-        <div className="p-2 border-b border-border/30">
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search todos..."
-            className="h-7 text-xs"
-            autoFocus
-          />
-        </div>
-        <div className="max-h-56 overflow-y-auto p-1">
-          {goalEntries.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground p-2 text-center">No todos found</p>
-          ) : (
-            goalEntries.map(([key, { goalTitle, todos }]) => {
-              const isOpen = expandedGoal === key || search.length > 0 || goalEntries.length === 1;
-              return (
-                <div key={key} className="mb-0.5">
-                  <button
-                    onClick={() => setExpandedGoal(isOpen && !search ? null : key)}
-                    className="flex items-center gap-1.5 w-full px-2 py-1 text-left rounded hover:bg-muted/30 transition-colors"
-                  >
-                    <Target className="h-3 w-3 text-secondary flex-shrink-0" />
-                    <span className="text-[11px] font-bold text-secondary truncate flex-1">{goalTitle}</span>
-                    <Badge variant="outline" className="text-[11px] px-1 py-0">{todos.length}</Badge>
-                  </button>
-                  {isOpen && (
-                    <div className="ml-3 border-l border-border/20 pl-2 space-y-0">
-                      {todos.map(t => {
-                        const days = getDaysRemaining(t.deadline);
-                        const urgencyColor = getUrgencyColor(days);
-                        return (
-                          <button
-                            key={t.todoId}
-                            onClick={() => onLink(t.todoId, t.title)}
-                            className="w-full text-left px-2 py-1 text-[11px] rounded hover:bg-primary/15 transition-colors flex items-center gap-1"
-                          >
-                            <span className="truncate flex-1">{t.title}</span>
-                            {days !== null && (
-                              <span className={`text-[11px] flex items-center gap-0.5 flex-shrink-0 ${urgencyColor}`}>
-                                <Clock className="h-2.5 w-2.5" />
-                                {days < 0 ? `${Math.abs(days)}d over` : days === 0 ? 'today' : `${days}d`}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/* ─── Contact Link Picker ─── */
-function ContactLinkPicker({ contacts, onLink }: {
-  contacts: Contact[];
-  onLink: (contactId: string, name: string) => void;
-}) {
-  const [search, setSearch] = useState('');
-
-  const filtered = search
-    ? contacts.filter(c =>
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.relationship.toLowerCase().includes(search.toLowerCase())
-      )
-    : contacts;
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button className="p-0.5 rounded bg-amber/10 border border-amber/30 hover:bg-amber/20" title="Link a contact">
-          <User className="h-3 w-3 text-amber" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-56 p-0" align="end">
-        <div className="p-2 border-b border-border/30">
-          <Input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search contacts..."
-            className="h-7 text-xs"
-            autoFocus
-          />
-        </div>
-        <div className="max-h-48 overflow-y-auto p-1">
-          {filtered.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground p-2 text-center">No contacts found</p>
-          ) : (
-            filtered.map(c => (
-              <button
-                key={c.id}
-                onClick={() => onLink(c.id, c.name)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left rounded hover:bg-amber/10 transition-colors"
-              >
-                <div className="w-5 h-5 rounded-full bg-amber/15 flex items-center justify-center text-[11px] font-semibold text-amber flex-shrink-0">
-                  {c.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <span className="text-xs font-medium truncate block">{c.name}</span>
-                  <span className="text-[11px] text-muted-foreground capitalize">{c.relationship}</span>
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 }
