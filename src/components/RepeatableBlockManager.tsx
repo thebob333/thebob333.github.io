@@ -151,7 +151,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
       </div>
 
       {blocks.length === 0 ? (
-        <p className="text-[11px] font-medieval text-muted-foreground italic">
+        <p className="text-[11px] text-muted-foreground italic">
           No routines yet. Add one (like “Gym 7–8 AM on weekdays”) and it fills in your Plan automatically.
         </p>
       ) : (
@@ -165,16 +165,16 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs font-medieval transition-all ${
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md border text-xs transition-all ${
                     block.enabled ? 'border-border/40 bg-card/50' : 'border-border/20 bg-muted/10 opacity-50'
                   }`}
                 >
                   <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: `hsl(${cat.color})` }} />
                   <span className="font-medium truncate flex-1">{block.title}</span>
-                  <span className="text-[9px] text-muted-foreground flex-shrink-0">
+                  <span className="text-[11px] text-muted-foreground flex-shrink-0">
                     {formatTime(block.startHour, block.startMinute)} · {block.durationMinutes}m
                   </span>
-                  <Badge variant="outline" className="text-[8px] px-1 py-0 flex-shrink-0">
+                  <Badge variant="outline" className="text-[11px] px-1 py-0 flex-shrink-0">
                     {block.repeatPattern === 'custom' ? (block.customDays?.map(d => d.slice(0, 3)).join(', ') || 'None') : PATTERN_LABELS[block.repeatPattern]}
                   </Badge>
                   <Switch
@@ -197,16 +197,16 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="border-rough scanlines bg-card max-w-sm">
+        <DialogContent className="bg-card max-w-sm">
           <DialogHeader>
-            <DialogTitle className="font-gothic gradient-alien-text flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2">
               <Repeat className="h-5 w-5 text-secondary" />
               {editing ? 'Edit routine' : 'New routine'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 relative z-10">
             <div className="space-y-2">
-              <Label className="font-medieval text-xs">Title *</Label>
+              <Label className="text-xs">Title *</Label>
               <Input
                 value={form.title || ''}
                 onChange={e => setForm({ ...form, title: e.target.value })}
@@ -215,7 +215,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
               />
             </div>
             <div className="space-y-2">
-              <Label className="font-medieval text-xs">Category</Label>
+              <Label className="text-xs">Category</Label>
               <Select value={form.categoryId || ''} onValueChange={v => setForm({ ...form, categoryId: v })}>
                 <SelectTrigger className="h-9 text-xs">
                   <SelectValue />
@@ -234,7 +234,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="space-y-2">
-                <Label className="font-medieval text-xs">Start Hour</Label>
+                <Label className="text-xs">Start Hour</Label>
                 <Select value={String(form.startHour ?? 6)} onValueChange={v => setForm({ ...form, startHour: Number(v) })}>
                   <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -245,7 +245,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="font-medieval text-xs">Minute</Label>
+                <Label className="text-xs">Minute</Label>
                 <Select value={String(form.startMinute ?? 0)} onValueChange={v => setForm({ ...form, startMinute: Number(v) })}>
                   <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -256,7 +256,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label className="font-medieval text-xs">Duration</Label>
+                <Label className="text-xs">Duration</Label>
                 <Select value={String(form.durationMinutes ?? 30)} onValueChange={v => setForm({ ...form, durationMinutes: Number(v) })}>
                   <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -268,7 +268,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
               </div>
             </div>
             <div className="space-y-2">
-              <Label className="font-medieval text-xs">Repeat Pattern</Label>
+              <Label className="text-xs">Repeat Pattern</Label>
               <Select value={form.repeatPattern || 'daily'} onValueChange={v => setForm({ ...form, repeatPattern: v as RepeatPattern })}>
                 <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -280,13 +280,13 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
             </div>
             {form.repeatPattern === 'custom' && (
               <div className="space-y-2">
-                <Label className="font-medieval text-xs">Select Days</Label>
+                <Label className="text-xs">Select Days</Label>
                 <div className="flex gap-1.5 flex-wrap">
                   {DAYS_OF_WEEK.map((day, i) => (
                     <button
                       key={day}
                       onClick={() => toggleCustomDay(day)}
-                      className={`px-2 py-1 text-[10px] font-medieval rounded border transition-all ${
+                      className={`px-2 py-1 text-[11px] rounded border transition-all ${
                         form.customDays?.includes(day)
                           ? 'bg-primary/20 border-primary/50 text-primary'
                           : 'border-border/30 text-muted-foreground hover:border-primary/30'
@@ -298,7 +298,7 @@ export default function RepeatableBlockManager({ onChanged }: Props) {
                 </div>
               </div>
             )}
-            <Button onClick={handleSave} className="w-full gradient-alien text-primary-foreground font-gothic">
+            <Button onClick={handleSave} className="w-full text-primary-foreground">
               {editing ? 'Save routine' : 'Create routine'}
             </Button>
           </div>

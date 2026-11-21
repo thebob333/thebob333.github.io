@@ -224,13 +224,13 @@ export default function ProgramPage() {
             </p>
             <div className="flex items-center justify-center gap-2 mt-1">
               {isToday && (
-                <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">TODAY</Badge>
+                <Badge variant="outline" className="text-[11px] border-primary/30 text-primary">TODAY</Badge>
               )}
               {!isToday && (
-                <button onClick={goToday} className="text-[10px] text-primary underline">Go to today</button>
+                <button onClick={goToday} className="text-[11px] text-primary underline">Go to today</button>
               )}
               {currentPlan.splitDay !== 'rest' && (
-                <Badge variant="outline" className={`capitalize text-[10px] ${SPLIT_COLORS[currentPlan.splitDay]}`}>
+                <Badge variant="outline" className={`capitalize text-[11px] ${SPLIT_COLORS[currentPlan.splitDay]}`}>
                   <Dumbbell className="h-3 w-3 mr-1" />
                   {currentPlan.splitDay}
                 </Badge>
@@ -265,7 +265,7 @@ export default function ProgramPage() {
                         : 'bg-card border-border active:bg-accent'}
                   `}
                 >
-                  <div className={`text-[10px] md:text-xs font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                  <div className={`text-[11px] md:text-xs font-semibold ${isSelected ? 'text-primary' : 'text-foreground'}`}>
                     {DAY_SHORT[idx]}
                   </div>
                   <div className={`text-sm md:text-base font-bold ${isSelected ? 'text-primary' : isDayToday ? 'text-primary' : 'text-foreground'}`}>
@@ -273,7 +273,7 @@ export default function ProgramPage() {
                   </div>
                   {isDayToday && <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-0.5" />}
                   {dayPlan.splitDay !== 'rest' && (
-                    <div className={`text-[8px] md:text-[9px] mt-0.5 capitalize ${isSelected ? 'text-primary/70' : 'text-muted-foreground'}`}>
+                    <div className={`text-[11px] md:text-[11px] mt-0.5 capitalize ${isSelected ? 'text-primary/70' : 'text-muted-foreground'}`}>
                       {dayPlan.splitDay}
                     </div>
                   )}
@@ -294,7 +294,7 @@ export default function ProgramPage() {
             {MONTH_SHORT[selectedDate.getMonth()]} {selectedDate.getDate()}, {selectedDate.getFullYear()}
           </span>
           {isToday && (
-            <Badge variant="outline" className="text-[10px] border-primary/30 text-primary">TODAY</Badge>
+            <Badge variant="outline" className="text-[11px] border-primary/30 text-primary">TODAY</Badge>
           )}
           {!isToday && (
             <button onClick={goToday} className="text-xs text-primary hover:underline">Today</button>
@@ -372,7 +372,7 @@ export default function ProgramPage() {
                       Habits {habitsCompleted}/{todaysHabits.length}
                     </span>
                     {habitsCompleted === todaysHabits.length && (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                      <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                     )}
                   </div>
                   <button onClick={() => setShowHabits(false)} className="p-0.5 rounded hover:bg-accent/50 text-muted-foreground">
@@ -384,7 +384,7 @@ export default function ProgramPage() {
                   <div className="flex gap-1 mb-1.5 overflow-x-auto no-scrollbar">
                     <button
                       onClick={() => setHabitGoalFilter('all')}
-                      className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors ${
+                      className={`text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors ${
                         habitGoalFilter === 'all'
                           ? 'bg-amber/15 border-amber/40 text-amber font-medium'
                           : 'border-border text-muted-foreground hover:bg-accent/50'
@@ -399,7 +399,7 @@ export default function ProgramPage() {
                         <button
                           key={gid}
                           onClick={() => setHabitGoalFilter(gid)}
-                          className={`text-[10px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors truncate max-w-[140px] ${
+                          className={`text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors truncate max-w-[140px] ${
                             habitGoalFilter === gid
                               ? 'bg-amber/15 border-amber/40 text-amber font-medium'
                               : 'border-border text-muted-foreground hover:bg-accent/50'
@@ -465,7 +465,7 @@ export default function ProgramPage() {
                 Habits {habitsCompleted}/{todaysHabits.length}
               </span>
               {habitsCompleted === todaysHabits.length && (
-                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                <CheckCircle2 className="h-3.5 w-3.5 text-success" />
               )}
             </button>
           )}

@@ -32,7 +32,7 @@ export function MobileTabBar() {
                 <tab.icon className="h-5 w-5" />
               </div>
               <span
-                className={`text-[10px] font-medium leading-none ${
+                className={`text-[11px] font-medium leading-none ${
                   active ? "text-primary" : "text-muted-foreground"
                 }`}
               >

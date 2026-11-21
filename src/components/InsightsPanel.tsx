@@ -111,9 +111,9 @@ export default function InsightsPanel({
   }, [contacts, interactions]);
 
   const STREAK_STYLES = {
-    'on-track': { color: 'text-green-500', bg: 'bg-green-500/10', label: 'On track' },
-    'due-soon': { color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Due soon' },
-    'overdue': { color: 'text-red-500', bg: 'bg-red-500/10', label: 'Overdue' },
+    'on-track': { color: 'text-success', bg: 'bg-success/10', label: 'On track' },
+    'due-soon': { color: 'text-warning', bg: 'bg-warning/10', label: 'Due soon' },
+    'overdue': { color: 'text-destructive', bg: 'bg-destructive/10', label: 'Overdue' },
     'no-goal': { color: 'text-muted-foreground', bg: '', label: '' },
   };
 
@@ -136,9 +136,9 @@ export default function InsightsPanel({
       {/* Neglect Alerts */}
       {neglected.length > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="border-red-200 dark:border-red-900/30 bg-red-50/50 dark:bg-red-950/10">
+          <Card className="border-destructive/30 bg-destructive/5">
             <CardContent className="pt-3 pb-3">
-              <p className="text-[11px] font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center gap-1">
+              <p className="text-[11px] font-semibold text-destructive mb-2 flex items-center gap-1">
                 <AlertTriangle className="h-3 w-3" /> Neglect Alerts
               </p>
               <div className="space-y-1.5">
@@ -147,7 +147,7 @@ export default function InsightsPanel({
                     <span className="text-foreground/80">
                       <span className="font-medium">{contact.name}</span>
                       <span className="text-muted-foreground"> — {days !== null ? `${days}d since last contact` : 'Never contacted'}</span>
-                      <span className="text-red-500"> (goal: every {contact.interactionGoalDays}d)</span>
+                      <span className="text-destructive"> (goal: every {contact.interactionGoalDays}d)</span>
                     </span>
                     <button
                       onClick={() => onLogInteraction(contact.id)}
@@ -254,8 +254,8 @@ export default function InsightsPanel({
                       <div
                         className={`w-2 h-2 rounded-full flex-shrink-0 ${style.bg}`}
                         style={{
-                          backgroundColor: status === 'on-track' ? '#22c55e' :
-                            status === 'due-soon' ? '#f59e0b' : '#ef4444',
+                          backgroundColor: status === 'on-track' ? 'hsl(var(--success))' :
+                            status === 'due-soon' ? 'hsl(var(--warning))' : 'hsl(var(--destructive))',
                         }}
                       />
                       <span className="font-medium text-foreground/80 flex-1">{contact.name}</span>
@@ -265,7 +265,7 @@ export default function InsightsPanel({
                       <span className={`font-medium ${style.color}`}>
                         {days !== null ? `${days}d ago` : 'Never'}
                       </span>
-                      <span className={`text-[9px] px-1.5 py-0 rounded-full font-medium ${style.color} ${style.bg}`}>
+                      <span className={`text-[11px] px-1.5 py-0 rounded-full font-medium ${style.color} ${style.bg}`}>
                         {style.label}
                       </span>
                     </div>

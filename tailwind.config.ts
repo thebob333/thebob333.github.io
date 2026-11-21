@@ -1,5 +1,6 @@
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
+import colors from "tailwindcss/colors";
 
 export default {
   darkMode: ["class"],
@@ -58,11 +59,17 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        coral: "hsl(var(--coral))",
-        teal: "hsl(var(--teal))",
-        violet: "hsl(var(--violet))",
-        amber: "hsl(var(--amber))",
-        sky: "hsl(var(--sky))",
+        // Section accents. `text-amber` uses the theme token; `text-amber-500` etc.
+        // still work because the full Tailwind scale is kept alongside DEFAULT.
+        coral: { DEFAULT: "hsl(var(--coral))" },
+        teal: { ...colors.teal, DEFAULT: "hsl(var(--teal))" },
+        violet: { ...colors.violet, DEFAULT: "hsl(var(--violet))" },
+        amber: { ...colors.amber, DEFAULT: "hsl(var(--amber))" },
+        sky: { ...colors.sky, DEFAULT: "hsl(var(--sky))" },
+        // Status meanings — use these instead of raw green/amber/red.
+        success: { DEFAULT: "hsl(var(--success))", foreground: "hsl(var(--success-foreground))" },
+        warning: { DEFAULT: "hsl(var(--warning))", foreground: "hsl(var(--warning-foreground))" },
+        info: { DEFAULT: "hsl(var(--info))", foreground: "hsl(var(--info-foreground))" },
       },
       borderRadius: {
         lg: "var(--radius)",

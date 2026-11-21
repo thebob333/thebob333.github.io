@@ -243,7 +243,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
   return (
     <div className="flex flex-col items-center relative">
       {/* Legend */}
-      <div className="flex items-center gap-3 mb-2 text-[10px] text-muted-foreground uppercase tracking-wider">
+      <div className="flex items-center gap-3 mb-2 text-[11px] text-muted-foreground uppercase tracking-wider">
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full" style={{ backgroundColor: GRADIENT_STEPS[0] }} />
           Novice
@@ -259,7 +259,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
       <div className="flex gap-1 mb-3">
         <button
           onClick={() => setViewType('anterior')}
-          className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-medium transition-colors ${
+          className={`px-3 py-1 rounded-full text-[11px] uppercase tracking-wider font-medium transition-colors ${
             viewType === 'anterior'
               ? 'bg-primary/15 text-primary border border-primary/30'
               : 'text-muted-foreground border border-border hover:border-primary/20'
@@ -269,7 +269,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
         </button>
         <button
           onClick={() => setViewType('posterior')}
-          className={`px-3 py-1 rounded-full text-[10px] uppercase tracking-wider font-medium transition-colors ${
+          className={`px-3 py-1 rounded-full text-[11px] uppercase tracking-wider font-medium transition-colors ${
             viewType === 'posterior'
               ? 'bg-primary/15 text-primary border border-primary/30'
               : 'text-muted-foreground border border-border hover:border-primary/20'
@@ -338,7 +338,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
                 <>
                   {selectedInfo.exercises.length > 0 && (
                     <div className="border-t border-border pt-2 mt-2">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Custom Exercises</p>
+                      <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-2">Custom Exercises</p>
                     </div>
                   )}
                   {selectedInfo.customExercises.map(ce => (
@@ -375,7 +375,7 @@ export function BodyDiagram({ prs, customExercises = [], bodyweight = 180, goldT
             exit={{ opacity: 0 }}
             className="w-full mt-4 space-y-1.5"
           >
-            <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Top Muscle Groups</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider mb-2">Top Muscle Groups</p>
             {muscleRanking.map(([muscle, ratio]) => (
               <button
                 key={muscle}

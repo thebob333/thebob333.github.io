@@ -12,6 +12,7 @@ import { BUILT_IN_EXERCISE_IDS, EXERCISE_LABELS, CompoundExercise, CustomExercis
 import { getStandard } from '@/lib/strength-standards';
 import { DataCard } from '@/components/settings/DataCard';
 import { PageHeader } from '@/components/app/PageHeader';
+import { AppearanceCard } from '@/components/settings/AppearanceCard';
 
 const MIN_BODYWEIGHT = 50;
 const MAX_BODYWEIGHT = 700;
@@ -49,6 +50,8 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <PageHeader title="Settings" subtitle="Your data, body metrics and preferences" back />
+
+      <AppearanceCard />
 
       {/* Body Metrics */}
       <Card className="shadow-sm">

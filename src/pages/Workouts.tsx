@@ -619,11 +619,11 @@ RULES:
               {chartData.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 88%)" />
-                    <XAxis dataKey="date" stroke="hsl(220 10% 45%)" fontSize={11} />
-                    <YAxis stroke="hsl(220 10% 45%)" fontSize={11} />
-                    <Tooltip contentStyle={{ background: 'hsl(0 0% 100%)', border: '1px solid hsl(220 15% 88%)', borderRadius: '8px', fontFamily: 'Inter' }} />
-                    <Line type="monotone" dataKey="weight" stroke="hsl(220 60% 30%)" strokeWidth={3} dot={{ fill: 'hsl(220 60% 30%)', r: 4 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <Tooltip contentStyle={{ background: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
+                    <Line type="monotone" dataKey="weight" stroke="hsl(var(--primary))" strokeWidth={3} dot={{ fill: 'hsl(var(--primary))', r: 4 }} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
@@ -642,11 +642,11 @@ RULES:
               {weeklyVolume.length > 0 ? (
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={weeklyVolume}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 88%)" />
-                    <XAxis dataKey="week" stroke="hsl(220 10% 45%)" fontSize={11} />
-                    <YAxis stroke="hsl(220 10% 45%)" fontSize={11} />
-                    <Tooltip contentStyle={{ background: 'hsl(0 0% 100%)', border: '1px solid hsl(220 15% 88%)', borderRadius: '8px', fontFamily: 'Inter' }} />
-                    <Bar dataKey="volume" fill="hsl(12 80% 65%)" radius={[4, 4, 0, 0]} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="week" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                    <Tooltip contentStyle={{ background: 'hsl(var(--popover))', color: 'hsl(var(--popover-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }} />
+                    <Bar dataKey="volume" fill="hsl(var(--coral))" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -712,7 +712,7 @@ RULES:
                   {customEx && customEx.muscleGroups.length > 0 && (
                     <div className="flex flex-wrap gap-1 mb-3">
                       {customEx.muscleGroups.map(m => (
-                        <Badge key={m} variant="outline" className="text-[10px] capitalize">{m}</Badge>
+                        <Badge key={m} variant="outline" className="text-[11px] capitalize">{m}</Badge>
                       ))}
                     </div>
                   )}
@@ -827,23 +827,23 @@ RULES:
                   <label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Starting Config</label>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase">Starting Weight</label>
+                      <label className="text-[11px] text-muted-foreground uppercase">Starting Weight</label>
                       <Input type="number" inputMode="decimal" value={newExWeight || ''} onChange={e => setNewExWeight(e.target.value === '' ? 0 : Number(e.target.value))} className="h-8 mt-0.5" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase">Sets</label>
+                      <label className="text-[11px] text-muted-foreground uppercase">Sets</label>
                       <Input type="number" inputMode="numeric" value={newExSets || ''} onChange={e => setNewExSets(e.target.value === '' ? 0 : Number(e.target.value))} className="h-8 mt-0.5" min={1} max={10} />
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase">Increment</label>
+                      <label className="text-[11px] text-muted-foreground uppercase">Increment</label>
                       <Input type="number" inputMode="decimal" value={newExIncrement || ''} onChange={e => setNewExIncrement(e.target.value === '' ? 0 : Number(e.target.value))} className="h-8 mt-0.5" step={2.5} />
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase">Rep Min</label>
+                      <label className="text-[11px] text-muted-foreground uppercase">Rep Min</label>
                       <Input type="number" inputMode="numeric" value={newExRepMin || ''} onChange={e => setNewExRepMin(e.target.value === '' ? 0 : Number(e.target.value))} className="h-8 mt-0.5" />
                     </div>
                     <div>
-                      <label className="text-[10px] text-muted-foreground uppercase">Rep Max</label>
+                      <label className="text-[11px] text-muted-foreground uppercase">Rep Max</label>
                       <Input type="number" inputMode="numeric" value={newExRepMax || ''} onChange={e => setNewExRepMax(e.target.value === '' ? 0 : Number(e.target.value))} className="h-8 mt-0.5" />
                     </div>
                   </div>

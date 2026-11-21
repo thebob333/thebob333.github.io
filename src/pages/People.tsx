@@ -127,16 +127,16 @@ const contactToForm = (c: Contact): ContactForm => ({
 });
 
 const STREAK_COLORS = {
-  'on-track': 'text-green-500',
-  'due-soon': 'text-amber-500',
-  'overdue': 'text-red-500',
+  'on-track': 'text-success',
+  'due-soon': 'text-warning',
+  'overdue': 'text-destructive',
   'no-goal': 'text-muted-foreground',
 };
 
 const STREAK_BG = {
-  'on-track': 'bg-green-500/10',
-  'due-soon': 'bg-amber-500/10',
-  'overdue': 'bg-red-500/10',
+  'on-track': 'bg-success/10',
+  'due-soon': 'bg-warning/10',
+  'overdue': 'bg-destructive/10',
   'no-goal': '',
 };
 
@@ -494,7 +494,7 @@ export default function PeoplePage() {
                         {/* Avatar with streak ring */}
                         <div className="relative flex-shrink-0">
                           <div
-                            className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold ${streak !== 'no-goal' ? 'ring-2 ' + (streak === 'on-track' ? 'ring-green-400' : streak === 'due-soon' ? 'ring-amber-400' : 'ring-red-400') : ''}`}
+                            className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold ${streak !== 'no-goal' ? 'ring-2 ' + (streak === 'on-track' ? 'ring-success' : streak === 'due-soon' ? 'ring-warning' : 'ring-destructive') : ''}`}
                             style={{ backgroundColor: `hsl(${tag.color} / 0.15)`, color: `hsl(${tag.color})` }}
                           >
                             {contact.name.charAt(0).toUpperCase()}
@@ -505,7 +505,7 @@ export default function PeoplePage() {
                             <span className="font-semibold text-sm truncate">{contact.name}</span>
                             <Badge
                               variant="outline"
-                              className="text-[9px] px-1.5 py-0"
+                              className="text-[11px] px-1.5 py-0"
                               style={{
                                 backgroundColor: `hsl(${tag.color} / 0.1)`,
                                 borderColor: `hsl(${tag.color} / 0.3)`,
@@ -516,7 +516,7 @@ export default function PeoplePage() {
                             </Badge>
                             <Badge
                               variant="outline"
-                              className="text-[9px] px-1.5 py-0 gap-0.5"
+                              className="text-[11px] px-1.5 py-0 gap-0.5"
                               style={{
                                 backgroundColor: `hsl(${influence.color} / 0.1)`,
                                 borderColor: `hsl(${influence.color} / 0.3)`,
@@ -535,7 +535,7 @@ export default function PeoplePage() {
                               </div>
                             )}
                             {streak !== 'no-goal' && (
-                              <Badge variant="outline" className={`text-[9px] px-1.5 py-0 gap-0.5 border-0 ${STREAK_COLORS[streak]} ${STREAK_BG[streak]}`}>
+                              <Badge variant="outline" className={`text-[11px] px-1.5 py-0 gap-0.5 border-0 ${STREAK_COLORS[streak]} ${STREAK_BG[streak]}`}>
                                 <Clock className="h-2.5 w-2.5" />
                                 {daysSince !== null ? `${daysSince}d` : 'Never'} · {STREAK_LABELS[streak]}
                               </Badge>
@@ -543,7 +543,7 @@ export default function PeoplePage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
-                          <Badge variant="outline" className="text-[9px] px-1.5 py-0 text-muted-foreground">
+                          <Badge variant="outline" className="text-[11px] px-1.5 py-0 text-muted-foreground">
                             {ring.label}
                           </Badge>
                           <button
@@ -619,7 +619,7 @@ export default function PeoplePage() {
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  className="h-6 px-2 text-[10px] gap-1"
+                                  className="h-6 px-2 text-[11px] gap-1"
                                   onClick={e => { e.stopPropagation(); openAddCommitment(contact.id); }}
                                 >
                                   <Plus className="h-3 w-3" /> Add
@@ -635,18 +635,18 @@ export default function PeoplePage() {
                                       <div key={commitment.id} className="flex items-center gap-2 text-[11px] group">
                                         <button
                                           onClick={e => { e.stopPropagation(); completeCommitment(commitment.id); }}
-                                          className="flex-shrink-0 hover:text-green-500 transition-colors"
+                                          className="flex-shrink-0 hover:text-success transition-colors"
                                         >
                                           <Circle className="h-3.5 w-3.5 text-muted-foreground" />
                                         </button>
-                                        <span className={`flex-1 ${isOverdue ? 'text-red-500' : 'text-foreground/80'}`}>
+                                        <span className={`flex-1 ${isOverdue ? 'text-destructive' : 'text-foreground/80'}`}>
                                           {commitment.text}
                                         </span>
                                         {commitment.recurring && (
                                           <Repeat className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" aria-label={`Repeats ${commitment.recurring}`} />
                                         )}
                                         {commitment.dueDate && (
-                                          <span className={`flex-shrink-0 ${isOverdue ? 'text-red-500 font-medium' : 'text-muted-foreground/60'}`}>
+                                          <span className={`flex-shrink-0 ${isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground/60'}`}>
                                             {formatRelativeDate(commitment.dueDate)}
                                           </span>
                                         )}
@@ -663,9 +663,9 @@ export default function PeoplePage() {
                                     <div key={commitment.id} className="flex items-center gap-2 text-[11px] group opacity-50">
                                       <button
                                         onClick={e => { e.stopPropagation(); uncompleteCommitment(commitment.id); }}
-                                        className="flex-shrink-0 hover:text-amber-500 transition-colors"
+                                        className="flex-shrink-0 hover:text-warning transition-colors"
                                       >
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                                        <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                                       </button>
                                       <span className="flex-1 line-through text-muted-foreground">{commitment.text}</span>
                                       <button
@@ -687,7 +687,7 @@ export default function PeoplePage() {
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  className="h-6 px-2 text-[10px] gap-1"
+                                  className="h-6 px-2 text-[11px] gap-1"
                                   onClick={e => { e.stopPropagation(); openLogInteraction(contact.id); }}
                                 >
                                   <Plus className="h-3 w-3" /> Log
@@ -863,7 +863,7 @@ export default function PeoplePage() {
                     <button
                       key={t.value}
                       onClick={() => setInteractionForm({ ...interactionForm, type: t.value })}
-                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-[10px] font-medium transition-all ${
+                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-[11px] font-medium transition-all ${
                         selected
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border text-muted-foreground hover:bg-accent'
@@ -909,7 +909,7 @@ export default function PeoplePage() {
                       }`}
                     >
                       <span className="text-lg">{e.emoji}</span>
-                      <span className="text-[9px] text-muted-foreground">{e.label}</span>
+                      <span className="text-[11px] text-muted-foreground">{e.label}</span>
                     </button>
                   );
                 })}
@@ -1008,7 +1008,7 @@ export default function PeoplePage() {
                 <p className="text-sm text-muted-foreground">
                   {importPreview.length} contact{importPreview.length !== 1 ? 's' : ''} ready to import
                   {importDuplicates.length > 0 && (
-                    <span className="text-amber-500"> ({importDuplicates.length} duplicate{importDuplicates.length !== 1 ? 's' : ''} skipped)</span>
+                    <span className="text-warning"> ({importDuplicates.length} duplicate{importDuplicates.length !== 1 ? 's' : ''} skipped)</span>
                   )}
                 </p>
                 <div className="max-h-[40vh] overflow-y-auto space-y-1.5 border rounded-lg p-2">
@@ -1019,7 +1019,7 @@ export default function PeoplePage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-xs truncate">{c.name}</p>
-                        <div className="flex gap-2 text-[10px] text-muted-foreground">
+                        <div className="flex gap-2 text-[11px] text-muted-foreground">
                           {c.phone && <span className="flex items-center gap-0.5"><Phone className="h-2.5 w-2.5" />{c.phone}</span>}
                           {c.email && <span className="flex items-center gap-0.5 truncate"><Mail className="h-2.5 w-2.5" />{c.email}</span>}
                         </div>

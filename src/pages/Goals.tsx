@@ -51,23 +51,23 @@ function DeadlineBadge({ deadline }: { deadline?: string }) {
 import type { GoalDomain } from '@/types/goals';
 
 const domainConfig: Record<GoalDomain, { label: string; color: string }> = {
-  PHYSICAL: { label: 'Physical', color: 'bg-red-500/15 text-red-400 border-red-500/30' },
-  CREATIVE: { label: 'Creative', color: 'bg-purple-500/15 text-purple-400 border-purple-500/30' },
-  PROFESSIONAL: { label: 'Professional', color: 'bg-blue-500/15 text-blue-400 border-blue-500/30' },
-  INTELLECTUAL: { label: 'Intellectual', color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' },
-  LIFESTYLE: { label: 'Lifestyle', color: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+  PHYSICAL: { label: 'Physical', color: 'bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30' },
+  CREATIVE: { label: 'Creative', color: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30' },
+  PROFESSIONAL: { label: 'Professional', color: 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30' },
+  INTELLECTUAL: { label: 'Intellectual', color: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30' },
+  LIFESTYLE: { label: 'Lifestyle', color: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30' },
 };
 
 function DomainBadge({ domain }: { domain?: GoalDomain }) {
   if (!domain) return null;
   const cfg = domainConfig[domain];
-  return <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${cfg.color}`}>{cfg.label}</Badge>;
+  return <Badge variant="outline" className={`text-[11px] px-1.5 py-0 ${cfg.color}`}>{cfg.label}</Badge>;
 }
 
 const effortColors: Record<string, string> = {
-  LOW: 'bg-emerald-500',
-  MED: 'bg-amber-400',
-  HIGH: 'bg-red-500',
+  LOW: 'bg-success',
+  MED: 'bg-warning',
+  HIGH: 'bg-destructive',
 };
 
 function EffortDot({ effort }: { effort?: EffortLevel }) {
@@ -76,15 +76,15 @@ function EffortDot({ effort }: { effort?: EffortLevel }) {
 }
 
 const evolutionColors: Record<string, string> = {
-  NEW: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-  CARRY: 'bg-slate-500/15 text-slate-400 border-slate-500/30',
-  INCREASE: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  REPLACE: 'bg-purple-500/15 text-purple-400 border-purple-500/30',
+  NEW: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
+  CARRY: 'bg-slate-500/15 text-slate-700 dark:text-slate-300 border-slate-500/30',
+  INCREASE: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+  REPLACE: 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
 };
 
 function EvolutionTag({ evolution }: { evolution?: HabitEvolution }) {
   if (!evolution) return null;
-  return <Badge variant="outline" className={`text-[9px] px-1 py-0 ${evolutionColors[evolution]}`}>{evolution}</Badge>;
+  return <Badge variant="outline" className={`text-[11px] px-1 py-0 ${evolutionColors[evolution]}`}>{evolution}</Badge>;
 }
 
 function isDeloadTask(title: string): boolean {
@@ -592,23 +592,23 @@ RULES:
                       <Collapsible>
                         <CollapsibleTrigger asChild>
                           <div className="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-accent/30 transition-colors">
-                            <Info className="h-4 w-4 text-blue-400" />
-                            <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Adaptation Protocol</span>
+                            <Info className="h-4 w-4 text-info" />
+                            <span className="text-xs font-semibold text-info uppercase tracking-wider">Adaptation Protocol</span>
                             <ChevronRight className="h-3 w-3 text-muted-foreground" />
                           </div>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                           <div className="grid gap-2 ml-6 mt-1">
-                            <div className="p-2.5 rounded-md bg-emerald-500/5 border border-emerald-500/20">
-                              <p className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider mb-0.5">If Ahead</p>
+                            <div className="p-2.5 rounded-md bg-success/5 border border-success/20">
+                              <p className="text-[11px] font-semibold text-success uppercase tracking-wider mb-0.5">If Ahead</p>
                               <p className="text-xs text-foreground/80">{goal.adaptationProtocol.ahead}</p>
                             </div>
-                            <div className="p-2.5 rounded-md bg-amber-500/5 border border-amber-500/20">
-                              <p className="text-[10px] font-semibold text-amber-400 uppercase tracking-wider mb-0.5">If Behind</p>
+                            <div className="p-2.5 rounded-md bg-warning/5 border border-warning/20">
+                              <p className="text-[11px] font-semibold text-warning uppercase tracking-wider mb-0.5">If Behind</p>
                               <p className="text-xs text-foreground/80">{goal.adaptationProtocol.behind}</p>
                             </div>
-                            <div className="p-2.5 rounded-md bg-red-500/5 border border-red-500/20">
-                              <p className="text-[10px] font-semibold text-red-400 uppercase tracking-wider mb-0.5">If Blocked</p>
+                            <div className="p-2.5 rounded-md bg-destructive/5 border border-destructive/20">
+                              <p className="text-[11px] font-semibold text-destructive uppercase tracking-wider mb-0.5">If Blocked</p>
                               <p className="text-xs text-foreground/80">{goal.adaptationProtocol.blocked}</p>
                             </div>
                           </div>
@@ -680,12 +680,12 @@ RULES:
                                 const taskExpanded = expandedTasks.has(task.id);
                                 return (
                                   <Collapsible key={task.id} open={taskExpanded} onOpenChange={() => toggle(expandedTasks, task.id, setExpandedTasks)}>
-                                    <div className={`ml-4 border-l pl-3 mt-2 ${isDeloadTask(task.title) ? 'border-emerald-500/40' : 'border-border'}`}>
+                                    <div className={`ml-4 border-l pl-3 mt-2 ${isDeloadTask(task.title) ? 'border-success/40' : 'border-border'}`}>
                                       <CollapsibleTrigger asChild>
-                                        <div className={`group/task flex items-center justify-between cursor-pointer p-1.5 rounded-lg transition-colors ${isDeloadTask(task.title) ? 'bg-emerald-500/5 hover:bg-emerald-500/10' : 'hover:bg-accent/20'}`}>
+                                        <div className={`group/task flex items-center justify-between cursor-pointer p-1.5 rounded-lg transition-colors ${isDeloadTask(task.title) ? 'bg-success/5 hover:bg-success/10' : 'hover:bg-accent/20'}`}>
                                           <div className="flex items-center gap-2">
                                             {taskExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                                            <span className={`text-sm ${isDeloadTask(task.title) ? 'text-emerald-400' : ''}`}>{task.title}</span>
+                                            <span className={`text-sm ${isDeloadTask(task.title) ? 'text-success' : ''}`}>{task.title}</span>
                                             <Badge className={`text-xs ${statusColors[status]}`}>{statusLabels[status]} {taskProgress}%</Badge>
                                             <DeadlineBadge deadline={task.deadline} />
                                           </div>
@@ -708,12 +708,12 @@ RULES:
                                         <div className="ml-5 mt-1 space-y-1">
                                           {/* To-Dos */}
                                           {task.todos.map(todo => (
-                                            <div key={todo.id} className={`flex items-center gap-2 group ${todo.isBenchmark ? 'bg-amber-500/5 rounded-md px-1.5 py-0.5 -mx-1.5' : ''}`}>
+                                            <div key={todo.id} className={`flex items-center gap-2 group ${todo.isBenchmark ? 'bg-warning/5 rounded-md px-1.5 py-0.5 -mx-1.5' : ''}`}>
                                               <Checkbox
                                                 checked={todo.done}
                                                 onCheckedChange={() => toggleToDo(goal.id, phase.id, task.id, todo.id)}
                                               />
-                                              {todo.isBenchmark && <Trophy className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />}
+                                              {todo.isBenchmark && <Trophy className="h-3.5 w-3.5 text-warning flex-shrink-0" />}
                                               <EffortDot effort={todo.effort} />
                                               <span className={`text-sm ${todo.done ? 'line-through text-muted-foreground' : ''} ${todo.isBenchmark ? 'font-medium' : ''}`}>{todo.title}</span>
                                               <DeadlineBadge deadline={todo.deadline} />
@@ -729,7 +729,7 @@ RULES:
                                           {/* Habits */}
                                           {(task.habits || []).length > 0 && (
                                             <div className="mt-2 pt-2 border-t border-border/50">
-                                              <p className="text-[10px] text-amber uppercase tracking-widest font-semibold mb-1 flex items-center gap-1">
+                                              <p className="text-[11px] text-amber uppercase tracking-widest font-semibold mb-1 flex items-center gap-1">
                                                 <Repeat className="h-3 w-3" /> Habits & Regimens
                                               </p>
                                               {(task.habits || []).map(habit => {
@@ -748,11 +748,11 @@ RULES:
                                                     <ToggleLeft className="h-3.5 w-3.5 flex-shrink-0 cursor-pointer text-muted-foreground" onClick={() => toggleHabit(goal.id, phase.id, task.id, habit.id)} />
                                                   )}
                                                   <span className={`text-sm ${completed ? 'text-muted-foreground' : ''} ${!habit.active ? 'line-through text-muted-foreground' : ''}`}>{habit.title}</span>
-                                                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-amber/10 border-amber/30 text-amber">{habit.frequency}</Badge>
-                                                  {habit.target && <span className="text-[10px] text-muted-foreground">{habit.target}</span>}
+                                                  <Badge variant="outline" className="text-[11px] px-1.5 py-0 bg-amber/10 border-amber/30 text-amber">{habit.frequency}</Badge>
+                                                  {habit.target && <span className="text-[11px] text-muted-foreground">{habit.target}</span>}
                                                   <EvolutionTag evolution={habit.evolution} />
                                                   {streak > 0 && habit.active && (
-                                                    <span className="text-[10px] font-medium text-amber flex items-center gap-0.5">
+                                                    <span className="text-[11px] font-medium text-amber flex items-center gap-0.5">
                                                       <Flame className="h-3 w-3" />{streak}d
                                                     </span>
                                                   )}
@@ -779,14 +779,14 @@ RULES:
 
                                           {/* Notes / Journal */}
                                           <div className="mt-2 pt-2 border-t border-border/50">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-semibold mb-1 flex items-center gap-1">
+                                            <p className="text-[11px] text-muted-foreground uppercase tracking-widest font-semibold mb-1 flex items-center gap-1">
                                               <MessageSquare className="h-3 w-3" /> Notes
                                             </p>
                                             {(task.notes || []).slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(note => (
                                               <div key={note.id} className="flex items-start gap-2 group py-1">
                                                 <div className="flex-1">
                                                   <p className="text-sm">{note.text}</p>
-                                                  <p className="text-[9px] text-muted-foreground">
+                                                  <p className="text-[11px] text-muted-foreground">
                                                     {new Date(note.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                   </p>
                                                 </div>

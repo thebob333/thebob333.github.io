@@ -388,8 +388,8 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
     <div className="flex flex-col h-full space-y-2 p-2">
       {/* Header */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-[10px] md:text-xs font-medieval text-muted-foreground">Tap to add · Drag to move</span>
-        <Button variant="ghost" size="sm" className="ml-auto text-xs font-medieval gap-1" onClick={() => setShowCategoryManager(!showCategoryManager)}>
+        <span className="text-[11px] md:text-xs text-muted-foreground">Tap to add · Drag to move</span>
+        <Button variant="ghost" size="sm" className="ml-auto text-xs gap-1" onClick={() => setShowCategoryManager(!showCategoryManager)}>
           <Palette className="h-3.5 w-3.5" />
           Categories
         </Button>
@@ -402,7 +402,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
             <div className="border border-border/30 rounded-lg p-3 space-y-3 bg-muted/10">
               <div className="flex flex-wrap gap-1.5">
                 {categories.map(cat => (
-                  <div key={cat.id} className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medieval border border-border/30" style={{ backgroundColor: `hsl(${cat.color} / 0.2)`, borderColor: `hsl(${cat.color} / 0.4)` }}>
+                  <div key={cat.id} className="flex items-center gap-1 px-2 py-1 rounded text-xs border border-border/30" style={{ backgroundColor: `hsl(${cat.color} / 0.2)`, borderColor: `hsl(${cat.color} / 0.4)` }}>
                     <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: `hsl(${cat.color})` }} />
                     {cat.name}
                     {!DEFAULT_CATEGORIES.some(c => c.id === cat.id) && (
@@ -439,7 +439,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
       {/* Category legend — hidden on mobile */}
       <div className="hidden md:flex flex-wrap gap-1 flex-shrink-0">
         {categories.map(cat => (
-          <Badge key={cat.id} variant="outline" className="text-[10px] font-medieval cursor-default" style={{ backgroundColor: `hsl(${cat.color} / 0.15)`, borderColor: `hsl(${cat.color} / 0.4)`, color: `hsl(${cat.color})` }}>
+          <Badge key={cat.id} variant="outline" className="text-[11px] cursor-default" style={{ backgroundColor: `hsl(${cat.color} / 0.15)`, borderColor: `hsl(${cat.color} / 0.4)`, color: `hsl(${cat.color})` }}>
             {cat.name}
           </Badge>
         ))}
@@ -459,7 +459,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
           {hourLines.map(({ hour, top }) => (
             <div key={hour} className="absolute left-0 right-0" style={{ top }}>
               <div className="flex items-start">
-                <span className="text-[10px] font-medieval text-muted-foreground text-right pr-2 -mt-1.5 flex-shrink-0" style={{ width: LABEL_WIDTH }}>
+                <span className="text-[11px] text-muted-foreground text-right pr-2 -mt-1.5 flex-shrink-0" style={{ width: LABEL_WIDTH }}>
                   {formatTime(hour * 60)}
                 </span>
                 <div className="flex-1 border-t border-border/30" />
@@ -535,7 +535,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                         onKeyDown={(e) => e.key === 'Enter' && setEditingBlock(null)}
                       />
                     ) : (
-                      <span className={`text-xs font-medieval font-medium truncate ${(block.todoId && todoStates ? (todoStates[block.todoId] ?? false) : (block.done ?? false)) ? 'line-through opacity-50' : ''}`} style={{ color: `hsl(${cat.color})` }}>
+                      <span className={`text-xs font-medium truncate ${(block.todoId && todoStates ? (todoStates[block.todoId] ?? false) : (block.done ?? false)) ? 'line-through opacity-50' : ''}`} style={{ color: `hsl(${cat.color})` }}>
                         {block.title || cat.name}
                       </span>
                     )}
@@ -547,14 +547,14 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                     return contact ? (
                       <div className="flex items-center gap-1 mt-0.5">
                         <User className="h-2.5 w-2.5 text-amber" />
-                        <span className="text-[9px] font-medium text-amber truncate">{contact.name}</span>
+                        <span className="text-[11px] font-medium text-amber truncate">{contact.name}</span>
                       </div>
                     ) : null;
                   })()}
 
                   {/* Time label */}
                   {height >= 30 && (
-                    <span className="text-[9px] font-medieval text-muted-foreground mt-auto">
+                    <span className="text-[11px] text-muted-foreground mt-auto">
                       {formatTime(blockStartMinutes(block))} — {formatTime(blockEndMinutes(block))}
                     </span>
                   )}
@@ -682,7 +682,7 @@ function TodoLinkPicker({ backlogTodos, onLink }: {
         </div>
         <div className="max-h-56 overflow-y-auto p-1">
           {goalEntries.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground font-medieval p-2 text-center">No todos found</p>
+            <p className="text-[11px] text-muted-foreground p-2 text-center">No todos found</p>
           ) : (
             goalEntries.map(([key, { goalTitle, todos }]) => {
               const isOpen = expandedGoal === key || search.length > 0 || goalEntries.length === 1;
@@ -693,8 +693,8 @@ function TodoLinkPicker({ backlogTodos, onLink }: {
                     className="flex items-center gap-1.5 w-full px-2 py-1 text-left rounded hover:bg-muted/30 transition-colors"
                   >
                     <Target className="h-3 w-3 text-secondary flex-shrink-0" />
-                    <span className="text-[10px] font-medieval font-bold text-secondary truncate flex-1">{goalTitle}</span>
-                    <Badge variant="outline" className="text-[8px] px-1 py-0">{todos.length}</Badge>
+                    <span className="text-[11px] font-bold text-secondary truncate flex-1">{goalTitle}</span>
+                    <Badge variant="outline" className="text-[11px] px-1 py-0">{todos.length}</Badge>
                   </button>
                   {isOpen && (
                     <div className="ml-3 border-l border-border/20 pl-2 space-y-0">
@@ -705,11 +705,11 @@ function TodoLinkPicker({ backlogTodos, onLink }: {
                           <button
                             key={t.todoId}
                             onClick={() => onLink(t.todoId, t.title)}
-                            className="w-full text-left px-2 py-1 text-[11px] font-medieval rounded hover:bg-primary/15 transition-colors flex items-center gap-1"
+                            className="w-full text-left px-2 py-1 text-[11px] rounded hover:bg-primary/15 transition-colors flex items-center gap-1"
                           >
                             <span className="truncate flex-1">{t.title}</span>
                             {days !== null && (
-                              <span className={`text-[9px] flex items-center gap-0.5 flex-shrink-0 ${urgencyColor}`}>
+                              <span className={`text-[11px] flex items-center gap-0.5 flex-shrink-0 ${urgencyColor}`}>
                                 <Clock className="h-2.5 w-2.5" />
                                 {days < 0 ? `${Math.abs(days)}d over` : days === 0 ? 'today' : `${days}d`}
                               </span>
@@ -762,7 +762,7 @@ function ContactLinkPicker({ contacts, onLink }: {
         </div>
         <div className="max-h-48 overflow-y-auto p-1">
           {filtered.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground p-2 text-center">No contacts found</p>
+            <p className="text-[11px] text-muted-foreground p-2 text-center">No contacts found</p>
           ) : (
             filtered.map(c => (
               <button
@@ -770,12 +770,12 @@ function ContactLinkPicker({ contacts, onLink }: {
                 onClick={() => onLink(c.id, c.name)}
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-left rounded hover:bg-amber/10 transition-colors"
               >
-                <div className="w-5 h-5 rounded-full bg-amber/15 flex items-center justify-center text-[10px] font-semibold text-amber flex-shrink-0">
+                <div className="w-5 h-5 rounded-full bg-amber/15 flex items-center justify-center text-[11px] font-semibold text-amber flex-shrink-0">
                   {c.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <span className="text-xs font-medium truncate block">{c.name}</span>
-                  <span className="text-[9px] text-muted-foreground capitalize">{c.relationship}</span>
+                  <span className="text-[11px] text-muted-foreground capitalize">{c.relationship}</span>
                 </div>
               </button>
             ))

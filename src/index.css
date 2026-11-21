@@ -50,8 +50,80 @@
     --amber: 38 90% 55%;
     --sky: 200 80% 55%;
 
+    /* Status colors */
+    --success: 152 60% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 90% 44%;
+    --warning-foreground: 0 0% 100%;
+    --info: 205 75% 45%;
+    --info-foreground: 0 0% 100%;
+
+    /* Page background */
+    --bg-from: 40 30% 97%;
+    --bg-to: 40 20% 93%;
+
+    color-scheme: light;
     font-family: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     -webkit-font-smoothing: antialiased;
+  }
+}
+
+@layer base {
+  .dark {
+    --background: 222 22% 9%;
+    --foreground: 40 20% 94%;
+
+    --card: 222 20% 12.5%;
+    --card-foreground: 40 20% 94%;
+
+    --popover: 222 20% 14%;
+    --popover-foreground: 40 20% 94%;
+
+    --primary: 215 85% 68%;
+    --primary-foreground: 222 30% 10%;
+
+    --secondary: 222 15% 20%;
+    --secondary-foreground: 40 20% 90%;
+
+    --muted: 222 15% 18%;
+    --muted-foreground: 220 12% 66%;
+
+    --accent: 222 18% 20%;
+    --accent-foreground: 40 20% 94%;
+
+    --destructive: 0 72% 62%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 222 15% 22%;
+    --input: 222 15% 24%;
+    --ring: 215 85% 68%;
+
+    --sidebar-background: 222 22% 11%;
+    --sidebar-foreground: 40 20% 94%;
+    --sidebar-primary: 215 85% 68%;
+    --sidebar-primary-foreground: 222 30% 10%;
+    --sidebar-accent: 222 18% 18%;
+    --sidebar-accent-foreground: 40 20% 94%;
+    --sidebar-border: 222 15% 20%;
+    --sidebar-ring: 215 85% 68%;
+
+    --coral: 12 85% 70%;
+    --teal: 170 55% 52%;
+    --violet: 270 70% 72%;
+    --amber: 38 92% 60%;
+    --sky: 200 85% 64%;
+
+    --success: 152 55% 52%;
+    --success-foreground: 222 30% 10%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 222 30% 10%;
+    --info: 205 85% 64%;
+    --info-foreground: 222 30% 10%;
+
+    --bg-from: 222 22% 10%;
+    --bg-to: 222 24% 7%;
+
+    color-scheme: dark;
   }
 }
 
@@ -70,7 +142,7 @@
     /* Let iOS keep text sizes stable on rotation. */
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
-    background-image: linear-gradient(180deg, hsl(40 30% 97%) 0%, hsl(40 20% 93%) 100%);
+    background-image: linear-gradient(180deg, hsl(var(--bg-from)) 0%, hsl(var(--bg-to)) 100%);
     background-attachment: fixed;
   }
 
@@ -79,7 +151,7 @@
     body {
       background-image:
         radial-gradient(circle at 1px 1px, hsl(220 10% 70% / 0.07) 1px, transparent 0),
-        linear-gradient(180deg, hsl(40 30% 97%) 0%, hsl(40 20% 93%) 100%);
+        linear-gradient(180deg, hsl(var(--bg-from)) 0%, hsl(var(--bg-to)) 100%);
       background-size: 20px 20px, 100% 100%;
     }
   }

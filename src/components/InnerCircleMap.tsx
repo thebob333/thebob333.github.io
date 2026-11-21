@@ -79,9 +79,9 @@ interface InnerCircleMapProps {
 }
 
 const STREAK_RING_COLORS = {
-  'on-track': '#22c55e',
-  'due-soon': '#f59e0b',
-  'overdue': '#ef4444',
+  'on-track': 'hsl(var(--success))',
+  'due-soon': 'hsl(var(--warning))',
+  'overdue': 'hsl(var(--destructive))',
   'no-goal': 'transparent',
 };
 
@@ -194,7 +194,7 @@ export default function InnerCircleMap({
           {overflows.map(o => (
             <div
               key={o.ring}
-              className="absolute z-10 flex h-7 min-w-7 items-center justify-center rounded-full border border-border bg-card px-1.5 text-[10px] font-semibold text-muted-foreground shadow-sm"
+              className="absolute z-10 flex h-7 min-w-7 items-center justify-center rounded-full border border-border bg-card px-1.5 text-[11px] font-semibold text-muted-foreground shadow-sm"
               style={{ left: `${o.x}%`, top: `${o.y}%`, transform: 'translate(-50%, -50%)' }}
               title={`${o.count} more in ${RING_LABELS[o.ring]} — see the list view`}
             >
@@ -240,7 +240,7 @@ export default function InnerCircleMap({
                     const streak = streakStatus(selectedContact);
                     const days = daysSince(selectedContact.id);
                     if (streak === 'no-goal') return null;
-                    const color = streak === 'on-track' ? 'text-green-500' : streak === 'due-soon' ? 'text-amber-500' : 'text-red-500';
+                    const color = streak === 'on-track' ? 'text-success' : streak === 'due-soon' ? 'text-warning' : 'text-destructive';
                     return (
                       <span className={`flex items-center gap-0.5 ${color}`}>
                         <Clock className="h-2.5 w-2.5" />
@@ -261,7 +261,7 @@ export default function InnerCircleMap({
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1 h-8 text-[10px] gap-1"
+                className="flex-1 h-8 text-[11px] gap-1"
                 onClick={() => { onLogInteraction(selectedContact.id); setSelectedId(null); }}
               >
                 <Activity className="h-3 w-3" /> Log
@@ -270,7 +270,7 @@ export default function InnerCircleMap({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-[10px] gap-1"
+                  className="h-8 text-[11px] gap-1"
                   asChild
                 >
                   <a href={`tel:${selectedContact.phone}`}>
@@ -282,7 +282,7 @@ export default function InnerCircleMap({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="h-8 text-[10px] gap-1"
+                  className="h-8 text-[11px] gap-1"
                   asChild
                 >
                   <a href={`mailto:${selectedContact.email}`}>
@@ -293,7 +293,7 @@ export default function InnerCircleMap({
               <Button
                 size="sm"
                 variant="outline"
-                className="h-8 text-[10px] gap-1"
+                className="h-8 text-[11px] gap-1"
                 onClick={() => { onEdit(selectedContact); setSelectedId(null); }}
               >
                 <Edit2 className="h-3 w-3" /> Edit

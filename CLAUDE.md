@@ -81,7 +81,12 @@ Naming: goal templates are **Blueprints**, repeatable Plan blocks are **Routines
 
 ### UI
 
-Built on **shadcn/ui** (`src/components/ui/`) over Radix UI primitives, styled with Tailwind. Custom theme colors: coral, teal, violet, amber, sky. Dark mode uses the `class` strategy. Path alias `@/` maps to `src/`.
+Built on **shadcn/ui** (`src/components/ui/`) over Radix UI primitives, styled with Tailwind. Path alias `@/` maps to `src/`.
+
+- Colors are CSS variables in `src/index.css` with a full `.dark` set. Dark mode follows the phone by default (`next-themes`, `defaultTheme="system"`, storage key `telos-theme`; Settings → Appearance overrides). `ThemeColorSync` keeps the status-bar color in step.
+- Use **semantic status tokens** — `success`, `warning`, `destructive`, `info` (e.g. `text-success`, `bg-warning/10`) — never raw `green-500`/`amber-500`/`red-500`. Section accents `coral/teal/violet/amber/sky` keep their token as DEFAULT (`text-amber`) plus Tailwind's shade scale.
+- Charts/SVG take colors from CSS vars (`hsl(var(--primary))`, `hsl(var(--border))`), so they work in both themes.
+- Minimum text size is 11px. Cards are `rounded-2xl` with `p-4` on phones.
 
 ### TypeScript
 

@@ -3,7 +3,9 @@ import { toast } from "sonner";
 import App from "./App.tsx";
 import "@fontsource-variable/inter";
 import "./index.css";
+import { ThemeProvider } from "next-themes";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
+import { ThemeColorSync } from "@/components/app/ThemeColorSync";
 import { configureStores, setWritesBlocked } from "@/lib/store";
 import { META_KEYS } from "@/lib/storage";
 import { CURRENT_SCHEMA_VERSION, runStartupMigrations, type StartupResult } from "@/lib/migrations";
@@ -49,9 +51,13 @@ const idle = (fn: () => void) =>
   }
 
   createRoot(document.getElementById("root")!).render(
-    <AppErrorBoundary>
-      <App />
-    </AppErrorBoundary>,
+    // Follows the iPhone's light/dark setting by default; Settings can override.
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange storageKey="telos-theme">
+      <ThemeColorSync />
+      <AppErrorBoundary>
+        <App />
+      </AppErrorBoundary>
+    </ThemeProvider>,
   );
 
   if (result.status === "newer") setWritesBlocked("your data was saved by a newer version of TELOS");

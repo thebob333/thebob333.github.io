@@ -82,10 +82,10 @@ export function HabitHeatmap({ goals, logs }: Props) {
   const getColor = (count: number) => {
     if (count === 0) return 'hsl(var(--muted))';
     const ratio = Math.min(count / habitCount, 1);
-    if (ratio <= 0.25) return 'hsl(142 40% 70%)';
-    if (ratio <= 0.5) return 'hsl(142 50% 55%)';
-    if (ratio <= 0.75) return 'hsl(142 60% 42%)';
-    return 'hsl(142 70% 32%)';
+    if (ratio <= 0.25) return 'hsl(var(--success) / 0.3)';
+    if (ratio <= 0.5) return 'hsl(var(--success) / 0.55)';
+    if (ratio <= 0.75) return 'hsl(var(--success) / 0.8)';
+    return 'hsl(var(--success))';
   };
 
   const dayLabels = ['', 'M', '', 'W', '', 'F', ''];
@@ -136,7 +136,7 @@ export function HabitHeatmap({ goals, logs }: Props) {
         ))}
       </svg>
       <div className="flex items-center gap-1 mt-2 justify-end">
-        <span className="text-[9px] text-muted-foreground">Less</span>
+        <span className="text-[11px] text-muted-foreground">Less</span>
         {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => (
           <div
             key={i}
@@ -144,7 +144,7 @@ export function HabitHeatmap({ goals, logs }: Props) {
             style={{ backgroundColor: getColor(ratio * habitCount) }}
           />
         ))}
-        <span className="text-[9px] text-muted-foreground">More</span>
+        <span className="text-[11px] text-muted-foreground">More</span>
       </div>
     </div>
   );
