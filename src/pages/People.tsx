@@ -1,6 +1,8 @@
 import { dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 import { ENERGY_LEVELS } from '@/lib/people';
 import { PageHeader } from '@/components/app/PageHeader';
+import { RowMenu } from '@/components/app/RowMenu';
+import { contactActions } from '@/hooks/useContacts';
 import { useState, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,10 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Label } from '@/components/ui/label';
 import {
-  Contact, RelationshipTag, CircleRing, InfluenceTag, InteractionType,
+  Contact, RelationshipTag, CircleRing, InfluenceTag, InteractionType, Commitment, Interaction,
 } from '@/lib/storage';
 import { useContacts } from '@/hooks/useContacts';
 import {
@@ -220,9 +222,19 @@ export default function PeoplePage() {
     setForm(emptyForm());
   };
 
+  const [confirmDelete, setConfirmDelete] = useState<Contact | null>(null);
   const handleDelete = (id: string) => {
+    const snap = contactActions.snapshotContact(id);
     deleteContact(id);
-    toast.success('Contact removed');
+    toast.success(`${snap.contact?.name ?? 'Contact'} removed`, { action: { label: 'Undo', onClick: () => contactActions.restoreContact(snap) } });
+  };
+  const removeCommitment = (c: Commitment) => {
+    deleteCommitment(c.id);
+    toast.success('Commitment deleted', { action: { label: 'Undo', onClick: () => contactActions.restoreCommitment(c) } });
+  };
+  const removeInteraction = (i: Interaction) => {
+    deleteInteraction(i.id);
+    toast.success('Interaction deleted', { action: { label: 'Undo', onClick: () => contactActions.restoreInteraction(i) } });
   };
 
   const openEdit = (contact: Contact) => {
@@ -548,22 +560,25 @@ export default function PeoplePage() {
                           </Badge>
                           <button
                             onClick={e => { e.stopPropagation(); openLogInteraction(contact.id); }}
-                            className="p-1.5 rounded hover:bg-primary/10 transition-colors"
+                            className="flex h-10 w-10 items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                            aria-label={`Log time with ${contact.name}`}
                             title="Log interaction"
                           >
-                            <Activity className="h-3.5 w-3.5 text-primary" />
+                            <Activity className="h-4 w-4" />
                           </button>
-                          {contact.phone && (
-                            <a href={`tel:${contact.phone}`} onClick={e => e.stopPropagation()} className="p-1.5 rounded hover:bg-accent transition-colors">
-                              <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                            </a>
-                          )}
-                          <button onClick={e => { e.stopPropagation(); openEdit(contact); }} className="p-1.5 rounded hover:bg-accent transition-colors">
-                            <Edit2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          </button>
-                          <button onClick={e => { e.stopPropagation(); handleDelete(contact.id); }} className="p-1.5 rounded hover:bg-destructive/10 transition-colors">
-                            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                          </button>
+                          <RowMenu
+                            label={`Actions for ${contact.name}`}
+                            items={[
+                              ...(contact.phone ? [
+                                { label: 'Call', icon: Phone, onSelect: () => { window.location.href = `tel:${contact.phone}`; } },
+                                { label: 'Text', icon: MessageSquare, onSelect: () => { window.location.href = `sms:${contact.phone}`; } },
+                              ] : []),
+                              ...(contact.email ? [{ label: 'Email', icon: Mail, onSelect: () => { window.location.href = `mailto:${contact.email}`; } }] : []),
+                              { label: 'Add commitment', icon: Plus, onSelect: () => openAddCommitment(contact.id) },
+                              { label: 'Edit', icon: Edit2, separated: true, onSelect: () => openEdit(contact) },
+                              { label: 'Delete…', icon: Trash2, destructive: true, onSelect: () => setConfirmDelete(contact) },
+                            ]}
+                          />
                         </div>
                       </div>
 
@@ -650,12 +665,7 @@ export default function PeoplePage() {
                                             {formatRelativeDate(commitment.dueDate)}
                                           </span>
                                         )}
-                                        <button
-                                          onClick={e => { e.stopPropagation(); deleteCommitment(commitment.id); }}
-                                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 transition-all flex-shrink-0"
-                                        >
-                                          <Trash2 className="h-2.5 w-2.5 text-destructive" />
-                                        </button>
+                                        <RowMenu label="Commitment actions" items={[{ label: 'Delete commitment', icon: Trash2, destructive: true, onSelect: () => removeCommitment(commitment) }]} />
                                       </div>
                                     );
                                   })}
@@ -668,12 +678,7 @@ export default function PeoplePage() {
                                         <CheckCircle2 className="h-3.5 w-3.5 text-success" />
                                       </button>
                                       <span className="flex-1 line-through text-muted-foreground">{commitment.text}</span>
-                                      <button
-                                        onClick={e => { e.stopPropagation(); deleteCommitment(commitment.id); }}
-                                        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 transition-all flex-shrink-0"
-                                      >
-                                        <Trash2 className="h-2.5 w-2.5 text-destructive" />
-                                      </button>
+                                      <RowMenu label="Commitment actions" items={[{ label: 'Delete commitment', icon: Trash2, destructive: true, onSelect: () => removeCommitment(commitment) }]} />
                                     </div>
                                   ))}
                                 </div>
@@ -719,12 +724,7 @@ export default function PeoplePage() {
                                         <span className="text-muted-foreground/60 ml-auto flex-shrink-0">
                                           {formatRelativeDate(interaction.date)}
                                         </span>
-                                        <button
-                                          onClick={e => { e.stopPropagation(); deleteInteraction(interaction.id); }}
-                                          className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 transition-all"
-                                        >
-                                          <Trash2 className="h-2.5 w-2.5 text-destructive" />
-                                        </button>
+                                        <RowMenu label="Interaction actions" items={[{ label: 'Delete interaction', icon: Trash2, destructive: true, onSelect: () => removeInteraction(interaction) }]} />
                                       </div>
                                     );
                                   })}
@@ -758,7 +758,7 @@ export default function PeoplePage() {
               <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Full name" className="h-9" />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-xs font-medium">Relationship</Label>
                 <Select value={form.relationship} onValueChange={v => setForm({ ...form, relationship: v as RelationshipTag })}>
@@ -785,7 +785,7 @@ export default function PeoplePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-xs font-medium">Influence</Label>
                 <Select value={form.influenceTag} onValueChange={v => setForm({ ...form, influenceTag: v as InfluenceTag })}>
@@ -811,7 +811,7 @@ export default function PeoplePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-xs font-medium">Phone</Label>
                 <Input value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="555-1234" className="h-9" />
@@ -956,7 +956,7 @@ export default function PeoplePage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label className="text-xs font-medium flex items-center gap-1">
                   <CalendarClock className="h-3 w-3" /> Due Date
@@ -1051,6 +1051,21 @@ export default function PeoplePage() {
                 </Button>
               </div>
             ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {/* Delete person confirmation */}
+      <Dialog open={!!confirmDelete} onOpenChange={o => !o && setConfirmDelete(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove {confirmDelete?.name}?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">Their interactions and commitments are removed too. You can undo for a few seconds afterwards.</p>
+          <div className="mt-4 flex gap-2">
+            <Button variant="outline" className="h-11 flex-1" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+            <Button variant="destructive" className="h-11 flex-1 font-semibold" onClick={() => { const c = confirmDelete; setConfirmDelete(null); if (c) handleDelete(c.id); }}>
+              Remove
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

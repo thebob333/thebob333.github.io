@@ -35,6 +35,36 @@ export const contactActions = {
     C.update(list => list.map(c => (c.id === id ? { ...c, ...data } : c)));
   },
 
+  /** Everything that belongs to a person — taken before deleting so Undo can restore it all. */
+  snapshotContact(id: string) {
+    return {
+      contact: C.get().find(c => c.id === id),
+      interactions: I.get().filter(i => i.contactId === id),
+      commitments: K.get().filter(c => c.contactId === id),
+      goals: R.get().filter(g => g.contactId === id),
+      blockIds: stores.TIME_BLOCKS.get().filter(b => b.contactId === id).map(b => b.id),
+    };
+  },
+
+  restoreContact(snap: ReturnType<typeof contactActions.snapshotContact>) {
+    if (!snap.contact) return;
+    const has = <T extends { id: string }>(list: T[], id: string) => list.some(x => x.id === id);
+    C.update(list => (has(list, snap.contact!.id) ? list : [snap.contact!, ...list]));
+    I.update(list => [...snap.interactions.filter(x => !has(list, x.id)), ...list]);
+    K.update(list => [...snap.commitments.filter(x => !has(list, x.id)), ...list]);
+    R.update(list => [...snap.goals.filter(x => !has(list, x.id)), ...list]);
+    const ids = new Set(snap.blockIds);
+    if (ids.size) stores.TIME_BLOCKS.update(blocks => blocks.map(b => (ids.has(b.id) ? { ...b, contactId: snap.contact!.id } : b)));
+  },
+
+  restoreInteraction(i: Interaction) {
+    I.update(list => (list.some(x => x.id === i.id) ? list : [i, ...list]));
+  },
+
+  restoreCommitment(c: Commitment) {
+    K.update(list => (list.some(x => x.id === c.id) ? list : [c, ...list]));
+  },
+
   deleteContact(id: string) {
     C.update(list => list.filter(c => c.id !== id));
     I.update(list => list.filter(i => i.contactId !== id));

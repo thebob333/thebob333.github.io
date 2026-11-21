@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/app/ResponsiveDialog';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,6 +20,8 @@ import { toast } from 'sonner';
 import { ProgressRing } from '@/components/ProgressRing';
 import { WeeklyFocus, FocusStar } from '@/components/WeeklyFocus';
 import { PageHeader } from '@/components/app/PageHeader';
+import { RowMenu } from '@/components/app/RowMenu';
+import { RoundCheck } from '@/components/app/RoundCheck';
 
 import { parseGoalPlan, applyPlanToGoal, type ParseResult } from '@/lib/goal-plan-parser';
 import type { EffortLevel, HabitEvolution } from '@/types/goals';
@@ -102,8 +104,16 @@ export default function GoalsPage() {
     addNote, deleteNote,
     reorderPhases, reorderTasks, reorderTodos,
     archiveGoal, cloneGoal, saveAsTemplate, createFromTemplate,
-    templates, deleteTemplate,
+    templates, deleteTemplate, restoreGoal,
   } = useGoals();
+  const [confirmDeleteGoal, setConfirmDeleteGoal] = useState<Goal | null>(null);
+
+  /** Do a destructive edit inside a goal, offering a 5-second Undo that restores that goal. */
+  const withUndo = (goalId: string, message: string, action: () => void) => {
+    const snapshot = goals.find(g => g.id === goalId);
+    action();
+    toast.success(message, snapshot ? { action: { label: 'Undo', onClick: () => restoreGoal(snapshot) } } : undefined);
+  };
   const { logs: habitLogs, toggleCheckIn } = useHabits();
   const today = getTodayKey();
 
@@ -617,30 +627,27 @@ RULES:
                     )}
 
                     {/* Action buttons */}
-                    <div className="flex gap-2 flex-wrap">
-                      <Button size="sm" variant="outline" onClick={() => setAddPhaseGoalId(goal.id)}>
-                        <Plus className="h-3 w-3 mr-1" /> Add Phase
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" className="h-10 min-w-0 flex-1 px-3 sm:flex-none" onClick={() => setAddPhaseGoalId(goal.id)}>
+                        <Plus className="h-4 w-4 mr-1" /> Add phase
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => { setPromptGoal(goal); }}>
-                        <Sparkles className="h-3 w-3 mr-1" /> AI Prompt
+                      <Button variant="outline" className="h-10 min-w-0 flex-1 px-3 sm:flex-none" onClick={() => { setPromptGoal(goal); }}>
+                        <Sparkles className="h-4 w-4 mr-1" /> Plan with AI
                       </Button>
-                      {goal.deadline && (
-                        <Button size="sm" variant="outline" onClick={() => handleSpreadDeadlines(goal.id)}>
-                          <CalendarDays className="h-3 w-3 mr-1" /> Spread Deadlines
-                        </Button>
-                      )}
-                      <Button size="sm" variant="outline" onClick={() => { cloneGoal(goal.id); toast.success('Goal cloned!'); }}>
-                        <Copy className="h-3 w-3 mr-1" /> Clone
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => { saveAsTemplate(goal.id); toast.success('Saved as a blueprint', { description: 'Reuse it any time from Blueprints.' }); }}>
-                        <Bookmark className="h-3 w-3 mr-1" /> Blueprint
-                      </Button>
-                      <Button size="sm" variant="ghost" className="ml-auto" onClick={() => { archiveGoal(goal.id); toast.success(goal.archived ? 'Goal restored!' : 'Goal archived!'); }}>
-                        <Archive className="h-3 w-3 mr-1" /> {goal.archived ? 'Restore' : 'Archive'}
-                      </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteGoal(goal.id)}>
-                        <Trash2 className="h-3 w-3 mr-1" /> Delete
-                      </Button>
+                      <RowMenu
+                        label={`More actions for ${goal.title}`}
+                        className="ml-auto border"
+                        items={[
+                          ...(goal.deadline ? [{ label: 'Spread deadlines', icon: CalendarDays, onSelect: () => handleSpreadDeadlines(goal.id) }] : []),
+                          { label: 'Duplicate goal', icon: Copy, onSelect: () => { cloneGoal(goal.id); toast.success('Goal duplicated'); } },
+                          { label: 'Save as blueprint', icon: Bookmark, onSelect: () => { saveAsTemplate(goal.id); toast.success('Saved as a blueprint', { description: 'Reuse it any time from Blueprints.' }); } },
+                          { label: goal.archived ? 'Restore goal' : 'Archive goal', icon: Archive, separated: true, onSelect: () => {
+                            archiveGoal(goal.id);
+                            toast.success(goal.archived ? 'Goal restored' : 'Goal archived', { action: { label: 'Undo', onClick: () => archiveGoal(goal.id) } });
+                          } },
+                          { label: 'Delete goal…', icon: Trash2, destructive: true, onSelect: () => setConfirmDeleteGoal(goal) },
+                        ]}
+                      />
                     </div>
 
                     {/* Phases */}
@@ -650,27 +657,24 @@ RULES:
                       return (
                         <div key={phase.id}>
                         <Collapsible open={phaseExpanded} onOpenChange={() => toggle(expandedPhases, phase.id, setExpandedPhases)}>
-                          <div className="ml-4 border-l-2 border-primary/20 pl-4">
+                          <div className="ml-1 border-l-2 border-primary/20 pl-2 sm:ml-4 sm:pl-4">
                             <CollapsibleTrigger asChild>
-                              <div className="group flex items-center justify-between cursor-pointer hover:bg-accent/30 p-2 rounded-lg transition-colors">
-                                <div className="flex items-center gap-2">
+                              <div className="flex items-center justify-between gap-2 cursor-pointer hover:bg-accent/30 p-1.5 rounded-lg transition-colors">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
                                   {phaseExpanded ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                                   <span className="font-semibold">{phase.title}</span>
                                   <ProgressRing value={phaseProgress} size={28} strokeWidth={2.5} />
                                   <DeadlineBadge deadline={phase.deadline} />
                                 </div>
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <div className="flex flex-col">
-                                    <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={(e) => { e.stopPropagation(); reorderPhases(goal.id, phase.id, 'up'); }}><ArrowUp className="h-2.5 w-2.5" /></Button>
-                                    <Button size="sm" variant="ghost" className="h-4 w-4 p-0" onClick={(e) => { e.stopPropagation(); reorderPhases(goal.id, phase.id, 'down'); }}><ArrowDown className="h-2.5 w-2.5" /></Button>
-                                  </div>
-                                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={(e) => { e.stopPropagation(); setAddTaskTarget({ goalId: goal.id, phaseId: phase.id }); }}>
-                                    <Plus className="h-3 w-3 mr-1" /> Task
-                                  </Button>
-                                  <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={(e) => { e.stopPropagation(); deletePhase(goal.id, phase.id); }}>
-                                    <Trash2 className="h-3 w-3" />
-                                  </Button>
-                                </div>
+                                <RowMenu
+                                  label={`Actions for phase ${phase.title}`}
+                                  items={[
+                                    { label: 'Add task', icon: Plus, onSelect: () => setAddTaskTarget({ goalId: goal.id, phaseId: phase.id }) },
+                                    { label: 'Move up', icon: ArrowUp, disabled: phaseIdx === 0, onSelect: () => reorderPhases(goal.id, phase.id, 'up') },
+                                    { label: 'Move down', icon: ArrowDown, disabled: phaseIdx === goal.phases.length - 1, onSelect: () => reorderPhases(goal.id, phase.id, 'down') },
+                                    { label: 'Delete phase', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo(goal.id, `Deleted phase "${phase.title}"`, () => deletePhase(goal.id, phase.id)) },
+                                  ]}
+                                />
                               </div>
                             </CollapsibleTrigger>
                             <CollapsibleContent>
@@ -680,46 +684,51 @@ RULES:
                                 const taskExpanded = expandedTasks.has(task.id);
                                 return (
                                   <Collapsible key={task.id} open={taskExpanded} onOpenChange={() => toggle(expandedTasks, task.id, setExpandedTasks)}>
-                                    <div className={`ml-4 border-l pl-3 mt-2 ${isDeloadTask(task.title) ? 'border-success/40' : 'border-border'}`}>
+                                    <div className={`ml-1 border-l pl-2 mt-2 sm:ml-4 sm:pl-3 ${isDeloadTask(task.title) ? 'border-success/40' : 'border-border'}`}>
                                       <CollapsibleTrigger asChild>
-                                        <div className={`group/task flex items-center justify-between cursor-pointer p-1.5 rounded-lg transition-colors ${isDeloadTask(task.title) ? 'bg-success/5 hover:bg-success/10' : 'hover:bg-accent/20'}`}>
-                                          <div className="flex items-center gap-2">
+                                        <div className={`flex items-center justify-between gap-2 cursor-pointer p-1.5 rounded-lg transition-colors ${isDeloadTask(task.title) ? 'bg-success/5 hover:bg-success/10' : 'hover:bg-accent/20'}`}>
+                                          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                                             {taskExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                                             <span className={`text-sm ${isDeloadTask(task.title) ? 'text-success' : ''}`}>{task.title}</span>
                                             <Badge className={`text-xs ${statusColors[status]}`}>{statusLabels[status]} {taskProgress}%</Badge>
                                             <DeadlineBadge deadline={task.deadline} />
                                           </div>
-                                          <div className="flex gap-0.5 items-center opacity-0 group-hover/task:opacity-100 transition-opacity">
-                                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); reorderTasks(goal.id, phase.id, task.id, 'up'); }}><ArrowUp className="h-2.5 w-2.5" /></Button>
-                                            <Button size="sm" variant="ghost" className="h-5 w-5 p-0" onClick={(e) => { e.stopPropagation(); reorderTasks(goal.id, phase.id, task.id, 'down'); }}><ArrowDown className="h-2.5 w-2.5" /></Button>
-                                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Add to-do" onClick={(e) => { e.stopPropagation(); setAddTodoTarget({ goalId: goal.id, phaseId: phase.id, taskId: task.id }); }}>
-                                              <Plus className="h-3 w-3" />
-                                            </Button>
-                                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" title="Add habit" onClick={(e) => { e.stopPropagation(); setAddHabitTarget({ goalId: goal.id, phaseId: phase.id, taskId: task.id }); }}>
-                                              <Repeat className="h-3 w-3 text-amber" />
-                                            </Button>
-                                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 text-destructive" onClick={(e) => { e.stopPropagation(); deleteTask(goal.id, phase.id, task.id); }}>
-                                              <Trash2 className="h-3 w-3" />
-                                            </Button>
-                                          </div>
+                                          <RowMenu
+                                            label={`Actions for task ${task.title}`}
+                                            items={[
+                                              { label: 'Add to-do', icon: Plus, onSelect: () => setAddTodoTarget({ goalId: goal.id, phaseId: phase.id, taskId: task.id }) },
+                                              { label: 'Add habit', icon: Repeat, onSelect: () => setAddHabitTarget({ goalId: goal.id, phaseId: phase.id, taskId: task.id }) },
+                                              { label: 'Move up', icon: ArrowUp, separated: true, onSelect: () => reorderTasks(goal.id, phase.id, task.id, 'up') },
+                                              { label: 'Move down', icon: ArrowDown, onSelect: () => reorderTasks(goal.id, phase.id, task.id, 'down') },
+                                              { label: 'Delete task', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo(goal.id, `Deleted task "${task.title}"`, () => deleteTask(goal.id, phase.id, task.id)) },
+                                            ]}
+                                          />
                                         </div>
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="ml-5 mt-1 space-y-1">
+                                        <div className="ml-2 mt-1 space-y-0.5 sm:ml-5">
                                           {/* To-Dos */}
-                                          {task.todos.map(todo => (
-                                            <div key={todo.id} className={`flex items-center gap-2 group ${todo.isBenchmark ? 'bg-warning/5 rounded-md px-1.5 py-0.5 -mx-1.5' : ''}`}>
-                                              <Checkbox
+                                          {task.todos.map((todo, todoIdx) => (
+                                            <div key={todo.id} className={`flex items-center gap-1 ${todo.isBenchmark ? 'bg-warning/5 rounded-md px-1.5 -mx-1.5' : ''}`}>
+                                              <RoundCheck
                                                 checked={todo.done}
-                                                onCheckedChange={() => toggleToDo(goal.id, phase.id, task.id, todo.id)}
+                                                label={todo.title}
+                                                onToggle={() => toggleToDo(goal.id, phase.id, task.id, todo.id)}
                                               />
-                                              {todo.isBenchmark && <Trophy className="h-3.5 w-3.5 text-warning flex-shrink-0" />}
-                                              <EffortDot effort={todo.effort} />
-                                              <span className={`text-sm ${todo.done ? 'line-through text-muted-foreground' : ''} ${todo.isBenchmark ? 'font-medium' : ''}`}>{todo.title}</span>
-                                              <DeadlineBadge deadline={todo.deadline} />
-                                              <Button size="sm" variant="ghost" className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 text-destructive" onClick={() => deleteToDo(goal.id, phase.id, task.id, todo.id)}>
-                                                <Trash2 className="h-3 w-3" />
-                                              </Button>
+                                              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 py-1">
+                                                {todo.isBenchmark && <Trophy className="h-3.5 w-3.5 text-warning flex-shrink-0" />}
+                                                <EffortDot effort={todo.effort} />
+                                                <span className={`text-sm ${todo.done ? 'line-through text-muted-foreground' : ''} ${todo.isBenchmark ? 'font-medium' : ''}`}>{todo.title}</span>
+                                                <DeadlineBadge deadline={todo.deadline} />
+                                              </div>
+                                              <RowMenu
+                                                label={`Actions for ${todo.title}`}
+                                                items={[
+                                                  { label: 'Move up', icon: ArrowUp, disabled: todoIdx === 0, onSelect: () => reorderTodos(goal.id, phase.id, task.id, todo.id, 'up') },
+                                                  { label: 'Move down', icon: ArrowDown, disabled: todoIdx === task.todos.length - 1, onSelect: () => reorderTodos(goal.id, phase.id, task.id, todo.id, 'down') },
+                                                  { label: 'Delete to-do', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo(goal.id, 'To-do deleted', () => deleteToDo(goal.id, phase.id, task.id, todo.id)) },
+                                                ]}
+                                              />
                                             </div>
                                           ))}
                                           {task.todos.length === 0 && (
@@ -736,17 +745,15 @@ RULES:
                                                 const completed = isHabitCompletedOn(habit.id, today, habitLogs);
                                                 const streak = getCurrentStreak(habit.id, habitLogs);
                                                 return (
-                                                <div key={habit.id} className="flex items-center gap-2 group py-0.5">
-                                                  {habit.active && (
-                                                    <Checkbox
-                                                      checked={completed}
-                                                      onCheckedChange={() => toggleCheckIn(habit.id)}
-                                                      className="border-amber data-[state=checked]:bg-amber data-[state=checked]:border-amber"
-                                                    />
+                                                <div key={habit.id} className="flex items-center gap-1">
+                                                  {habit.active ? (
+                                                    <RoundCheck checked={completed} label={habit.title} tone="habit" onToggle={() => toggleCheckIn(habit.id)} />
+                                                  ) : (
+                                                    <span className="flex h-10 w-10 shrink-0 items-center justify-center text-muted-foreground" title="Paused">
+                                                      <ToggleLeft className="h-4 w-4" />
+                                                    </span>
                                                   )}
-                                                  {!habit.active && (
-                                                    <ToggleLeft className="h-3.5 w-3.5 flex-shrink-0 cursor-pointer text-muted-foreground" onClick={() => toggleHabit(goal.id, phase.id, task.id, habit.id)} />
-                                                  )}
+                                                  <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 py-1">
                                                   <span className={`text-sm ${completed ? 'text-muted-foreground' : ''} ${!habit.active ? 'line-through text-muted-foreground' : ''}`}>{habit.title}</span>
                                                   <Badge variant="outline" className="text-[11px] px-1.5 py-0 bg-amber/10 border-amber/30 text-amber">{habit.frequency}</Badge>
                                                   {habit.target && <span className="text-[11px] text-muted-foreground">{habit.target}</span>}
@@ -756,21 +763,14 @@ RULES:
                                                       <Flame className="h-3 w-3" />{streak}d
                                                     </span>
                                                   )}
-                                                  <div className="flex gap-0.5 ml-auto opacity-0 group-hover:opacity-100">
-                                                    {habit.active && (
-                                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-muted-foreground" title="Deactivate" onClick={() => toggleHabit(goal.id, phase.id, task.id, habit.id)}>
-                                                        <ToggleLeft className="h-3 w-3" />
-                                                      </Button>
-                                                    )}
-                                                    {!habit.active && (
-                                                      <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-amber" title="Activate" onClick={() => toggleHabit(goal.id, phase.id, task.id, habit.id)}>
-                                                        <ToggleLeft className="h-3 w-3" />
-                                                      </Button>
-                                                    )}
-                                                    <Button size="sm" variant="ghost" className="h-5 w-5 p-0 text-destructive" onClick={() => deleteHabit(goal.id, phase.id, task.id, habit.id)}>
-                                                      <Trash2 className="h-3 w-3" />
-                                                    </Button>
                                                   </div>
+                                                  <RowMenu
+                                                    label={`Actions for habit ${habit.title}`}
+                                                    items={[
+                                                      { label: habit.active ? 'Pause habit' : 'Resume habit', icon: ToggleLeft, onSelect: () => toggleHabit(goal.id, phase.id, task.id, habit.id) },
+                                                      { label: 'Delete habit', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo(goal.id, 'Habit deleted', () => deleteHabit(goal.id, phase.id, task.id, habit.id)) },
+                                                    ]}
+                                                  />
                                                 </div>
                                                 );
                                               })}
@@ -790,9 +790,10 @@ RULES:
                                                     {new Date(note.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                                   </p>
                                                 </div>
-                                                <Button size="sm" variant="ghost" className="h-5 w-5 p-0 opacity-0 group-hover:opacity-100 text-destructive flex-shrink-0" onClick={() => deleteNote(goal.id, phase.id, task.id, note.id)}>
-                                                  <Trash2 className="h-3 w-3" />
-                                                </Button>
+                                                <RowMenu
+                                                  label="Note actions"
+                                                  items={[{ label: 'Delete note', icon: Trash2, destructive: true, onSelect: () => withUndo(goal.id, 'Note deleted', () => deleteNote(goal.id, phase.id, task.id, note.id)) }]}
+                                                />
                                               </div>
                                             ))}
                                             <div className="flex gap-1 mt-1">
@@ -800,7 +801,8 @@ RULES:
                                                 placeholder="Add a note..."
                                                 value={noteDrafts[task.id] ?? ''}
                                                 onChange={e => setNoteDrafts(d => ({ ...d, [task.id]: e.target.value }))}
-                                                className="h-7 text-xs"
+                                                className="h-10 text-sm"
+                                                enterKeyHint="send"
                                                 onKeyDown={e => {
                                                   if (e.key === 'Enter' && (noteDrafts[task.id] ?? '').trim()) {
                                                     addNote(goal.id, phase.id, task.id, noteDrafts[task.id].trim());
@@ -811,7 +813,8 @@ RULES:
                                               <Button
                                                 size="sm"
                                                 variant="ghost"
-                                                className="h-7 w-7 p-0"
+                                                className="h-10 w-10 p-0"
+                                                aria-label="Add note"
                                                 disabled={!(noteDrafts[task.id] ?? '').trim()}
                                                 onClick={() => {
                                                   if ((noteDrafts[task.id] ?? '').trim()) {
@@ -1035,6 +1038,34 @@ RULES:
               </TabsContent>
             </Tabs>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete goal confirmation */}
+      <Dialog open={!!confirmDeleteGoal} onOpenChange={o => !o && setConfirmDeleteGoal(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete “{confirmDeleteGoal?.title}”?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This removes the goal with all its phases, tasks, to-dos and habits. You can undo for a few seconds afterwards.
+          </p>
+          <div className="mt-4 flex gap-2">
+            <Button variant="outline" className="h-11 flex-1" onClick={() => setConfirmDeleteGoal(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              className="h-11 flex-1 font-semibold"
+              onClick={() => {
+                const g = confirmDeleteGoal;
+                setConfirmDeleteGoal(null);
+                if (!g) return;
+                deleteGoal(g.id);
+                toast.success('Goal deleted', { action: { label: 'Undo', onClick: () => restoreGoal(g) } });
+              }}
+            >
+              Delete goal
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

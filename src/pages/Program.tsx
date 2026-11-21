@@ -214,7 +214,7 @@ export default function ProgramPage() {
       <div className="flex-shrink-0 pb-3">
         {/* Mobile: big swipeable day header */}
         <div className="flex items-center justify-between mb-2 md:hidden">
-          <button onClick={() => goDay(-1)} className="p-3 rounded-xl bg-card border border-border active:bg-accent">
+          <button onClick={() => goDay(-1)} aria-label="Previous day" className="p-3 rounded-xl bg-card border border-border active:bg-accent">
             <ChevronLeft className="h-5 w-5 text-muted-foreground" />
           </button>
           <div className="text-center flex-1">
@@ -227,7 +227,7 @@ export default function ProgramPage() {
                 <Badge variant="outline" className="text-[11px] border-primary/30 text-primary">TODAY</Badge>
               )}
               {!isToday && (
-                <button onClick={goToday} className="text-[11px] text-primary underline">Go to today</button>
+                <button onClick={goToday} className="h-8 rounded-full border border-primary/30 px-3 text-xs font-medium text-primary">Back to today</button>
               )}
               {currentPlan.splitDay !== 'rest' && (
                 <Badge variant="outline" className={`capitalize text-[11px] ${SPLIT_COLORS[currentPlan.splitDay]}`}>
@@ -237,14 +237,14 @@ export default function ProgramPage() {
               )}
             </div>
           </div>
-          <button onClick={() => goDay(1)} className="p-3 rounded-xl bg-card border border-border active:bg-accent">
+          <button onClick={() => goDay(1)} aria-label="Next day" className="p-3 rounded-xl bg-card border border-border active:bg-accent">
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </button>
         </div>
 
         {/* Week navigation + Day pills */}
         <div className="flex items-center gap-1 mb-1">
-          <button onClick={() => goWeek(-1)} className="p-1.5 rounded-lg bg-card border border-border active:bg-accent flex-shrink-0">
+          <button onClick={() => goWeek(-1)} aria-label="Previous week" className="flex h-11 w-9 items-center justify-center rounded-lg bg-card border border-border active:bg-accent flex-shrink-0">
             <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
           <div className="grid grid-cols-7 gap-1 flex-1">
@@ -281,7 +281,7 @@ export default function ProgramPage() {
               );
             })}
           </div>
-          <button onClick={() => goWeek(1)} className="p-1.5 rounded-lg bg-card border border-border active:bg-accent flex-shrink-0">
+          <button onClick={() => goWeek(1)} aria-label="Next week" className="flex h-11 w-9 items-center justify-center rounded-lg bg-card border border-border active:bg-accent flex-shrink-0">
             <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
         </div>

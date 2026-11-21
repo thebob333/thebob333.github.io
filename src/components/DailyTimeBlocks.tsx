@@ -14,20 +14,23 @@ import { getDaysRemaining, getUrgencyColor } from '@/types/goals';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
-// 5 AM to 11 PM, 5-minute granularity
+// 5 AM to 11 PM. Phones get a taller timeline and 15-minute snapping so blocks
+// are big enough to tap and easy to place with a thumb.
+const IS_PHONE = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 767px)').matches;
+const LONG_PRESS_MS = 300;
+const MOVE_CANCEL_PX = 8;
 const START_HOUR = 5;
 const END_HOUR = 23; // exclusive
 const NO_TODOS: BacklogTodo[] = [];
 const NO_CONTACTS: Contact[] = [];
 const TB = stores.TIME_BLOCKS;
 const CATS = stores.BLOCK_CATEGORIES;
-const MINUTES_PER_PIXEL = 1; // 1 px = 1 minute
-const PIXEL_PER_MINUTE = 1;
+const PIXEL_PER_MINUTE = IS_PHONE ? 1.5 : 1;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
 const TOTAL_HEIGHT = TOTAL_MINUTES * PIXEL_PER_MINUTE;
-const SNAP_MINUTES = 5;
+const SNAP_MINUTES = IS_PHONE ? 15 : 5;
 const LABEL_WIDTH = 56; // px for time labels column
-const MIN_DURATION = 5;
+const MIN_DURATION = IS_PHONE ? 15 : 5;
 
 function minutesToTop(minutes: number): number {
   return (minutes - START_HOUR * 60) * PIXEL_PER_MINUTE;
@@ -280,28 +283,66 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   const getCat = (catId: string) => categories.find(c => c.id === catId) || categories[0] || DEFAULT_CATEGORIES[0];
 
   // ─── Pointer handlers for drag ───
-  const handleBlockPointerDown = useCallback((e: React.PointerEvent, blockId: string) => {
-    if ((e.target as HTMLElement).closest('[data-resize-handle]') || 
-        (e.target as HTMLElement).closest('input') ||
-        (e.target as HTMLElement).closest('button')) return;
-    
+  // Mouse: drag immediately. Touch: press and hold (~0.3s) to pick a block up,
+  // so a normal swipe over the planner scrolls instead of moving blocks.
+  const longPress = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number } | null>(null);
+  const draggingRef = useRef(false);
+  draggingRef.current = !!dragging || !!resizeDrag;
+
+  const cancelLongPress = useCallback(() => {
+    if (longPress.current) clearTimeout(longPress.current.timer);
+    longPress.current = null;
+  }, []);
+
+  const startDrag = useCallback((clientY: number, blockId: string, target: HTMLElement, pointerId: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    
-    const block = blocks.find(b => b.id === blockId);
-    if (!block) return;
-    
+    const block = TB.get().find(b => b.id === blockId);
+    if (!rect || !block) return;
     const blockTopMin = blockStartMinutes(block);
-    const pointerMin = topToMinutes(e.clientY - rect.top + (containerRef.current?.scrollTop || 0));
-    const offsetMin = pointerMin - blockTopMin;
-    
-    setDragging({ blockId, offsetMin });
+    const pointerMin = topToMinutes(clientY - rect.top + (containerRef.current?.scrollTop || 0));
+    setDragging({ blockId, offsetMin: pointerMin - blockTopMin });
     setDragPreviewMin(blockTopMin);
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    e.preventDefault();
-  }, [blocks]);
+    try { target.setPointerCapture?.(pointerId); } catch { /* pointer already released */ }
+    navigator.vibrate?.(10);
+  }, []);
+
+  const handleBlockPointerDown = useCallback((e: React.PointerEvent, blockId: string) => {
+    const el = e.target as HTMLElement;
+    if (el.closest('[data-resize-handle]') || el.closest('input') || el.closest('button')) return;
+    if (e.pointerType === 'mouse') {
+      startDrag(e.clientY, blockId, el, e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    cancelLongPress();
+    const { clientX, clientY, pointerId } = e;
+    const target = e.currentTarget as HTMLElement;
+    longPress.current = {
+      x: clientX,
+      y: clientY,
+      timer: setTimeout(() => {
+        longPress.current = null;
+        startDrag(clientY, blockId, target, pointerId);
+      }, LONG_PRESS_MS),
+    };
+  }, [startDrag, cancelLongPress]);
+
+  // While dragging on a touchscreen, stop the page from scrolling under your finger.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onTouchMove = (ev: TouchEvent) => { if (draggingRef.current) ev.preventDefault(); };
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => el.removeEventListener('touchmove', onTouchMove);
+  }, []);
+
+  useEffect(() => cancelLongPress, [cancelLongPress]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    // Finger moved before the long-press fired → it's a scroll, not a drag.
+    if (longPress.current && Math.hypot(e.clientX - longPress.current.x, e.clientY - longPress.current.y) > MOVE_CANCEL_PX) {
+      cancelLongPress();
+    }
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     
@@ -326,9 +367,10 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
       const clampedDuration = Math.min(newDuration, maxDuration);
       setResizePreview(clampedDuration);
     }
-  }, [dragging, resizeDrag, blocks]);
+  }, [dragging, resizeDrag, blocks, cancelLongPress]);
 
   const handlePointerUp = useCallback(() => {
+    cancelLongPress();
     if (dragging && dragPreviewMin !== null) {
       const snapped = snapMinutes(dragPreviewMin);
       updateBlock(dragging.blockId, {
@@ -343,7 +385,15 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
     setDragPreviewMin(null);
     setResizeDrag(null);
     setResizePreview(null);
-  }, [dragging, dragPreviewMin, resizeDrag, resizePreview, updateBlock]);
+  }, [dragging, dragPreviewMin, resizeDrag, resizePreview, updateBlock, cancelLongPress]);
+
+  const handlePointerCancel = useCallback(() => {
+    cancelLongPress();
+    setDragging(null);
+    setDragPreviewMin(null);
+    setResizeDrag(null);
+    setResizePreview(null);
+  }, [cancelLongPress]);
 
   const handleResizePointerDown = useCallback((e: React.PointerEvent, blockId: string) => {
     e.stopPropagation();
@@ -388,7 +438,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
     <div className="flex flex-col h-full space-y-2 p-2">
       {/* Header */}
       <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-[11px] md:text-xs text-muted-foreground">Tap to add · Drag to move</span>
+        <span className="text-[11px] md:text-xs text-muted-foreground"><span className="md:hidden">Tap empty time to add · hold a block to move it</span><span className="hidden md:inline">Click to add · drag to move</span></span>
         <Button variant="ghost" size="sm" className="ml-auto text-xs gap-1" onClick={() => setShowCategoryManager(!showCategoryManager)}>
           <Palette className="h-3.5 w-3.5" />
           Categories
@@ -452,6 +502,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
         style={{ cursor: dragging ? 'grabbing' : 'default' }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onClick={handleTimelineClick}
       >
         <div className="relative" style={{ height: TOTAL_HEIGHT }}>
@@ -497,7 +548,9 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                   width: colWidth,
                   backgroundColor: `hsl(${cat.color} / 0.2)`,
                   borderLeftColor: `hsl(${cat.color})`,
-                  touchAction: 'none',
+                  // Allow normal scrolling; a long-press picks the block up.
+                  touchAction: 'pan-y',
+                  WebkitTouchCallout: 'none',
                 }}
                 onPointerDown={(e) => handleBlockPointerDown(e, block.id)}
                 onClick={(e) => { e.stopPropagation(); setEditingBlock(isEditing ? null : block.id); }}
@@ -624,10 +677,12 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                 {/* Resize handle at bottom */}
                 <div
                   data-resize-handle
-                  className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize group"
+                  className="absolute -bottom-2 left-0 right-0 flex h-6 cursor-ns-resize items-center justify-center group"
+                  style={{ touchAction: 'none' }}
                   onPointerDown={(e) => handleResizePointerDown(e, block.id)}
+                  aria-label="Drag to change length"
                 >
-                  <div className="mx-auto w-8 h-1 rounded-full bg-foreground/20 group-hover:bg-foreground/40 transition-colors mt-0.5" />
+                  <div className="w-10 h-1.5 rounded-full bg-foreground/25 group-hover:bg-foreground/45 transition-colors" />
                 </div>
               </div>
             );

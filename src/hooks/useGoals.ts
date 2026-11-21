@@ -35,6 +35,11 @@ export const goalActions = {
     G.update(goals => mapGoal(goals, id, g => ({ ...g, ...updates })));
   },
 
+  /** Put a goal back exactly as it was (used by Undo). */
+  restoreGoal(goal: Goal) {
+    G.update(goals => (goals.some(g => g.id === goal.id) ? goals.map(g => (g.id === goal.id ? goal : g)) : [...goals, goal]));
+  },
+
   deleteGoal(id: string) {
     G.update(goals => goals.filter(g => g.id !== id));
     stores.WEEKLY_FOCUS.update(f => (f.includes(id) ? f.filter(x => x !== id) : f));
