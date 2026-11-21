@@ -76,9 +76,16 @@ All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/s
 
 ### Routing & Layout
 
-`src/App.tsx` defines routes: Today `/` (`Index.tsx`), Plan `/plan` (`Program.tsx`), Goals `/goals`, People `/people`, Gym `/gym` (`Workouts.tsx`), Settings `/settings`. Old `/program` and `/workouts` redirect. Tab/sidebar labels come from `src/components/layout/nav.ts`. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile) plus a per-route error boundary. Every page starts with `PageHeader` (`src/components/app/PageHeader.tsx`), which carries the Settings gear on phones.
+`src/App.tsx` defines routes: Today `/` (`Index.tsx`), Plan `/plan` (`Program.tsx`), Goals `/goals` and `/goals/:goalId` (`GoalDetail.tsx`), People `/people` and `/people/:contactId` (`PersonDetail.tsx`), Gym `/gym` (`Workouts.tsx`; sections via `?s=progress` / `?s=program`), Settings `/settings`. Old `/program` and `/workouts` redirect. Tab/sidebar labels come from `src/components/layout/nav.ts`. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile) plus a per-route error boundary. Every page starts with `PageHeader` (`src/components/app/PageHeader.tsx`), which carries the Settings gear on phones.
 
-Naming: goal templates are **Blueprints**, repeatable Plan blocks are **Routines**, workout templates are **Saved workouts**. The weekly training split is edited in Gym (`WeeklySplitEditor`). Habits are always shown with their goal/task (`CheckRow` in `src/components/today/`).
+Naming: goal templates are **Blueprints**, repeatable Plan blocks are **Routines**, workout templates are **Saved workouts**. Habits are always shown with their goal/task, and live on Today (not duplicated on Plan).
+
+Screen structure:
+- Today: `NowCard` (one hero item) + `UpNext` list (`src/components/today/`).
+- Goals: list → goal screen; tasks open `TaskSheet` (`src/components/goals/`). Display helpers in `src/lib/goal-meta.ts`.
+- People: list by circle → person screen; sheets in `src/components/people/` (`ContactFormSheet`, `LogInteractionSheet`, `CommitmentSheet`). Shared labels/colors in `src/lib/people.ts`.
+- Gym: `WorkoutView` (today hero + focused logging), `ProgressView`, `ProgramView` (weekly split + `ExerciseSheet` targets) in `src/components/gym/`. Formatting helpers in `src/lib/gym-format.ts`.
+- Plan: week strip + `DailyTimeBlocks` timeline; tapping a block opens `BlockSheet`; `RoutinesSheet` / `CategoriesSheet` in `src/components/plan/`. Routine scheduling: `src/lib/routines.ts`.
 
 ### PWA
 
@@ -91,8 +98,9 @@ Built on **shadcn/ui** (`src/components/ui/`) over Radix UI primitives, styled w
 - Colors are CSS variables in `src/index.css` with a full `.dark` set. Dark mode follows the phone by default (`next-themes`, `defaultTheme="system"`, storage key `telos-theme`; Settings → Appearance overrides). `ThemeColorSync` keeps the status-bar color in step.
 - Use **semantic status tokens** — `success`, `warning`, `destructive`, `info` (e.g. `text-success`, `bg-warning/10`) — never raw `green-500`/`amber-500`/`red-500`. Section accents `coral/teal/violet/amber/sky` keep their token as DEFAULT (`text-amber`) plus Tailwind's shade scale.
 - Charts/SVG take colors from CSS vars (`hsl(var(--primary))`, `hsl(var(--border))`), so they work in both themes.
-- Minimum text size is 11px. Cards are `rounded-2xl` with `p-4` on phones.
-- Touch-first: never hide controls behind hover. Row actions go in `RowMenu` (visible ⋯, `src/components/app/RowMenu.tsx`); checks use `RoundCheck` / `CheckRow` (40–48px targets). Import `Dialog*` from `@/components/app/ResponsiveDialog` (bottom sheet on phones, dialog on desktop), not from `ui/dialog`. Destructive actions offer Undo in the toast; whole goals/people also confirm first.
+- Type scale (Tailwind `fontSize`): `text-large-title`, `text-title`, `text-headline`, `text-body`, `text-footnote`, `text-caption`; minimum 11px. `cn()` knows these sizes (`src/lib/utils.ts`) — add any new custom size there too, or tailwind-merge will strip text colors.
+- Building blocks: `.list-group` (iOS grouped list) with `ListRow`, `.surface` cards, `.section-label` headings, `PageHeader` / `HeaderButton`, `Chips` / `FieldLabel`. Life-area colors: `habits`, `tasks`, `move`, `people`.
+- Touch-first: never hide controls behind hover. Row actions go in `RowMenu` (visible ⋯, `src/components/app/RowMenu.tsx`); checks use `CheckCircle` (`src/components/app/ListRow.tsx`, 44px target). `ListRow` is a div with button behavior so rows can contain their own buttons — never nest `<button>`s. Import `Dialog*` from `@/components/app/ResponsiveDialog` (bottom sheet on phones, dialog on desktop), not from `ui/dialog`. Destructive actions offer Undo in the toast; whole goals/people also confirm first.
 
 ### TypeScript
 

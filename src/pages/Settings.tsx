@@ -1,21 +1,37 @@
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import { Quote, Weight, Flame, Target } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { stores } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { useSettings } from '@/hooks/useSettings';
-import { BUILT_IN_EXERCISE_IDS, EXERCISE_LABELS, CompoundExercise, CustomExercise } from '@/types/workout';
+import { BUILT_IN_EXERCISE_IDS, EXERCISE_LABELS, type CompoundExercise } from '@/types/workout';
 import { getStandard, suggestedCustomTarget } from '@/lib/strength-standards';
-import { DataCard } from '@/components/settings/DataCard';
 import { PageHeader } from '@/components/app/PageHeader';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
+import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
+import { DataCard } from '@/components/settings/DataCard';
 import { AppearanceCard } from '@/components/settings/AppearanceCard';
 
 const MIN_BODYWEIGHT = 50;
 const MAX_BODYWEIGHT = 700;
+
+function Row({ label, hint, children, onClick }: { label: string; hint?: string; children?: React.ReactNode; onClick?: () => void }) {
+  const inner = (
+    <>
+      <span className="min-w-0 flex-1 py-2">
+        <span className="block text-body font-medium">{label}</span>
+        {hint && <span className="block text-footnote text-muted-foreground">{hint}</span>}
+      </span>
+      {children}
+      {onClick && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />}
+    </>
+  );
+  const cls = 'flex min-h-[52px] w-full items-center gap-3 px-4 text-left';
+  return onClick
+    ? <button type="button" onClick={onClick} className={`${cls} active:bg-accent/70`}>{inner}</button>
+    : <div className={cls}>{inner}</div>;
+}
 
 export default function SettingsPage() {
   const { settings, updateSettings } = useSettings();
@@ -23,13 +39,14 @@ export default function SettingsPage() {
   // Local drafts so typing never saves a half-entered value (e.g. "0" while clearing the field).
   const [bodyweightDraft, setBodyweightDraft] = useState(() => String(settings.bodyweight));
   const [quotesDraft, setQuotesDraft] = useState(() => settings.customQuotes.join('\n'));
+  const [goalsOpen, setGoalsOpen] = useState(false);
+  const [quotesOpen, setQuotesOpen] = useState(false);
+  const customTargets = Object.keys(settings.goldTargets ?? {}).length;
 
   const commitBodyweight = (text: string) => {
     setBodyweightDraft(text);
     const n = Number(text);
-    if (text.trim() !== '' && Number.isFinite(n) && n >= MIN_BODYWEIGHT && n <= MAX_BODYWEIGHT) {
-      updateSettings({ bodyweight: n });
-    }
+    if (text.trim() !== '' && Number.isFinite(n) && n >= MIN_BODYWEIGHT && n <= MAX_BODYWEIGHT) updateSettings({ bodyweight: n });
   };
 
   const updateQuotes = (text: string) => {
@@ -47,143 +64,96 @@ export default function SettingsPage() {
     });
   };
 
+  const targetInput = (id: string, placeholder: number, unit: string, label: string) => (
+    <label className="flex h-10 w-[104px] shrink-0 items-center rounded-xl bg-secondary px-3">
+      <input type="number" inputMode="numeric" aria-label={`${label} goal`} placeholder={String(placeholder)} value={settings.goldTargets?.[id] || ''}
+        onChange={e => setGoldTarget(id, e.target.value)} className="w-full min-w-0 bg-transparent text-right text-body font-semibold tabular-nums outline-none placeholder:font-normal placeholder:text-muted-foreground" />
+      <span className="ml-1 text-footnote text-muted-foreground">{unit}</span>
+    </label>
+  );
+
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      <PageHeader title="Settings" subtitle="Your data, body metrics and preferences" back />
+    <div className="mx-auto max-w-lg space-y-7 pb-10">
+      <PageHeader title="Settings" back />
 
-      <AppearanceCard />
+      <DataCard>
+        <AppearanceCard />
 
-      {/* Body Metrics */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Weight className="h-5 w-5 text-primary" /> Body Metrics
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <Label className="w-32">Bodyweight (lbs)</Label>
-            <Input
-              type="number"
-              inputMode="decimal"
-              value={bodyweightDraft}
-              onChange={e => commitBodyweight(e.target.value)}
-              onBlur={() => setBodyweightDraft(String(settings.bodyweight))}
-              className="w-32"
-              min={MIN_BODYWEIGHT}
-              max={MAX_BODYWEIGHT}
-            />
+        <section className="space-y-2">
+          <h2 className="section-label">Training</h2>
+          <div className="list-group">
+            <Row label="Bodyweight" hint="For strength standards and bodyweight lifts">
+              <label className="flex h-10 w-[104px] shrink-0 items-center rounded-xl bg-secondary px-3">
+                <input type="number" inputMode="decimal" aria-label="Bodyweight in pounds" value={bodyweightDraft}
+                  onChange={e => commitBodyweight(e.target.value)} onBlur={() => setBodyweightDraft(String(settings.bodyweight))}
+                  className="w-full min-w-0 bg-transparent text-right text-body font-semibold tabular-nums outline-none" />
+                <span className="ml-1 text-footnote text-muted-foreground">lb</span>
+              </label>
+            </Row>
+            <Row label="Strength goals" hint={customTargets ? `${customTargets} set by you` : 'Using recommended levels'} onClick={() => setGoalsOpen(true)} />
           </div>
-          <p className="text-xs text-muted-foreground">Used for strength standards comparison and 1RM calculations</p>
-        </CardContent>
-      </Card>
+          <p className="px-1 text-footnote text-muted-foreground">Exercise targets and your weekly split live in Gym → Program.</p>
+        </section>
 
-      {/* Strength Goals */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Target className="h-5 w-5 text-primary" /> Strength Goals
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-xs text-muted-foreground">
-            Set your personal targets for each lift. Leave blank to use bodyweight-based defaults (advanced level).
-          </p>
-          <div className="space-y-3">
+        <section className="space-y-2">
+          <h2 className="section-label">Today screen</h2>
+          <div className="list-group">
+            <Row label="Daily quote" hint="A line of motivation on your Now card">
+              <Switch checked={settings.quotesEnabled} onCheckedChange={checked => updateSettings({ quotesEnabled: checked })} aria-label="Daily quote" />
+            </Row>
+            {settings.quotesEnabled && (
+              <Row label="Your own quotes" hint={settings.customQuotes.length ? `${settings.customQuotes.length} added` : 'Using built-in quotes'} onClick={() => setQuotesOpen(true)} />
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <h2 className="section-label">On a computer</h2>
+          <div className="list-group">
+            <Row label="Fire ambience button" hint="Adds a crackling-fire sound toggle to the top bar">
+              <Switch checked={settings.ambientSoundEnabled} onCheckedChange={checked => updateSettings({ ambientSoundEnabled: checked })} aria-label="Fire ambience button" />
+            </Row>
+          </div>
+        </section>
+      </DataCard>
+
+      {/* Strength goals */}
+      <Dialog open={goalsOpen} onOpenChange={setGoalsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-title">Strength goals</DialogTitle>
+            <DialogDescription>Your “gold” level for each lift — it fills in the strength map. Leave a box empty to use the recommended level shown.</DialogDescription>
+          </DialogHeader>
+          <div className="list-group max-h-[55vh] overflow-y-auto">
             {BUILT_IN_EXERCISE_IDS.map(ex => {
-              const defaultVal = getStandard(ex as CompoundExercise, 'advanced', settings.bodyweight);
-              const unit = ex === 'pull_up' ? 'reps' : 'lbs';
-              const customVal = settings.goldTargets?.[ex];
+              const label = EXERCISE_LABELS[ex as CompoundExercise];
               return (
-                <div key={ex} className="flex items-center gap-3">
-                  <Label className="w-36 text-sm">{EXERCISE_LABELS[ex as CompoundExercise]}</Label>
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    className="w-24"
-                    placeholder={String(defaultVal)}
-                    value={customVal || ''}
-                    onChange={e => setGoldTarget(ex, e.target.value)}
-                  />
-                  <span className="text-xs text-muted-foreground w-8">{unit}</span>
-                </div>
+                <Row key={ex} label={label}>
+                  {targetInput(ex, getStandard(ex as CompoundExercise, 'advanced', settings.bodyweight), ex === 'pull_up' ? 'reps' : 'lb', label)}
+                </Row>
               );
             })}
+            {customExercises.map(ce => (
+              <Row key={ce.id} label={ce.name} hint="Custom">
+                {targetInput(ce.id, suggestedCustomTarget(ce.equipment, settings.bodyweight), ce.equipment === 'bodyweight' ? 'reps' : 'lb', ce.name)}
+              </Row>
+            ))}
           </div>
-          {customExercises.length > 0 && (
-            <>
-              <div className="border-t border-border pt-4 mt-4">
-                <p className="text-xs text-muted-foreground mb-3">
-                  Custom exercises — leave blank to use the suggested goal shown.
-                </p>
-              </div>
-              <div className="space-y-3">
-                {customExercises.map((ce: CustomExercise) => {
-                  const unit = ce.equipment === 'bodyweight' ? 'reps' : 'lbs';
-                  const customVal = settings.goldTargets?.[ce.id];
-                  return (
-                    <div key={ce.id} className="flex items-center gap-3">
-                      <Label className="w-36 text-sm truncate" title={ce.name}>{ce.name}</Label>
-                      <Input
-                        type="number"
-                        inputMode="numeric"
-                        className="w-24"
-                        placeholder={String(suggestedCustomTarget(ce.equipment, settings.bodyweight))}
-                        value={customVal || ''}
-                        onChange={e => setGoldTarget(ce.id, e.target.value)}
-                      />
-                      <span className="text-xs text-muted-foreground w-8">{unit}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+          <Button className="h-12 w-full rounded-xl text-body font-semibold" onClick={() => setGoalsOpen(false)}>Done</Button>
+        </DialogContent>
+      </Dialog>
 
-      {/* Ambient Sound */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Flame className="h-5 w-5 text-primary" /> Ambient Sound
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label>Show fire ambience button</Label>
-              <p className="text-xs text-muted-foreground mt-0.5">Displays a toggle in the header to play crackling fire audio</p>
-            </div>
-            <Switch checked={settings.ambientSoundEnabled} onCheckedChange={(checked) => updateSettings({ ambientSoundEnabled: checked })} />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Motivational Quotes */}
-      <Card className="shadow-sm">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Quote className="h-5 w-5 text-primary" /> Motivational Quotes
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label>Show quotes on dashboard</Label>
-            <Switch checked={settings.quotesEnabled} onCheckedChange={(checked) => updateSettings({ quotesEnabled: checked })} />
-          </div>
-          {settings.quotesEnabled && (
-            <div>
-              <Label className="text-sm text-muted-foreground uppercase tracking-wider font-medium">
-                Custom Quotes (one per line, leave empty for defaults)
-              </Label>
-              <Textarea className="mt-1 h-32 font-mono text-xs" placeholder="Enter your own quotes, one per line..." value={quotesDraft} onChange={e => updateQuotes(e.target.value)} />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <DataCard />
+      {/* Quotes */}
+      <Dialog open={quotesOpen} onOpenChange={setQuotesOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-title">Your own quotes</DialogTitle>
+            <DialogDescription>One per line. Leave empty to use the built-in ones.</DialogDescription>
+          </DialogHeader>
+          <Textarea className="h-48 rounded-xl text-body" placeholder="The obstacle is the way." value={quotesDraft} onChange={e => updateQuotes(e.target.value)} />
+          <Button className="h-12 w-full rounded-xl text-body font-semibold" onClick={() => setQuotesOpen(false)}>Done</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
