@@ -5,6 +5,63 @@ export type GoalDomain = 'PHYSICAL' | 'CREATIVE' | 'PROFESSIONAL' | 'INTELLECTUA
 export type EffortLevel = 'LOW' | 'MED' | 'HIGH';
 export type HabitEvolution = 'NEW' | 'CARRY' | 'INCREASE' | 'REPLACE';
 
+/**
+ * The five goal shapes (docs/apex-blueprint.md §5). Each is planned and
+ * measured differently.
+ */
+export type GoalShape = 'once' | 'better' | 'build' | 'keep' | 'become';
+/** How hard the coach pushes back — on the path, never on the ambition. */
+export type Pushback = 'gentle' | 'honest' | 'relentless';
+export type GoalStatus = 'active' | 'paused' | 'achieved' | 'dropped';
+
+/** What "get better" goals measure, e.g. 5K time (lower is better) or bench (higher). */
+export interface GoalMetric {
+  name: string;
+  unit: string;
+  start?: number;
+  target?: number;
+  higherIsBetter: boolean;
+}
+
+export interface MetricEntry {
+  id: string;
+  goalId: string;
+  date: string; // local YYYY-MM-DD
+  value: number;
+  note?: string;
+}
+
+/** A practice's load — the thing the adaptation engine turns up and down. */
+export interface PracticeLoad {
+  perWeek: number;
+  amount?: number;
+}
+
+export type AdjustmentKind = 'up' | 'ease' | 'restart' | 'flag';
+export type AdjustmentStatus = 'applied' | 'pending' | 'undone' | 'declined' | 'info';
+
+/** One change the engine made (or proposes), shown on Today with Undo / Accept. */
+export interface Adjustment {
+  id: string;
+  goalId: string;
+  habitId: string;
+  title: string; // practice title, for display after renames/deletes
+  kind: AdjustmentKind;
+  /** Monday of the week this was about. */
+  week: string;
+  at: string; // ISO
+  before: PracticeLoad;
+  after: PracticeLoad;
+  reason: string;
+  status: AdjustmentStatus;
+  seen: boolean;
+}
+
+export interface EngineState {
+  /** Monday of the last week the engine evaluated. */
+  lastWeek?: string;
+}
+
 export interface HabitLog {
   habitId: string;
   date: string; // local calendar day, YYYY-MM-DD
@@ -25,13 +82,34 @@ export interface ToDo {
   isBenchmark?: boolean;
 }
 
+/**
+ * A recurring practice ("habit" in code). `perWeek` (+ optional `amount`) is the
+ * load the adaptation engine adjusts; `frequency` is kept in step for display.
+ */
 export interface Habit {
   id: string;
   title: string;
-  frequency: string; // "daily", "3x/week", "weekdays", etc.
-  target?: string; // "200g protein", "30 minutes", etc.
+  frequency: string; // "daily", "3x/week", "weekdays", "mon/wed/fri"…
+  target?: string; // free text: "200g protein", "30 minutes"…
   active: boolean;
   evolution?: HabitEvolution;
+  /** Sessions per week right now (1–7). Derived from `frequency` when missing. */
+  perWeek?: number;
+  /** The level you're building toward; the engine won't step past it. */
+  maxPerWeek?: number;
+  /** Optional measurable amount per session that can grow, e.g. 20 (minutes). */
+  amount?: number;
+  unit?: string;
+  step?: number;
+  maxAmount?: number;
+  /** The easy version for bad weeks, e.g. "Walk 10 minutes". */
+  minimum?: string;
+  /** false = the engine proposes changes instead of making them. */
+  auto?: boolean;
+  /** Restart week: show the easy version until this day (inclusive). */
+  restartUntil?: string;
+  /** First day it counts (new practices aren't judged on weeks before they existed). */
+  since?: string;
 }
 
 export interface TaskNote {
@@ -78,6 +156,12 @@ export interface Goal {
   archived?: boolean;
   domain?: GoalDomain;
   adaptationProtocol?: AdaptationProtocol;
+  shape?: GoalShape;
+  /** Why it matters — shown when things get hard. */
+  why?: string;
+  pushback?: Pushback;
+  status?: GoalStatus;
+  metric?: GoalMetric;
 }
 
 export function calculateTaskProgress(task: Task): number {

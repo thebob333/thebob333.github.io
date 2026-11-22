@@ -5,6 +5,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AppLayout } from "@/components/layout/AppLayout";
 import { PageTransition } from "@/components/PageTransition";
 import { PwaUpdater } from "@/components/app/PwaUpdater";
+import { useEngineRunner } from "@/hooks/useAdaptation";
 import { PageSkeleton } from "@/components/app/PageSkeleton";
 import Index from "./pages/Index";
 
@@ -13,10 +14,14 @@ const Goals = lazy(() => import("./pages/Goals"));
 const GoalDetail = lazy(() => import("./pages/GoalDetail"));
 const Workouts = lazy(() => import("./pages/Workouts"));
 const Program = lazy(() => import("./pages/Program"));
-const People = lazy(() => import("./pages/People"));
-const PersonDetail = lazy(() => import("./pages/PersonDetail"));
 const Settings = lazy(() => import("./pages/Settings"));
 const NotFound = lazy(() => import("./pages/NotFound"));
+
+/** Keeps every plan adapted, whichever screen you open first. */
+function EngineRunner() {
+  useEngineRunner();
+  return null;
+}
 
 function AnimatedRoutes() {
   const location = useLocation();
@@ -32,8 +37,7 @@ function AnimatedRoutes() {
           {/* Old addresses keep working (bookmarks, home-screen shortcuts). */}
           <Route path="/workouts" element={<Navigate to="/gym" replace />} />
           <Route path="/program" element={<Navigate to="/plan" replace />} />
-          <Route path="/people" element={<People />} />
-          <Route path="/people/:contactId" element={<PersonDetail />} />
+          <Route path="/people/*" element={<Navigate to="/" replace />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -51,6 +55,7 @@ const App = () => (
       closeButton
     />
     <PwaUpdater />
+    <EngineRunner />
     <BrowserRouter>
       <AppLayout>
         <AnimatedRoutes />

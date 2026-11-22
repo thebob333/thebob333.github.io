@@ -1,4 +1,4 @@
-import { Goal, HabitLog } from '@/types/goals';
+import { Goal, HabitLog, type Adjustment, type EngineState, type MetricEntry } from '@/types/goals';
 import { WorkoutSession, ExerciseConfig, WeeklyPlan, CustomExercise } from '@/types/workout';
 import { DEFAULT_CONFIGS } from '@/types/workout';
 import type { UnlockedAchievement } from '@/lib/achievements';
@@ -22,16 +22,18 @@ export const KEYS = {
   TIME_BLOCKS: 'telos_time_blocks',
   BLOCK_CATEGORIES: 'telos_block_categories',
   REPEATABLE_BLOCKS: 'telos_repeatable_blocks',
-  CONTACTS: 'telos_contacts',
   CUSTOM_EXERCISES: 'telos_custom_exercises',
   HABIT_LOGS: 'telos_habit_logs',
   GOAL_TEMPLATES: 'telos_goal_templates',
-  INTERACTIONS: 'telos_interactions',
-  COMMITMENTS: 'telos_commitments',
-  RELATIONSHIP_GOALS: 'telos_relationship_goals',
   ACTIVE_WORKOUT: 'telos_active_workout',
   PLAN_DISMISSED: 'telos_plan_dismissed',
+  ADJUSTMENTS: 'telos_adjustments',
+  ENGINE: 'telos_engine',
+  METRICS: 'telos_metrics',
 } as const;
+
+/** Keys from removed features (People). Cleaned out by migration v6. */
+export const RETIRED_KEYS = ['telos_contacts', 'telos_interactions', 'telos_commitments', 'telos_relationship_goals'] as const;
 
 export type StoreName = keyof typeof KEYS;
 export type StorageKey = (typeof KEYS)[StoreName];
@@ -56,60 +58,6 @@ export interface RepeatableBlock {
   enabled: boolean;
 }
 
-// Contact / Person
-export type RelationshipTag = 'family' | 'friend' | 'coworker' | 'mentor' | 'mentee' | 'partner' | 'acquaintance' | 'other';
-export type CircleRing = 'core' | 'close' | 'extended' | 'distant';
-export type InfluenceTag = 'energizer' | 'challenger' | 'supporter' | 'drainer' | 'neutral';
-export type InteractionType = 'call' | 'text' | 'hangout' | 'meeting';
-
-export const RELATIONSHIP_TAGS: RelationshipTag[] = ['family', 'friend', 'coworker', 'mentor', 'mentee', 'partner', 'acquaintance', 'other'];
-export const CIRCLE_RINGS: CircleRing[] = ['core', 'close', 'extended', 'distant'];
-export const INFLUENCE_TAGS: InfluenceTag[] = ['energizer', 'challenger', 'supporter', 'drainer', 'neutral'];
-
-export interface Interaction {
-  id: string;
-  contactId: string;
-  date: string; // ISO timestamp (or YYYY-MM-DD when backdated)
-  type: InteractionType;
-  durationMinutes?: number;
-  energyAfter?: 1 | 2 | 3 | 4 | 5; // how you felt after
-  note?: string;
-}
-
-export interface Commitment {
-  id: string;
-  contactId: string;
-  text: string;
-  dueDate?: string; // YYYY-MM-DD (local)
-  completedAt?: string;
-  recurring?: 'weekly' | 'biweekly' | 'monthly';
-  /** The next occurrence created when this recurring commitment was completed. */
-  spawnedId?: string;
-}
-
-export interface RelationshipGoal {
-  id: string;
-  contactId: string;
-  text: string;
-  targetDate?: string;
-  completedAt?: string;
-}
-
-export interface Contact {
-  id: string;
-  name: string;
-  relationship: RelationshipTag;
-  circleRing: CircleRing;
-  influenceTag: InfluenceTag;
-  phone?: string;
-  email?: string;
-  notes: string;
-  plan: string; // goal/plan for this relationship
-  interactionGoalDays?: number; // e.g., 7 = want to connect weekly
-  photoUrl?: string;
-  createdAt: string;
-}
-
 // Time Block Types
 export interface BlockCategory {
   id: string;
@@ -129,7 +77,6 @@ export interface TimeBlock {
   todoId?: string; // optional link to a goal todo
   sourceTemplateId?: string; // created from a repeatable routine
   habitId?: string; // optional link to a goal habit
-  contactId?: string; // optional link to a contact
   done?: boolean;
 }
 
@@ -234,15 +181,14 @@ export const stores = {
   TIME_BLOCKS: arrayStore<TimeBlock>(KEYS.TIME_BLOCKS, 'Plan time blocks'),
   BLOCK_CATEGORIES: arrayStore<BlockCategory>(KEYS.BLOCK_CATEGORIES, 'Block categories', () => DEFAULT_CATEGORIES.map(c => ({ ...c }))),
   REPEATABLE_BLOCKS: arrayStore<RepeatableBlock>(KEYS.REPEATABLE_BLOCKS, 'Routines'),
-  CONTACTS: arrayStore<Contact>(KEYS.CONTACTS, 'People'),
   CUSTOM_EXERCISES: arrayStore<CustomExercise>(KEYS.CUSTOM_EXERCISES, 'Custom exercises'),
   HABIT_LOGS: arrayStore<HabitLog>(KEYS.HABIT_LOGS, 'Habit check-ins'),
   GOAL_TEMPLATES: arrayStore<GoalTemplate>(KEYS.GOAL_TEMPLATES, 'Goal blueprints'),
-  INTERACTIONS: arrayStore<Interaction>(KEYS.INTERACTIONS, 'Interactions'),
-  COMMITMENTS: arrayStore<Commitment>(KEYS.COMMITMENTS, 'Commitments'),
-  RELATIONSHIP_GOALS: arrayStore<RelationshipGoal>(KEYS.RELATIONSHIP_GOALS, 'Relationship goals'),
   ACTIVE_WORKOUT: createStore<ActiveWorkout | null>({ key: KEYS.ACTIVE_WORKOUT, label: 'Workout in progress', kind: 'nullable', fallback: () => null }),
   PLAN_DISMISSED: createStore<PlanDismissed>({ key: KEYS.PLAN_DISMISSED, label: 'Removed plan blocks', kind: 'object', fallback: () => ({}) }),
+  ADJUSTMENTS: arrayStore<Adjustment>(KEYS.ADJUSTMENTS, 'Plan adjustments'),
+  ENGINE: createStore<EngineState>({ key: KEYS.ENGINE, label: 'Adaptation engine', kind: 'object', fallback: () => ({}) }),
+  METRICS: arrayStore<MetricEntry>(KEYS.METRICS, 'Progress measurements'),
 } satisfies { [K in StoreName]: Store<unknown> };
 
 // ─── Legacy load/save helpers ───────────────────────────────────────────────
@@ -297,22 +243,6 @@ export const saveBlockCategories = (c: BlockCategory[]) => stores.BLOCK_CATEGORI
 export const loadRepeatableBlocks = (): RepeatableBlock[] => stores.REPEATABLE_BLOCKS.get();
 /** @deprecated use stores.REPEATABLE_BLOCKS */
 export const saveRepeatableBlocks = (b: RepeatableBlock[]) => stores.REPEATABLE_BLOCKS.set(b);
-/** @deprecated use stores.CONTACTS */
-export const loadContacts = (): Contact[] => stores.CONTACTS.get();
-/** @deprecated use stores.CONTACTS */
-export const saveContacts = (c: Contact[]) => stores.CONTACTS.set(c);
-/** @deprecated use stores.INTERACTIONS */
-export const loadInteractions = (): Interaction[] => stores.INTERACTIONS.get();
-/** @deprecated use stores.INTERACTIONS */
-export const saveInteractions = (i: Interaction[]) => stores.INTERACTIONS.set(i);
-/** @deprecated use stores.COMMITMENTS */
-export const loadCommitments = (): Commitment[] => stores.COMMITMENTS.get();
-/** @deprecated use stores.COMMITMENTS */
-export const saveCommitments = (c: Commitment[]) => stores.COMMITMENTS.set(c);
-/** @deprecated use stores.RELATIONSHIP_GOALS */
-export const loadRelationshipGoals = (): RelationshipGoal[] => stores.RELATIONSHIP_GOALS.get();
-/** @deprecated use stores.RELATIONSHIP_GOALS */
-export const saveRelationshipGoals = (g: RelationshipGoal[]) => stores.RELATIONSHIP_GOALS.set(g);
 /** @deprecated use stores.CUSTOM_EXERCISES */
 export const loadCustomExercises = (): CustomExercise[] => stores.CUSTOM_EXERCISES.get();
 /** @deprecated use stores.CUSTOM_EXERCISES */

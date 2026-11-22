@@ -1,20 +1,17 @@
 import { useState } from 'react';
-import { ChevronDown, Dumbbell, Flame, HandHeart } from 'lucide-react';
+import { ChevronDown, Dumbbell } from 'lucide-react';
 import { ListRow, CheckCircle, IconBadge } from '@/components/app/ListRow';
 
 export type UpNextItem =
   | { kind: 'workout'; id: string; title: string; subtitle?: string; done: boolean; onStart: () => void; resume?: boolean }
   | { kind: 'todo'; id: string; title: string; subtitle?: string; days: number | null; done: boolean; onToggle: () => void }
-  | { kind: 'habit'; id: string; title: string; subtitle?: string; streak: number; done: boolean; onToggle: () => void }
-  | { kind: 'commitment'; id: string; title: string; subtitle?: string; days: number | null; done: boolean; onToggle: () => void }
-  | { kind: 'person'; id: string; title: string; subtitle?: string; done: boolean; onToggle: () => void; overdue: boolean; initial: string };
+  /** `week` is this week's progress, e.g. "2 of 3"; `minimum` is shown during a restart week. */
+  | { kind: 'habit'; id: string; title: string; subtitle?: string; week?: string; minimum?: string; done: boolean; onToggle: () => void };
 
 const C = {
   habit: 'hsl(var(--habits))',
   todo: 'hsl(var(--tasks))',
   workout: 'hsl(var(--move))',
-  commitment: 'hsl(var(--people))',
-  person: 'hsl(var(--people))',
 };
 
 function Due({ days }: { days: number | null }) {
@@ -41,36 +38,18 @@ function Row({ item }: { item: UpNextItem }) {
       />
     );
   }
-  if (item.kind === 'person') {
-    return (
-      <ListRow
-        onClick={item.onToggle}
-        leading={
-          <span className="flex h-[30px] w-[30px] items-center justify-center rounded-full text-footnote font-bold text-white" style={{ backgroundColor: C.person }}>
-            {item.initial}
-          </span>
-        }
-        title={item.title}
-        subtitle={<span className={item.overdue ? 'text-destructive' : ''}>{item.subtitle}</span>}
-        muted={item.done}
-        trailing={<span className="text-footnote font-semibold" style={{ color: C.person }}>Log</span>}
-      />
-    );
-  }
   const color = C[item.kind];
   return (
     <ListRow
       onClick={item.onToggle}
       leading={<CheckCircle done={item.done} color={color} onToggle={item.onToggle} label={item.title} />}
       title={item.title}
-      subtitle={item.subtitle}
+      subtitle={item.kind === 'habit' && item.minimum && !item.done ? <span><span className="font-semibold" style={{ color: C.habit }}>Easy version:</span> {item.minimum}</span> : item.subtitle}
       muted={item.done}
       trailing={
         item.kind === 'habit'
-          ? item.streak > 0 && <span className="flex items-center gap-0.5 text-footnote font-semibold" style={{ color: C.habit }}><Flame className="h-3.5 w-3.5" />{item.streak}</span>
-          : item.kind === 'commitment'
-            ? <span className="flex items-center gap-1"><HandHeart className="h-3.5 w-3.5 text-muted-foreground" /><Due days={item.days} /></span>
-            : !item.done && <Due days={item.days} />
+          ? item.week && <span className="text-footnote font-medium tabular-nums text-muted-foreground">{item.week}</span>
+          : !item.done && <Due days={item.days} />
       }
     />
   );

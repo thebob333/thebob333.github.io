@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { CalendarCheck, Dumbbell, Flame, Star, Trophy, Users } from 'lucide-react';
+import { CalendarCheck, Dumbbell, Flame, Star, Trophy, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Button } from '@/components/ui/button';
@@ -31,11 +31,10 @@ export function WeeklyReview({ open, onClose, today }: { open: boolean; onClose:
   const { goals } = useGoals();
   const { logs } = useHabits();
   const sessions = useStore(stores.SESSIONS);
-  const interactions = useStore(stores.INTERACTIONS);
   const custom = useStore(stores.CUSTOM_EXERCISES);
   const { focusIds, toggle, max } = useWeeklyFocus();
   const start = reviewWeekStart(today);
-  const w = useMemo(() => summarizeWeek(start, goals, logs, sessions, interactions, custom), [start, goals, logs, sessions, interactions, custom]);
+  const w = useMemo(() => summarizeWeek(start, goals, logs, sessions, custom), [start, goals, logs, sessions, custom]);
   const habitPct = w.habitsDue ? Math.round((w.habitsDone / w.habitsDue) * 100) : 0;
 
   const finish = () => {
@@ -65,7 +64,7 @@ export function WeeklyReview({ open, onClose, today }: { open: boolean; onClose:
             {stat(<Flame className="h-4 w-4 text-amber" />, `${habitPct}%`, 'habits done')}
             {stat(<CalendarCheck className="h-4 w-4 text-success" />, `${w.perfectDays}/7`, 'perfect days')}
             {stat(<Dumbbell className="h-4 w-4 text-primary" />, w.workouts, w.workouts === 1 ? 'workout' : 'workouts')}
-            {stat(<Users className="h-4 w-4 text-violet" />, w.peopleConnected, 'people connected')}
+            {stat(<Target className="h-4 w-4 text-violet" />, `${w.practicesOnTarget}/${w.practices}`, 'practices on target')}
             {stat(<Trophy className="h-4 w-4 text-coral" />, w.newPRs.length, w.newPRs.length === 1 ? 'new record' : 'new records')}
             {stat(<Dumbbell className="h-4 w-4 text-muted-foreground" />, w.volume >= 10000 ? `${Math.round(w.volume / 1000)}k` : w.volume.toLocaleString(), 'lbs lifted')}
           </div>

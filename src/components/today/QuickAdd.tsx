@@ -1,28 +1,23 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, CheckSquare, Dumbbell, Plus, Target, Users } from 'lucide-react';
+import { CalendarCheck, CheckSquare, Dumbbell, Plus, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useGoals, goalActions } from '@/hooks/useGoals';
-import { useStore } from '@/hooks/useStore';
-import { stores, type Contact } from '@/lib/storage';
 import { todayKey } from '@/lib/dates';
-import { QuickLogSheet } from '@/components/people/QuickLogSheet';
 
-type View = 'menu' | 'todo' | 'person';
+type View = 'menu' | 'todo';
 
-/** One button for the things you do most: add a to-do, log time with someone, start a workout. */
+/** One button for the things you do most: add a to-do, start a workout, start a goal. */
 export function QuickAdd({ onStartWorkout, onReview }: { onStartWorkout: () => void; onReview: () => void }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('menu');
-  const [logFor, setLogFor] = useState<Contact | null>(null);
   const navigate = useNavigate();
   const { goals } = useGoals();
-  const contacts = useStore(stores.CONTACTS);
 
   // Every task you could add a to-do to, labelled with its goal.
   const tasks = useMemo(() => goals.filter(g => !g.archived).flatMap(g =>
@@ -70,13 +65,12 @@ export function QuickAdd({ onStartWorkout, onReview }: { onStartWorkout: () => v
       <Dialog open={open} onOpenChange={o => (o ? setOpen(true) : close())}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{view === 'todo' ? 'Add a to-do' : view === 'person' ? 'Log time with…' : 'Quick add'}</DialogTitle>
+            <DialogTitle>{view === 'todo' ? 'Add a to-do' : 'Quick add'}</DialogTitle>
           </DialogHeader>
 
           {view === 'menu' && (
             <div className="space-y-2">
               {tasks.length > 0 && item(<CheckSquare className="h-5 w-5" />, 'Add a to-do', 'Goes into one of your goals', () => setView('todo'))}
-              {contacts.length > 0 && item(<Users className="h-5 w-5" />, 'Log time with someone', 'A call, text or hangout', () => setView('person'))}
               {item(<Dumbbell className="h-5 w-5" />, 'Start today’s workout', 'Exercises filled in for you', () => { close(); onStartWorkout(); })}
               {item(<Target className="h-5 w-5" />, 'New goal', 'Turn something big into a plan', () => { close(); navigate('/goals?new=1'); })}
               {item(<CalendarCheck className="h-5 w-5" />, 'Weekly review', 'Look back and pick your focus', () => { close(); onReview(); })}
@@ -101,21 +95,8 @@ export function QuickAdd({ onStartWorkout, onReview }: { onStartWorkout: () => v
             </form>
           )}
 
-          {view === 'person' && (
-            <div className="max-h-[50vh] space-y-1 overflow-y-auto">
-              {contacts.map(c => (
-                <button key={c.id} type="button" onClick={() => { close(); setLogFor(c); }} className="flex h-12 w-full items-center gap-3 rounded-lg px-2 text-left active:bg-accent">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{c.name.charAt(0).toUpperCase()}</span>
-                  <span className="truncate text-[15px]">{c.name}</span>
-                </button>
-              ))}
-              <Button variant="outline" className="mt-2 h-11 w-full" onClick={() => setView('menu')}>Back</Button>
-            </div>
-          )}
         </DialogContent>
       </Dialog>
-
-      <QuickLogSheet contact={logFor} onClose={() => setLogFor(null)} />
     </>
   );
 }

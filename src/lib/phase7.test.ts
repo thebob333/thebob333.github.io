@@ -1,32 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { nextDueDate, contactActions } from '@/hooks/useContacts';
 import { goalActions } from '@/hooks/useGoals';
 import { spreadPhaseDeadlines, phaseWeight } from '@/lib/goal-tree';
 import { suggestedCustomTarget } from '@/lib/strength-standards';
 import { addDays, daysBetween, todayKey } from '@/lib/dates';
 import { stores } from '@/lib/storage';
 import type { Phase } from '@/types/goals';
-
-describe('recurring commitments', () => {
-  it('next due date steps forward and never lands in the past', () => {
-    expect(nextDueDate('2026-11-20', 'weekly', '2026-11-21')).toBe('2026-11-27');
-    expect(nextDueDate('2026-11-01', 'weekly', '2026-11-21')).toBe('2026-11-22');
-    expect(nextDueDate('2026-11-21', 'biweekly', '2026-11-21')).toBe('2026-12-05');
-    expect(nextDueDate('2026-01-31', 'monthly', '2026-01-31')).toBe('2026-02-28');
-    expect(nextDueDate('2026-12-15', 'monthly', '2026-12-15')).toBe('2027-01-15');
-    expect(nextDueDate(undefined, 'weekly', '2026-11-21')).toBe('2026-11-28');
-  });
-
-  it('completing schedules the next one; undo removes it again', () => {
-    const c = contactActions.addCommitment({ contactId: 'p', text: 'Call mom', dueDate: todayKey(), recurring: 'weekly' });
-    const next = contactActions.completeCommitment(c.id);
-    expect(next?.dueDate).toBe(addDays(todayKey(), 7));
-    expect(stores.COMMITMENTS.get()).toHaveLength(2);
-    contactActions.uncompleteCommitment(c.id);
-    expect(stores.COMMITMENTS.get()).toHaveLength(1);
-    expect(stores.COMMITMENTS.get()[0].completedAt).toBeUndefined();
-  });
-});
 
 describe('spread deadlines by workload', () => {
   const phase = (todos: ('LOW' | 'MED' | 'HIGH' | undefined)[]): Phase => ({

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { CalendarDays, Dumbbell, Share, SquarePlus, Target, Users } from 'lucide-react';
+import { CalendarDays, Dumbbell, Share, SquarePlus, Target, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { seedSampleData } from '@/lib/sample-data';
 
@@ -48,10 +48,10 @@ export function Onboarding() {
             <p className="mt-2 text-muted-foreground">TELOS turns what you want into what to do today.</p>
             <ul className="mt-8 space-y-4">
               {[
-                { icon: Target, title: 'Goals', text: 'Break a goal into phases, to-dos and daily habits.' },
+                { icon: Target, title: 'Goals', text: 'Any goal, from tying a tie to running a company — planned the right way for its kind.' },
                 { icon: CalendarDays, title: 'Today & Plan', text: 'Check things off and plan your day in time blocks.' },
                 { icon: Dumbbell, title: 'Gym', text: 'Log lifts — it plans your next session for you.' },
-                { icon: Users, title: 'People', text: 'Stay in touch with the people who matter.' },
+                { icon: RefreshCw, title: 'Plans that adapt', text: 'Slip a week? Your plan eases off, then builds you back up.' },
               ].map(i => (
                 <li key={i.title} className="flex gap-3">
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><i.icon className="h-5 w-5" /></span>

@@ -5,7 +5,6 @@ import { toast } from 'sonner';
 import { useGoals } from '@/hooks/useGoals';
 import { useWorkouts, useActiveWorkout, activeWorkoutActions } from '@/hooks/useWorkouts';
 import { useHabits } from '@/hooks/useHabits';
-import { useContacts } from '@/hooks/useContacts';
 import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
@@ -16,13 +15,12 @@ import { checkAchievements } from '@/lib/achievements';
 import { getTodaysHabits } from '@/lib/habits';
 import { flattenTodos } from '@/lib/goal-tree';
 import { stores } from '@/lib/storage';
-import { dateKeyOf, dayOfWeek, daysBetween, parseDateKey } from '@/lib/dates';
+import { dateKeyOf, dayOfWeek, parseDateKey } from '@/lib/dates';
 import { quoteOfTheDay } from '@/lib/quotes';
 import { PageHeader } from '@/components/app/PageHeader';
 import { UpNext, type UpNextItem } from '@/components/today/UpNext';
 import { NowCard } from '@/components/today/NowCard';
-import { QuickLogSheet } from '@/components/people/QuickLogSheet';
-import type { Contact } from '@/lib/storage';
+import { AdjustmentNotices } from '@/components/today/AdjustmentNotices';
 import { SmartNudges } from '@/components/today/SmartNudges';
 import { WeeklyReview, isReviewDue } from '@/components/today/WeeklyReview';
 import { QuickAdd } from '@/components/today/QuickAdd';
@@ -45,8 +43,6 @@ export default function Index() {
   const { goals, toggleToDo } = useGoals();
   const { sessions } = useWorkouts();
   const { logs: habitLogs, toggleCheckIn } = useHabits();
-  const { contacts, interactions, commitments, getStreakStatus, getDaysSinceLastInteraction, completeCommitment, uncompleteCommitment } = useContacts();
-  const [logFor, setLogFor] = useState<Contact | null>(null);
   const [skipped, setSkipped] = useState<string[]>([]);
   const { settings } = useSettings();
   const today = useTodayKey();
@@ -116,57 +112,26 @@ export default function Index() {
       }
     }
 
-    const nameOf = (id: string) => contacts.find(c => c.id === id)?.name ?? 'someone';
-    for (const k of commitments) {
-      const days = k.dueDate ? daysBetween(today, dateKeyOf(k.dueDate)) : null;
-      const doneToday = !!k.completedAt && dateKeyOf(k.completedAt) === today;
-      if (!(doneToday || (!k.completedAt && days !== null && days <= 0))) continue;
-      items.push({
-        kind: 'commitment', id: k.id, title: k.text, subtitle: `Promised to ${nameOf(k.contactId)}`, days, done: doneToday,
-        onToggle: () => {
-          if (k.completedAt) { uncompleteCommitment(k.id); return; }
-          const next = completeCommitment(k.id);
-          toast.success(next ? 'Done — next one scheduled' : 'Promise kept', { action: { label: 'Undo', onClick: () => uncompleteCommitment(k.id) } });
-        },
-      });
-    }
-
-    // People due a check-in (closest first). Talked to today → completed.
-    const RANK = { core: 0, close: 1, extended: 2, distant: 3 } as const;
-    const talkedToday = new Set(interactions.filter(x => dateKeyOf(x.date) === today).map(x => x.contactId));
-    contacts
-      .filter(c => c.interactionGoalDays)
-      .map(c => ({ c, status: getStreakStatus(c), days: getDaysSinceLastInteraction(c.id) }))
-      .filter(x => talkedToday.has(x.c.id) || x.status === 'overdue' || x.status === 'due-soon')
-      .sort((a, b) => (RANK[a.c.circleRing] ?? 3) - (RANK[b.c.circleRing] ?? 3))
-      .slice(0, 4)
-      .forEach(({ c, status, days }) => {
-        const done = talkedToday.has(c.id);
-        items.push({
-          kind: 'person', id: c.id, initial: c.name.charAt(0).toUpperCase(),
-          title: done ? `Connected with ${c.name}` : `Check in with ${c.name}`,
-          subtitle: done ? 'Today' : days === null ? 'Not in touch yet' : `${days} day${days === 1 ? '' : 's'} since you connected`,
-          overdue: status === 'overdue', done,
-          onToggle: () => setLogFor(c),
-        });
-      });
-
     for (const h of todaysHabits) {
+      const amount = h.habit.amount !== undefined ? `${h.habit.amount} ${h.habit.unit ?? ''}`.trim() : h.habit.target;
       items.push({
         kind: 'habit', id: h.habit.id,
-        title: h.habit.target ? `${h.habit.title} · ${h.habit.target}` : h.habit.title,
-        subtitle: h.goalTitle, streak: h.streak, done: h.completed,
+        title: amount ? `${h.habit.title} · ${amount}` : h.habit.title,
+        subtitle: h.goalTitle,
+        week: h.perWeek < 7 ? `${h.weekDone} of ${h.perWeek}` : undefined,
+        minimum: h.restart ? (h.habit.minimum || 'Just a few minutes of it') : undefined,
+        done: h.completed,
         onToggle: () => toggleCheckIn(h.habit.id),
       });
     }
 
-    // Workout first, then late to-dos, today's to-dos, promises, habits.
-    const rank = (i: UpNextItem) => (i.kind === 'workout' ? 0 : i.kind === 'todo' ? (i.days !== null && i.days < 0 ? 1 : 2) : i.kind === 'commitment' ? 3 : i.kind === 'person' ? 4 : 5);
+    // Workout first, then late to-dos, practices, then today's to-dos.
+    const rank = (i: UpNextItem) => (i.kind === 'workout' ? 0 : i.kind === 'todo' ? (i.days !== null && i.days < 0 ? 1 : 3) : 2);
     items.sort((a, b) => rank(a) - rank(b));
     later.sort((a, b) => ((a as { days: number }).days ?? 0) - ((b as { days: number }).days ?? 0));
     return { items, later };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- handlers are stable store actions
-  }, [goals, todaysHabits, commitments, contacts, interactions, today, todayPlan, trainedToday, hasActiveWorkout, activeWorkout, customExercises]);
+  }, [goals, todaysHabits, today, todayPlan, trainedToday, hasActiveWorkout, activeWorkout, customExercises]);
 
   // The one thing to do next (skipping ones you've set aside for now).
   const open = items.filter(i => !i.done);
@@ -225,15 +190,15 @@ export default function Index() {
               quote={settings.quotesEnabled ? quoteOfTheDay(settings.customQuotes, today) : undefined}
             />
           </div>
-          <div {...enter(3)}><UpNext items={rest} later={later} /></div>
-          <div {...enter(4)}><SmartNudges today={today} kinds={['backup']} /></div>
+          <div {...enter(3)}><AdjustmentNotices /></div>
+          <div {...enter(4)}><UpNext items={rest} later={later} /></div>
+          <div {...enter(5)}><SmartNudges today={today} kinds={['backup']} /></div>
         </>
       )}
 
 
       <WeeklyReview open={reviewOpen} onClose={() => setReviewOpen(false)} today={today} />
       {!isNew && <QuickAdd onStartWorkout={startWorkout} onReview={() => setReviewOpen(true)} />}
-      <QuickLogSheet contact={logFor} onClose={() => setLogFor(null)} />
       {showOnboarding && <Onboarding />}
     </div>
   );

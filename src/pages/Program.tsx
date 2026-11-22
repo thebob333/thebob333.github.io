@@ -31,7 +31,6 @@ export default function PlanPage() {
   const hasPlan = useStore(stores.WEEKLY_PLAN) !== null;
   const customExercises = useStore(stores.CUSTOM_EXERCISES);
   const timeBlocks = useStore(stores.TIME_BLOCKS);
-  const contacts = useStore(stores.CONTACTS);
   const active = useActiveWorkout();
   const [selected, setSelected] = useState<DateKey>(today);
   const [routinesOpen, setRoutinesOpen] = useState(false);
@@ -134,7 +133,6 @@ export default function PlanPage() {
       <div className="surface min-h-0 flex-1 overflow-hidden">
         <DailyTimeBlocks
           dayName={selected}
-          contacts={contacts}
           onToggleTodo={id => { const t = all.find(x => x.todoId === id); if (t) toggleToDo(t.goalId, t.phaseId, t.taskId, t.todoId); }}
           backlogTodos={backlog}
           deadlineTodos={due}

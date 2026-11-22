@@ -19,17 +19,17 @@ const session = (date: string, weight: number, reps = 5, exercise = 'bench_press
 });
 
 describe('weekly summary', () => {
-  it('counts habit completion, perfect days, workouts, new records and people', () => {
+  it('counts habit completion, perfect days, workouts, new records and practices on target', () => {
     const logs = ['2026-11-16', '2026-11-17', '2026-11-18'].map(date => ({ habitId: 'h', date, completed: true }));
     const sessions = [session('2026-11-09T10:00:00', 135), session('2026-11-18T10:00:00', 145)];
-    const interactions = [{ id: 'i', contactId: 'c1', date: '2026-11-19T10:00:00', type: 'call' as const }];
-    const w = summarizeWeek('2026-11-16', [goal], logs, sessions, interactions);
+    const w = summarizeWeek('2026-11-16', [goal], logs, sessions);
     expect(w.habitsDue).toBe(7);
     expect(w.habitsDone).toBe(3);
     expect(w.perfectDays).toBe(3);
     expect(w.workouts).toBe(1);
     expect(w.newPRs.map(p => p.label)).toEqual(['Bench Press']);
-    expect(w.peopleConnected).toBe(1);
+    expect(w.practices).toBe(1);
+    expect(w.practicesOnTarget).toBe(0); // 3 of 7 for a daily practice
   });
 });
 
@@ -65,14 +65,14 @@ describe('weekly review timing', () => {
 
 describe('sample data', () => {
   it('can be added and removed without touching your own data', () => {
-    stores.CONTACTS.set([{ id: 'mine', name: 'Me', relationship: 'friend', circleRing: 'core', influenceTag: 'neutral', notes: '', plan: '', createdAt: '' }]);
+    stores.REPEATABLE_BLOCKS.set([{ id: 'mine', title: 'Mine', categoryId: 'work', startHour: 9, startMinute: 0, durationMinutes: 30, repeatPattern: 'daily', enabled: true }]);
     seedSampleData();
     expect(stores.GOALS.get()).toHaveLength(1);
-    expect(stores.CONTACTS.get()).toHaveLength(3);
+    expect(stores.REPEATABLE_BLOCKS.get()).toHaveLength(2);
     expect(stores.WEEKLY_PLAN.get()).not.toBeNull();
     removeSampleData();
     expect(stores.GOALS.get()).toEqual([]);
-    expect(stores.CONTACTS.get().map(c => c.id)).toEqual(['mine']);
+    expect(stores.REPEATABLE_BLOCKS.get().map(r => r.id)).toEqual(['mine']);
     expect(stores.WEEKLY_PLAN.get()).toBeNull();
     expect(getSampleRecord()).toBeNull();
   });

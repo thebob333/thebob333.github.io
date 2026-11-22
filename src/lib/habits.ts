@@ -1,5 +1,6 @@
 import { Goal, Habit, HabitLog } from '@/types/goals';
 import { addDays, dayOfWeek, startOfWeekKey, todayKey, type DateKey } from '@/lib/dates';
+import { doneBetween, inRestart, isPracticeDue, perWeekOf, weekStart } from '@/lib/practice';
 
 /** Today's LOCAL calendar date (kept under the old name for existing callers). */
 export function getTodayKey(): DateKey {
@@ -11,7 +12,7 @@ const DAY_ABBRS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const DAY_ALIASES: Record<string, number> = { tues: 2, weds: 3, thur: 4, thurs: 4 };
 
 /** Which weekdays (0=Sun) a frequency string names, matched as whole words ("monthly" is not "mon"). */
-function mentionedDays(freq: string): number[] {
+export function mentionedDays(freq: string): number[] {
   const words = freq.toLowerCase().split(/[^a-z]+/).filter(Boolean);
   const days = new Set<number>();
   for (const w of words) {
@@ -145,7 +146,7 @@ export interface FlatHabit {
 export function getAllActiveHabits(goals: Goal[]): FlatHabit[] {
   const result: FlatHabit[] = [];
   for (const goal of goals) {
-    if (goal.archived) continue;
+    if (goal.archived || (goal.status && goal.status !== 'active')) continue;
     for (const phase of goal.phases ?? []) {
       const tasks = phase.tasks ?? [];
       const isTaskComplete = (t: (typeof tasks)[number]) => {
@@ -171,12 +172,16 @@ export function getTodaysHabits(
   goals: Goal[],
   logs: HabitLog[],
   today: DateKey = todayKey(),
-): (FlatHabit & { completed: boolean; streak: number })[] {
+): (FlatHabit & { completed: boolean; streak: number; weekDone: number; perWeek: number; restart: boolean })[] {
+  const ws = weekStart(today);
   return getAllActiveHabits(goals)
-    .filter(fh => isHabitDueToday(fh.habit, today))
+    .filter(fh => isPracticeDue(fh.habit, logs, today))
     .map(fh => ({
       ...fh,
       completed: isHabitCompletedOn(fh.habit.id, today, logs),
       streak: getCurrentStreak(fh.habit.id, logs, today),
+      weekDone: doneBetween(fh.habit.id, logs, ws, today),
+      perWeek: perWeekOf(fh.habit),
+      restart: inRestart(fh.habit, today),
     }));
 }

@@ -35,19 +35,26 @@ describe('migrateData', () => {
     expect(t.todos).toEqual(['a']);
   });
 
-  it('fixes contacts with unknown enum values and removes orphaned records', () => {
+  it('v6 removes People data and gives goals a shape and practices a weekly load', () => {
     const { data } = migrateData({
-      [KEYS.CONTACTS]: [{ id: 'c1', name: 'Sam', circleRing: 'bestie', influenceTag: undefined }],
-      [KEYS.INTERACTIONS]: [{ id: 'i1', contactId: 'c1' }, { id: 'i2', contactId: 'gone' }],
-      [KEYS.COMMITMENTS]: [{ id: 'k1', contactId: 'gone' }],
-    }, 0, ctx());
-    const c = (data[KEYS.CONTACTS] as Any)[0];
-    expect(c.circleRing).toBe('distant');
-    expect(c.influenceTag).toBe('neutral');
-    expect(c.relationship).toBe('other');
-    expect(c.notes).toBe('');
-    expect((data[KEYS.INTERACTIONS] as Any[]).map(i => i.id)).toEqual(['i1']);
-    expect(data[KEYS.COMMITMENTS]).toEqual([]);
+      telos_contacts: [{ id: 'c1', name: 'Sam' }],
+      telos_interactions: [{ id: 'i1', contactId: 'c1' }],
+      [KEYS.GOALS]: [
+        { id: 'g1', title: 'Meditate', phases: [{ id: 'p', title: 'P', tasks: [{ id: 't', title: 'T', todos: [], habits: [{ id: 'h', title: 'Sit', frequency: 'mon/wed/fri' }] }] }] },
+        { id: 'g2', title: 'Launch', phases: [{ id: 'p', title: 'P', tasks: [{ id: 't', title: 'T', todos: [1, 2, 3, 4, 5, 6].map(i => ({ id: `${i}`, title: 'x' })), habits: [] }] }, { id: 'p2', title: 'Q', tasks: [] }] },
+      ],
+    } as Any, 0, ctx());
+    expect('telos_contacts' in data).toBe(false);
+    expect('telos_interactions' in data).toBe(false);
+    const [g1, g2] = data[KEYS.GOALS] as Any[];
+    expect(g1.shape).toBe('keep');
+    expect(g1.status).toBe('active');
+    expect(g1.pushback).toBe('honest');
+    const h = g1.phases[0].tasks[0].habits[0];
+    expect(h).toMatchObject({ perWeek: 3, maxPerWeek: 3, auto: true, since: ctx().today });
+    expect(g2.shape).toBe('build');
+    // Idempotent.
+    expect(migrateData(data, 5, ctx()).data).toEqual(data);
   });
 
   it('sanitizes settings: null gold targets, zero bodyweight', () => {

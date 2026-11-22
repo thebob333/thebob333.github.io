@@ -4,7 +4,8 @@
  * `migrateData` is pure and shared by app startup and backup import, so an old
  * backup file is upgraded exactly like old on-device data.
  */
-import { KEYS, META_KEYS, CIRCLE_RINGS, INFLUENCE_TAGS, RELATIONSHIP_TAGS, type StorageKey } from '@/lib/storage';
+import { KEYS, META_KEYS, RETIRED_KEYS, type StorageKey } from '@/lib/storage';
+import { derivePerWeek } from '@/lib/practice';
 import { getStore, reloadAllStores, type Kind } from '@/lib/store';
 import { addDays, isDateKey, todayKey, type DateKey } from '@/lib/dates';
 
@@ -175,29 +176,9 @@ export const MIGRATIONS: Migration[] = [
   },
   {
     version: 3,
+    // Was "contacts-defaults" for the People feature, which has since been removed (see v6).
     name: 'contacts-defaults',
-    up(d, ctx) {
-      const contacts = d[KEYS.CONTACTS];
-      if (!Array.isArray(contacts)) return;
-      const fixed = contacts.filter(isObj).map(c => ({
-        ...c,
-        id: str(c.id) || ctx.newId(),
-        name: str(c.name, 'Unnamed'),
-        relationship: RELATIONSHIP_TAGS.includes(c.relationship as never) ? c.relationship : 'other',
-        circleRing: CIRCLE_RINGS.includes(c.circleRing as never) ? c.circleRing : 'distant',
-        influenceTag: INFLUENCE_TAGS.includes(c.influenceTag as never) ? c.influenceTag : 'neutral',
-        notes: str(c.notes),
-        plan: str(c.plan),
-        createdAt: str(c.createdAt) || ctx.now.toISOString(),
-      }));
-      d[KEYS.CONTACTS] = fixed;
-      const ids = new Set(fixed.map(c => c.id));
-      for (const key of [KEYS.INTERACTIONS, KEYS.COMMITMENTS, KEYS.RELATIONSHIP_GOALS] as const) {
-        if (Array.isArray(d[key])) {
-          d[key] = (d[key] as unknown[]).filter(x => isObj(x) && ids.has(x.contactId as string));
-        }
-      }
-    },
+    up() {},
   },
   {
     version: 4,
@@ -251,6 +232,47 @@ export const MIGRATIONS: Migration[] = [
           return local === k ? b : { ...b, dayName: local };
         });
       }
+    },
+  },
+  {
+    version: 6,
+    name: 'apex-goal-shapes',
+    up(d, ctx) {
+      // People was removed.
+      for (const k of RETIRED_KEYS) delete (d as Record<string, unknown>)[k];
+      if (!Array.isArray(d[KEYS.GOALS])) return;
+      d[KEYS.GOALS] = (d[KEYS.GOALS] as unknown[]).filter(isObj).map(g => {
+        const tasks = arr(g.phases).filter(isObj).flatMap(p => arr(p.tasks).filter(isObj));
+        const todos = tasks.flatMap(t => arr(t.todos));
+        const habits = tasks.flatMap(t => arr(t.habits));
+        const shape = typeof g.shape === 'string' ? g.shape
+          : habits.length > 0 && todos.length === 0 ? 'keep'
+            : todos.length > 0 && todos.length <= 5 && arr(g.phases).length <= 1 && habits.length === 0 ? 'once'
+              : 'build';
+        return {
+          ...g,
+          shape,
+          status: typeof g.status === 'string' ? g.status : 'active',
+          pushback: typeof g.pushback === 'string' ? g.pushback : 'honest',
+          phases: arr(g.phases).filter(isObj).map(p => ({
+            ...p,
+            tasks: arr(p.tasks).filter(isObj).map(t => ({
+              ...t,
+              habits: arr(t.habits).filter(isObj).map(h => {
+                const perWeek = typeof h.perWeek === 'number' ? h.perWeek : derivePerWeek(str(h.frequency));
+                return {
+                  ...h,
+                  perWeek,
+                  maxPerWeek: typeof h.maxPerWeek === 'number' ? h.maxPerWeek : perWeek,
+                  auto: h.auto === undefined ? true : Boolean(h.auto),
+                  // Start judging from today — old weeks were planned under the old rules.
+                  since: typeof h.since === 'string' ? h.since : ctx.today,
+                };
+              }),
+            })),
+          })),
+        };
+      });
     },
   },
 ];
@@ -410,6 +432,9 @@ export async function runStartupMigrations(opts: {
     } catch (err) {
       writeRawWithRollback(new Map([...next.keys()].map(k => [k, raw.get(k) ?? null])), raw);
       return { status: 'failed', from, error: err };
+    }
+    for (const k of RETIRED_KEYS) {
+      try { localStorage.removeItem(k); } catch { /* ignore */ }
     }
     reloadAllStores();
     return { status: 'migrated', from, to: CURRENT_SCHEMA_VERSION, applied };

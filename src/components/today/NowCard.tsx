@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Dumbbell, Flame, HandHeart, MessageCircle, PartyPopper, SkipForward } from 'lucide-react';
+import { ArrowRight, Check, Dumbbell, PartyPopper, Repeat, SkipForward } from 'lucide-react';
 import type { UpNextItem } from './UpNext';
 
 /** Vivid gradient that follows the time of day. */
@@ -13,9 +13,7 @@ function kindLabel(item: UpNextItem): string {
   switch (item.kind) {
     case 'workout': return item.resume ? 'Finish your workout' : 'Training';
     case 'todo': return item.days !== null && item.days < 0 ? `To-do · ${-item.days}d late` : 'To-do';
-    case 'commitment': return 'Promise';
-    case 'person': return 'Reach out';
-    case 'habit': return item.streak > 0 ? `Habit · ${item.streak}-day streak` : 'Habit';
+    case 'habit': return item.minimum ? 'Practice · easy version' : item.week ? `Practice · ${item.week} this week` : 'Practice';
   }
 }
 
@@ -23,9 +21,7 @@ function KindIcon({ item }: { item: UpNextItem }) {
   const cls = 'h-3.5 w-3.5';
   switch (item.kind) {
     case 'workout': return <Dumbbell className={cls} />;
-    case 'commitment': return <HandHeart className={cls} />;
-    case 'person': return <MessageCircle className={cls} />;
-    case 'habit': return <Flame className={cls} />;
+    case 'habit': return <Repeat className={cls} />;
     default: return <Check className={cls} />;
   }
 }
@@ -33,7 +29,6 @@ function KindIcon({ item }: { item: UpNextItem }) {
 function actionLabel(item: UpNextItem): string {
   switch (item.kind) {
     case 'workout': return item.resume ? 'Resume workout' : 'Start workout';
-    case 'person': return 'Log it';
     default: return 'Mark done';
   }
 }
@@ -73,7 +68,9 @@ export function NowCard({ item, done, total, onSkip, quote }: {
               <KindIcon item={item} /> {kindLabel(item)}
             </p>
             <h2 className="mt-2 text-[28px] font-bold leading-[1.15] tracking-tight">{item.title}</h2>
-            {item.subtitle && <p className="mt-1 line-clamp-1 text-body text-white/80">{item.subtitle}</p>}
+            {item.kind === 'habit' && item.minimum
+              ? <p className="mt-1 text-body text-white/90">Just do the easy version today: <b>{item.minimum}</b></p>
+              : item.subtitle && <p className="mt-1 line-clamp-1 text-body text-white/80">{item.subtitle}</p>}
 
             <div className="mt-6 flex items-center gap-3">
               <button

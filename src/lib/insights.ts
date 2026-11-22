@@ -5,9 +5,9 @@
 import type { Goal, HabitLog } from '@/types/goals';
 import type { WorkoutSession, ExerciseConfig, CustomExercise } from '@/types/workout';
 import { isBodyweightExercise, getExerciseLabel } from '@/types/workout';
-import type { Interaction } from '@/lib/storage';
 import { addDays, dateKeyOf, type DateKey } from '@/lib/dates';
 import { getAllActiveHabits, isHabitDueToday } from '@/lib/habits';
+import { doneBetween, perWeekOf } from '@/lib/practice';
 import { calculateGoalProgress } from '@/types/goals';
 import { getExerciseHistory, getPersonalRecords, getProgressionSuggestion, calculateVolumeLoad } from '@/lib/progressive-overload';
 
@@ -26,8 +26,9 @@ export interface WeekSummary {
   workouts: number;
   volume: number;
   newPRs: { exercise: string; label: string; value: string }[];
-  peopleConnected: number;
-  interactions: number;
+  /** Practices that hit their weekly target, out of all active ones. */
+  practicesOnTarget: number;
+  practices: number;
   goals: { id: string; title: string; progress: number }[];
 }
 
@@ -37,7 +38,6 @@ export function summarizeWeek(
   goals: Goal[],
   logs: HabitLog[],
   sessions: WorkoutSession[],
-  interactions: Interaction[],
   customExercises: CustomExercise[] = [],
 ): WeekSummary {
   const end = addDays(start, 6);
@@ -74,7 +74,7 @@ export function summarizeWeek(
       value: isBw(pr.exercise) ? `${pr.reps} reps` : `${pr.weight} lbs × ${pr.reps}`,
     }));
 
-  const weekInteractions = interactions.filter(i => inWeek(i.date));
+  const practicesOnTarget = habits.filter(h => doneBetween(h.habit.id, logs, start, end) >= perWeekOf(h.habit)).length;
 
   return {
     start,
@@ -85,8 +85,8 @@ export function summarizeWeek(
     workouts: weekSessions.length,
     volume: weekSessions.reduce((sum, s) => sum + s.exercises.reduce((a, e) => a + calculateVolumeLoad(e.sets), 0), 0),
     newPRs,
-    peopleConnected: new Set(weekInteractions.map(i => i.contactId)).size,
-    interactions: weekInteractions.length,
+    practicesOnTarget,
+    practices: habits.length,
     goals: goals.filter(g => !g.archived).map(g => ({ id: g.id, title: g.title, progress: calculateGoalProgress(g) })),
   };
 }

@@ -1,12 +1,11 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { TimeBlock, BlockCategory, DEFAULT_CATEGORIES, stores, generateId, Contact } from '@/lib/storage';
+import { TimeBlock, BlockCategory, DEFAULT_CATEGORIES, stores, generateId } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { autofillDay, dismissBlock, undismissBlock } from '@/lib/plan-autofill';
-import { QuickLogSheet } from '@/components/people/QuickLogSheet';
 import { DAY_END_MIN, DAY_START_MIN, formatClock, plannerDayKey, plannerNowMinutes } from '@/lib/plan-time';
 import { todayKey } from '@/lib/dates';
 import { shouldShowOnDay } from '@/lib/routines';
-import { Check, Repeat, User } from 'lucide-react';
+import { Check, Repeat } from 'lucide-react';
 import { toast } from 'sonner';
 import { BlockSheet, type BacklogTodo } from '@/components/plan/BlockSheet';
 import { CategoriesSheet } from '@/components/plan/CategoriesSheet';
@@ -23,7 +22,6 @@ const MOVE_CANCEL_PX = 8;
 const START_HOUR = DAY_START_MIN / 60;
 const END_HOUR = DAY_END_MIN / 60; // exclusive
 const NO_TODOS: BacklogTodo[] = [];
-const NO_CONTACTS: Contact[] = [];
 const TB = stores.TIME_BLOCKS;
 const CATS = stores.BLOCK_CATEGORIES;
 const PIXEL_PER_MINUTE = IS_PHONE ? 1.5 : 1;
@@ -137,11 +135,10 @@ interface DailyTimeBlocksProps {
   onToggleTodo?: (todoId: string) => void;
   backlogTodos?: BacklogTodo[];
   deadlineTodos?: BacklogTodo[];
-  contacts?: Contact[];
   todoStates?: Record<string, boolean>;
 }
 
-export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = NO_TODOS, deadlineTodos = NO_TODOS, contacts = NO_CONTACTS, todoStates }: DailyTimeBlocksProps) {
+export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = NO_TODOS, deadlineTodos = NO_TODOS, todoStates }: DailyTimeBlocksProps) {
   const blocks = useStore(TB);
   const categories = useStore(CATS);
   const repeatableBlocks = useStore(stores.REPEATABLE_BLOCKS);
@@ -154,7 +151,6 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   
   // Resize state
   const [resizeDrag, setResizeDrag] = useState<{ blockId: string; startY: number; startDuration: number } | null>(null);
-  const [logContact, setLogContact] = useState<Contact | null>(null);
   // Live preview while resizing; saved once on release instead of on every pointer move.
   const [resizePreview, setResizePreview] = useState<number | null>(null);
   
@@ -439,7 +435,6 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
             const colWidth = `calc(${availableWidth} / ${layout.totalColumns} - 2px)`;
             const colLeft = `calc(${LABEL_WIDTH}px + ${availableWidth} * ${layout.column} / ${layout.totalColumns})`;
             const done = isDone(block);
-            const contact = block.contactId ? contacts.find(c => c.id === block.contactId) : undefined;
             const compact = height < 34;
 
             return (
@@ -480,7 +475,6 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                     {!compact && (
                       <p className="mt-0.5 truncate text-[11px] tabular-nums text-muted-foreground">
                         {formatTime(blockStartMinutes(block))} – {formatTime(blockEndMinutes(block))}
-                        {contact && <><User className="ml-1.5 mr-0.5 inline h-3 w-3 align-[-2px]" />{contact.name}</>}
                       </p>
                     )}
                   </div>
@@ -523,18 +517,15 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
 
       <BlockSheet
         block={editing}
-        contacts={contacts}
         backlogTodos={backlogTodos}
         todoDone={editing ? isDone(editing) : false}
         onUpdate={patch => editing && updateBlock(editing.id, patch)}
         onDelete={() => editing && deleteBlock(editing.id)}
         onToggleTodo={() => editing && toggleDone(editing)}
-        onLogContact={c => setLogContact(c)}
         onEditCategories={() => setShowCategories(true)}
         onClose={() => setEditingBlock(null)}
       />
       <CategoriesSheet open={showCategories} onClose={() => setShowCategories(false)} />
-      <QuickLogSheet contact={logContact} onClose={() => setLogContact(null)} />
     </div>
   );
 }

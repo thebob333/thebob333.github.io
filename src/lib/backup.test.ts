@@ -7,7 +7,7 @@ const seed = () => {
   localStorage.setItem(KEYS.GOALS, JSON.stringify([{ id: 'g', title: 'Goal', phases: [] }]));
   localStorage.setItem(KEYS.WEEKLY_FOCUS, JSON.stringify(['g']));
   localStorage.setItem(KEYS.GOAL_TEMPLATES, JSON.stringify([{ id: 't', name: 'Tpl', phases: [] }]));
-  localStorage.setItem(KEYS.CONTACTS, JSON.stringify([{ id: 'c', name: 'Sam', circleRing: 'core', influenceTag: 'neutral', relationship: 'friend', notes: '', plan: '', createdAt: 'x' }]));
+  localStorage.setItem(KEYS.HABIT_LOGS, JSON.stringify([{ habitId: 'h', date: '2026-11-20', completed: true }]));
   localStorage.setItem('telos_schema_version', '5');
 };
 
@@ -36,12 +36,12 @@ describe('backup', () => {
     const after = Object.fromEntries(Object.values(KEYS).map(k => [k, localStorage.getItem(k)]));
     // Contents identical after migration-normalization of the goal tree.
     expect(JSON.parse(after[KEYS.WEEKLY_FOCUS]!)).toEqual(JSON.parse(before[KEYS.WEEKLY_FOCUS]!));
-    expect(JSON.parse(after[KEYS.CONTACTS]!)).toEqual(JSON.parse(before[KEYS.CONTACTS]!));
+    expect(JSON.parse(after[KEYS.HABIT_LOGS]!)).toEqual(JSON.parse(before[KEYS.HABIT_LOGS]!));
     expect(stores.GOALS.get()[0].title).toBe('Goal'); // stores reloaded without a page refresh
   });
 
   it('accepts old-format exports and upgrades them', () => {
-    const legacy = JSON.stringify({ goals: [{ id: 'g', title: 'Old', phases: [{ id: 'p', title: 'P', tasks: [{ id: 't', title: 'T', todos: [] }] }] }], contacts: [] });
+    const legacy = JSON.stringify({ goals: [{ id: 'g', title: 'Old', phases: [{ id: 'p', title: 'P', tasks: [{ id: 't', title: 'T', todos: [] }] }] }] });
     const parsed = parseBackup(legacy);
     expect(parsed.ok && parsed.legacy).toBe(true);
     if (!parsed.ok) return;
@@ -61,7 +61,7 @@ describe('backup', () => {
     expect(parseBackup('not json').ok).toBe(false);
     expect(parseBackup('{"hello":"world"}').ok).toBe(false);
     expect(parseBackup(JSON.stringify({ app: 'telos', schemaVersion: 999, data: { telos_goals: [] } })).ok).toBe(false);
-    const wrong = parseBackup(JSON.stringify({ app: 'telos', schemaVersion: 5, data: { telos_goals: {}, telos_contacts: [] } }));
+    const wrong = parseBackup(JSON.stringify({ app: 'telos', schemaVersion: 5, data: { telos_goals: {}, telos_habit_logs: [] } }));
     expect(wrong.ok).toBe(true);
     if (wrong.ok) expect(wrong.warnings.join(' ')).toMatch(/Goals/);
   });
@@ -69,11 +69,11 @@ describe('backup', () => {
   it('a storage-full error mid-restore rolls everything back', async () => {
     seed();
     const before = localStorage.getItem(KEYS.GOALS);
-    const parsed = parseBackup(JSON.stringify({ app: 'telos', schemaVersion: 5, data: { telos_goals: [{ id: 'new', title: 'New', phases: [] }], telos_contacts: [] } }));
+    const parsed = parseBackup(JSON.stringify({ app: 'telos', schemaVersion: 5, data: { telos_goals: [{ id: 'new', title: 'New', phases: [] }], telos_habit_logs: [] } }));
     if (!parsed.ok) throw new Error('parse failed');
     const real = Storage.prototype.setItem;
     const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, k: string, v: string) {
-      if (k === KEYS.CONTACTS && v === '[]') throw new DOMException('full', 'QuotaExceededError');
+      if (k === KEYS.HABIT_LOGS && v === '[]') throw new DOMException('full', 'QuotaExceededError');
       return real.call(this, k, v);
     });
     const r = await restoreBackup(parsed.backup, { replaceAll: false });

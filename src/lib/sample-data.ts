@@ -2,16 +2,14 @@
  * Optional sample data for first-time users, tracked so it can be removed in
  * one tap without touching anything they created themselves.
  */
-import { stores, generateId, type Contact } from '@/lib/storage';
+import { stores, generateId } from '@/lib/storage';
 import { goalActions } from '@/hooks/useGoals';
-import { contactActions } from '@/hooks/useContacts';
-import { addDays, todayKey } from '@/lib/dates';
 import { normalizePlanDays } from '@/hooks/useWeeklyPlan';
 import type { SplitDay } from '@/types/workout';
 
 const SAMPLE_KEY = 'telos_sample'; // device-only bookkeeping, not backed up
 
-interface SampleRecord { goals: string[]; contacts: string[]; routines: string[]; plan: boolean }
+interface SampleRecord { goals: string[]; routines: string[]; plan: boolean }
 
 export function getSampleRecord(): SampleRecord | null {
   try {
@@ -23,7 +21,6 @@ export function getSampleRecord(): SampleRecord | null {
 }
 
 export function seedSampleData() {
-  const t = todayKey();
   const goal = goalActions.createFromTemplate({
     id: 'sample', name: 'Run a half marathon', description: 'Build up to 13.1 miles without injury.',
     endGoal: 'Cross the finish line feeling strong.', domain: 'PHYSICAL', durationDays: 84, createdAt: '',
@@ -54,18 +51,10 @@ export function seedSampleData() {
     stores.WEEKLY_PLAN.set({ id: generateId(), name: 'Sample split', days });
   }
 
-  const people: Contact[] = [
-    { id: generateId(), name: 'Mom', relationship: 'family', circleRing: 'core', influenceTag: 'supporter', notes: '', plan: 'Call every Sunday', interactionGoalDays: 7, createdAt: new Date().toISOString() },
-    { id: generateId(), name: 'Alex (running buddy)', relationship: 'friend', circleRing: 'close', influenceTag: 'energizer', notes: '', plan: 'Long run together monthly', interactionGoalDays: 14, createdAt: new Date().toISOString() },
-  ];
-  contactActions.addContacts(people);
-  contactActions.addInteraction({ contactId: people[0].id, type: 'call', date: addDays(t, -9), energyAfter: 4 });
-  contactActions.addCommitment({ contactId: people[1].id, text: 'Send Alex the race link', dueDate: t, recurring: undefined });
-
   const routineId = generateId();
   stores.REPEATABLE_BLOCKS.update(r => [...r, { id: routineId, title: 'Morning run', categoryId: 'workout', startHour: 7, startMinute: 0, durationMinutes: 45, repeatPattern: 'custom', customDays: ['Monday', 'Wednesday', 'Friday'], enabled: true }]);
 
-  const record: SampleRecord = { goals: [goal.id], contacts: people.map(p => p.id), routines: [routineId], plan: !hadPlan };
+  const record: SampleRecord = { goals: [goal.id], routines: [routineId], plan: !hadPlan };
   try { localStorage.setItem(SAMPLE_KEY, JSON.stringify(record)); } catch { /* ignore */ }
 }
 
@@ -73,7 +62,6 @@ export function removeSampleData() {
   const rec = getSampleRecord();
   if (!rec) return;
   rec.goals.forEach(id => goalActions.deleteGoal(id));
-  rec.contacts.forEach(id => contactActions.deleteContact(id));
   stores.REPEATABLE_BLOCKS.update(r => r.filter(x => !rec.routines.includes(x.id)));
   if (rec.plan) stores.WEEKLY_PLAN.set(null);
   try { localStorage.removeItem(SAMPLE_KEY); } catch { /* ignore */ }

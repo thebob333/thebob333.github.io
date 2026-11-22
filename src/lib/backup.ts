@@ -34,13 +34,9 @@ const LEGACY_EXPORT_NAMES: Record<string, StorageKey> = {
   timeBlocks: KEYS.TIME_BLOCKS,
   blockCategories: KEYS.BLOCK_CATEGORIES,
   repeatableBlocks: KEYS.REPEATABLE_BLOCKS,
-  contacts: KEYS.CONTACTS,
   customExercises: KEYS.CUSTOM_EXERCISES,
   habitLogs: KEYS.HABIT_LOGS,
   goalTemplates: KEYS.GOAL_TEMPLATES,
-  interactions: KEYS.INTERACTIONS,
-  commitments: KEYS.COMMITMENTS,
-  relationshipGoals: KEYS.RELATIONSHIP_GOALS,
 };
 
 const ALL_KEYS = Object.values(KEYS) as StorageKey[];
