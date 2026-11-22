@@ -80,6 +80,8 @@ export interface ToDo {
   deadline?: string;
   effort?: EffortLevel;
   isBenchmark?: boolean;
+  /** Rough minutes it takes (from the coach or you). */
+  estimateMin?: number;
 }
 
 /**
@@ -162,6 +164,8 @@ export interface Goal {
   pushback?: Pushback;
   status?: GoalStatus;
   metric?: GoalMetric;
+  /** If-then plans for likely obstacles ("If I miss a morning run, I'll go after work"). */
+  ifThen?: string[];
 }
 
 export function calculateTaskProgress(task: Task): number {

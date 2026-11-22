@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { CalendarCheck, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
@@ -27,6 +27,9 @@ import { QuickAdd } from '@/components/today/QuickAdd';
 import { Onboarding, useShowOnboarding } from '@/components/app/Onboarding';
 import { SampleDataBanner } from '@/components/app/SampleDataBanner';
 import { Button } from '@/components/ui/button';
+
+// Loaded on first open, so the AI SDK isn't part of Today's instant load.
+const CheckInSheet = lazy(() => import('@/components/today/CheckInSheet').then(m => ({ default: m.CheckInSheet })));
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -147,6 +150,7 @@ export default function Index() {
 
   const isNew = goals.length === 0 && sessions.length === 0;
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [checkInOpen, setCheckInOpen] = useState(false);
   const reviewDue = !isNew && isReviewDue(today, settings.lastReviewWeek);
   const showOnboarding = useShowOnboarding(isNew);
   const dateLabel = parseDateKey(today).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -170,11 +174,11 @@ export default function Index() {
         <>
           {reviewDue && (
             <div {...enter(1)}>
-              <button type="button" onClick={() => setReviewOpen(true)} className="surface pressable flex w-full items-center gap-3 p-4 text-left">
+              <button type="button" onClick={() => setCheckInOpen(true)} className="surface pressable flex w-full items-center gap-3 p-4 text-left">
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary"><CalendarCheck className="h-5 w-5" /></span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-body font-semibold">Your week in review</span>
-                  <span className="block text-footnote text-muted-foreground">Two minutes to look back and set your focus.</span>
+                  <span className="block text-body font-semibold">Weekly check-in</span>
+                  <span className="block text-footnote text-muted-foreground">Two minutes with your coach: what happened, what to change.</span>
                 </span>
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
               </button>
@@ -197,8 +201,9 @@ export default function Index() {
       )}
 
 
-      <WeeklyReview open={reviewOpen} onClose={() => setReviewOpen(false)} today={today} />
-      {!isNew && <QuickAdd onStartWorkout={startWorkout} onReview={() => setReviewOpen(true)} />}
+      <WeeklyReview open={reviewOpen} onClose={() => setReviewOpen(false)} today={today} onCheckIn={() => { setReviewOpen(false); setCheckInOpen(true); }} />
+      {checkInOpen && <Suspense fallback={null}><CheckInSheet open={checkInOpen} onClose={() => setCheckInOpen(false)} /></Suspense>}
+      {!isNew && <QuickAdd onStartWorkout={startWorkout} onReview={() => setReviewOpen(true)} onCheckIn={() => setCheckInOpen(true)} />}
       {showOnboarding && <Onboarding />}
     </div>
   );

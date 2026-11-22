@@ -72,6 +72,13 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 - `src/lib/achievements.ts` — badge/milestone evaluation
 - `src/lib/strength-standards.ts` — strength benchmarks by bodyweight
 
+### AI coach (Phase B)
+
+- Calls go straight from the phone to Anthropic with the user's own key (`@anthropic-ai/sdk` with `dangerouslyAllowBrowser`; the API allows browser origins). Model `claude-opus-5-5`, structured outputs via `betaZodOutputFormat` (schemas use `zod/v4`), server-side refusal fallbacks on. All in `src/lib/ai/`.
+- `device.ts`: the key and monthly usage live in device-only localStorage (`telos_ai_key`, `telos_ai_usage`) — never in `KEYS`, so never backed up. Never put a key in code.
+- `schemas.ts` (reply shapes, plus `parsePasted` for the copy-paste fallback), `prompts.ts` (coach system prompt + `weekFacts`/`goalFacts` built by code), `apply.ts` (plan → goal, accepted suggestions → goals; ids from the coach are validated; tested), `client.ts` (`askJSON`, plain-language `AiError`s).
+- UI: `CoachPlanSheet` (2–5 questions → plan preview → import), `CheckInSheet` (review → your answer → suggestions to Accept/Skip, focus goals, next step; lazy-loaded from Today), `AiCoachCard` in Settings, `PasteFallback` when there's no key.
+
 ### Other domain modules
 
 - `src/lib/goal-plan-parser.ts` — parses AI-written goal plans (tolerant of markdown, missing dates) and merges them into a goal without duplicating phases/tasks/to-dos.
@@ -80,7 +87,7 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 - `src/lib/insights.ts` — weekly summary (Weekly Review), new-record detection, streak milestones, stalled-lift nudges.
 - `src/lib/sample-data.ts` — optional first-run sample data, tracked in `telos_sample` so it can be removed in one tap.
 
-Device-only keys (not backed up, not in `KEYS`): `telos-theme`, `telos_onboarded`, `telos_sample`, `telos_dismissed_nudges`.
+Device-only keys (not backed up, not in `KEYS`): `telos-theme`, `telos_onboarded`, `telos_sample`, `telos_dismissed_nudges`, `telos_ai_key`, `telos_ai_usage`.
 
 ### Storage Keys
 

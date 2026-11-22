@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Archive, ArrowDown, ArrowUp, Bookmark, CalendarDays, Check, ChevronDown, Copy, Pause, Plus, Settings2, Sparkles, Star, Trash2, Pencil,
+  Archive, ArrowDown, ArrowUp, Bookmark, CalendarDays, Check, ChevronDown, Copy, Pause, Plus, Settings2, Sparkles, Star, Trash2, Pencil, X, Zap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGoals, goalActions } from '@/hooks/useGoals';
@@ -13,7 +13,7 @@ import { ProgressRing } from '@/components/ProgressRing';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Button } from '@/components/ui/button';
 import { TaskSheet, type TaskRef } from '@/components/goals/TaskSheet';
-import { AIPlanSheet } from '@/components/goals/AIPlanSheet';
+import { CoachPlanSheet } from '@/components/goals/CoachPlanSheet';
 import { QuickFormSheet } from '@/components/goals/QuickFormSheet';
 import { EditItemDialog, type EditTarget } from '@/components/goals/EditItemDialog';
 import { calculatePhaseProgress } from '@/types/goals';
@@ -101,7 +101,7 @@ export default function GoalDetailPage() {
             </HeaderButton>
             <RowMenu label="Goal actions" className="h-9 w-9 rounded-full bg-secondary md:h-9 md:w-9" items={[
               { label: 'Goal settings', icon: Settings2, onSelect: () => setSettingsOpen(true) },
-              { label: 'Plan with AI', icon: Sparkles, onSelect: () => setAiOpen(true) },
+              { label: 'Plan with the coach', icon: Sparkles, onSelect: () => setAiOpen(true) },
               { label: 'Spread deadlines', icon: CalendarDays, onSelect: spread },
               { label: 'Duplicate', icon: Copy, separated: true, onSelect: () => { const c = goalActions.cloneGoal(goal.id); if (c) navigate(`/goals/${c.id}`); toast.success('Goal duplicated'); } },
               { label: 'Save as blueprint', icon: Bookmark, onSelect: () => { goalActions.saveAsTemplate(goal.id); toast.success('Saved as a blueprint'); } },
@@ -172,6 +172,21 @@ export default function GoalDetailPage() {
         else if (p) setAddTaskPhase(p.id);
       }} />
 
+      {goal.ifThen && goal.ifThen.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="section-label">When things get in the way</h2>
+          <div className="list-group">
+            {goal.ifThen.map((t, i) => (
+              <div key={i} className="flex items-start gap-2 px-4 py-2.5">
+                <Zap className="mt-1 h-3.5 w-3.5 shrink-0 text-warning" />
+                <p className="min-w-0 flex-1 text-body">{t}</p>
+                <button type="button" aria-label="Remove" onClick={() => goalActions.updateGoal(goal.id, { ifThen: goal.ifThen!.filter((_, j) => j !== i) })} className="-mr-2 flex h-8 w-8 items-center justify-center text-muted-foreground"><X className="h-4 w-4" /></button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {goal.shape === 'once' && (
         <section className="space-y-2">
           <h2 className="section-label">Checklist</h2>
@@ -208,7 +223,7 @@ export default function GoalDetailPage() {
           <p className="text-headline">Break it down</p>
           <p className="mt-1 text-body text-muted-foreground">Let AI draft a full plan in a minute, or add tasks yourself.</p>
           <div className="mt-4 flex gap-2">
-            <Button className="h-12 flex-1 rounded-xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with AI</Button>
+            <Button className="h-12 flex-1 rounded-xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with the coach</Button>
             <Button variant="secondary" className="h-12 rounded-xl text-body" onClick={() => setAddTaskPhase(goal.phases[0]?.id ?? null)} disabled={!goal.phases.length}>Add a task</Button>
           </div>
         </div>
@@ -267,7 +282,7 @@ export default function GoalDetailPage() {
 
       <div className="flex gap-2">
         {goal.shape !== 'once' && <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAddPhaseOpen(true)}><Plus className="mr-1.5 h-4 w-4" /> Add stage</Button>}
-        <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with AI</Button>
+        <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with the coach</Button>
       </div>
 
       {goal.adaptationProtocol && (
@@ -295,7 +310,7 @@ export default function GoalDetailPage() {
       <TaskSheet target={task} onClose={() => setTask(null)} onEdit={setEdit} />
       <EditItemDialog target={edit} onClose={() => setEdit(null)} />
       <GoalSettingsSheet goal={settingsOpen ? goal : null} onClose={() => setSettingsOpen(false)} />
-      <AIPlanSheet goal={aiOpen ? goal : null} onClose={() => setAiOpen(false)} />
+      <CoachPlanSheet goal={aiOpen ? goal : null} onClose={() => setAiOpen(false)} />
       <QuickFormSheet open={addPhaseOpen} title="Add stage" placeholder="e.g. Build" cta="Add stage"
         onSubmit={(name, deadline) => goalActions.addPhase(goal.id, name, '', deadline)} onClose={() => setAddPhaseOpen(false)} />
       <QuickFormSheet open={!!addTaskPhase} title="Add task" placeholder="e.g. Get proper running shoes" cta="Add task"

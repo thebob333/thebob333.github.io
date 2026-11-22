@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { DataCard } from '@/components/settings/DataCard';
 import { AppearanceCard } from '@/components/settings/AppearanceCard';
+import { AiCoachCard } from '@/components/settings/AiCoachCard';
 
 const MIN_BODYWEIGHT = 50;
 const MAX_BODYWEIGHT = 700;
@@ -77,6 +78,8 @@ export default function SettingsPage() {
       <PageHeader title="Settings" back />
 
       <DataCard>
+        <AiCoachCard />
+
         <AppearanceCard />
 
         <section className="space-y-2">

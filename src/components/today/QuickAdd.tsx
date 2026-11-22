@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, CheckSquare, Dumbbell, Plus, Target } from 'lucide-react';
+import { CalendarCheck, CheckSquare, Dumbbell, Plus, Sparkles, Target } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { todayKey } from '@/lib/dates';
 type View = 'menu' | 'todo';
 
 /** One button for the things you do most: add a to-do, start a workout, start a goal. */
-export function QuickAdd({ onStartWorkout, onReview }: { onStartWorkout: () => void; onReview: () => void }) {
+export function QuickAdd({ onStartWorkout, onReview, onCheckIn }: { onStartWorkout: () => void; onReview: () => void; onCheckIn: () => void }) {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('menu');
   const navigate = useNavigate();
@@ -73,7 +73,8 @@ export function QuickAdd({ onStartWorkout, onReview }: { onStartWorkout: () => v
               {tasks.length > 0 && item(<CheckSquare className="h-5 w-5" />, 'Add a to-do', 'Goes into one of your goals', () => setView('todo'))}
               {item(<Dumbbell className="h-5 w-5" />, 'Start today’s workout', 'Exercises filled in for you', () => { close(); onStartWorkout(); })}
               {item(<Target className="h-5 w-5" />, 'New goal', 'Turn something big into a plan', () => { close(); navigate('/goals?new=1'); })}
-              {item(<CalendarCheck className="h-5 w-5" />, 'Weekly review', 'Look back and pick your focus', () => { close(); onReview(); })}
+              {item(<Sparkles className="h-5 w-5" />, 'Weekly check-in', 'Your coach reviews the week and adjusts', () => { close(); onCheckIn(); })}
+              {item(<CalendarCheck className="h-5 w-5" />, 'Week in numbers', 'Practices, workouts, records, focus', () => { close(); onReview(); })}
             </div>
           )}
 

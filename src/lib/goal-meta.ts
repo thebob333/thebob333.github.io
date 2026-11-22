@@ -63,7 +63,7 @@ export function goalSummary(goal: Goal) {
 export function taskSummary(task: Task): string {
   const todos = task.todos ?? [];
   const parts: string[] = [];
-  if (todos.length) parts.push(`${todos.filter(t => t.done).length} of ${todos.length} steps`);
+  if (todos.length) parts.push(`${todos.filter(t => t.done).length} of ${todos.length} step${todos.length === 1 ? '' : 's'}`);
   const habits = (task.habits ?? []).filter(h => h.active).length;
   if (habits) parts.push(`${habits} practice${habits > 1 ? 's' : ''}`);
   if (!todos.length && !habits) parts.push(task.status === 'complete' ? 'Done' : 'Nothing added yet');

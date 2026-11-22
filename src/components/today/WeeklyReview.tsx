@@ -27,7 +27,7 @@ export function isReviewDue(today: DateKey, lastReviewWeek?: string): boolean {
 
 const fmt = (k: DateKey) => parseDateKey(k).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-export function WeeklyReview({ open, onClose, today }: { open: boolean; onClose: () => void; today: DateKey }) {
+export function WeeklyReview({ open, onClose, today, onCheckIn }: { open: boolean; onClose: () => void; today: DateKey; onCheckIn?: () => void }) {
   const { goals } = useGoals();
   const { logs } = useHabits();
   const sessions = useStore(stores.SESSIONS);
@@ -101,6 +101,7 @@ export function WeeklyReview({ open, onClose, today }: { open: boolean; onClose:
             </div>
           )}
 
+          {onCheckIn && <Button variant="secondary" className="h-11 w-full font-semibold" onClick={onCheckIn}>Talk it through with your coach</Button>}
           <Button className="h-11 w-full font-semibold" onClick={finish}>Finish review</Button>
         </div>
       </DialogContent>
