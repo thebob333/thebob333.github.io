@@ -3,6 +3,7 @@ import { TimeBlock, BlockCategory, DEFAULT_CATEGORIES, stores, generateId, Conta
 import { useStore } from '@/hooks/useStore';
 import { autofillDay, dismissBlock, undismissBlock } from '@/lib/plan-autofill';
 import { QuickLogSheet } from '@/components/people/QuickLogSheet';
+import { DAY_END_MIN, DAY_START_MIN, formatClock, plannerDayKey, plannerNowMinutes } from '@/lib/plan-time';
 import { todayKey } from '@/lib/dates';
 import { shouldShowOnDay } from '@/lib/routines';
 import { Check, Repeat, User } from 'lucide-react';
@@ -13,13 +14,14 @@ import { cn } from '@/lib/utils';
 
 export type { BacklogTodo };
 
-// 5 AM to 11 PM. Phones get a taller timeline and 15-minute snapping so blocks
-// are big enough to tap and easy to place with a thumb.
+// 5 AM to 3 AM the next morning (see lib/plan-time). Phones get a taller
+// timeline so blocks are big enough to tap. Dragging and resizing move by the
+// minute; tapping empty time starts a block on the quarter hour.
 const IS_PHONE = typeof window !== 'undefined' && !!window.matchMedia?.('(max-width: 767px)').matches;
 const LONG_PRESS_MS = 300;
 const MOVE_CANCEL_PX = 8;
-const START_HOUR = 5;
-const END_HOUR = 23; // exclusive
+const START_HOUR = DAY_START_MIN / 60;
+const END_HOUR = DAY_END_MIN / 60; // exclusive
 const NO_TODOS: BacklogTodo[] = [];
 const NO_CONTACTS: Contact[] = [];
 const TB = stores.TIME_BLOCKS;
@@ -27,9 +29,10 @@ const CATS = stores.BLOCK_CATEGORIES;
 const PIXEL_PER_MINUTE = IS_PHONE ? 1.5 : 1;
 const TOTAL_MINUTES = (END_HOUR - START_HOUR) * 60;
 const TOTAL_HEIGHT = TOTAL_MINUTES * PIXEL_PER_MINUTE;
-const SNAP_MINUTES = IS_PHONE ? 15 : 5;
+const SNAP_MINUTES = 1;
+const TAP_SNAP_MINUTES = 15;
 const LABEL_WIDTH = 56; // px for time labels column
-const MIN_DURATION = IS_PHONE ? 15 : 5;
+const MIN_DURATION = 5;
 
 /** Room above the first hour so its label isn't clipped. */
 const TOP_PAD = 8;
@@ -46,13 +49,7 @@ function snapMinutes(m: number): number {
   return Math.round(m / SNAP_MINUTES) * SNAP_MINUTES;
 }
 
-function formatTime(totalMinutes: number): string {
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const display = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${display} ${period}` : `${display}:${String(m).padStart(2, '0')} ${period}`;
-}
+const formatTime = formatClock;
 
 function blockStartMinutes(b: TimeBlock): number {
   return b.startHour * 60 + b.startMinute;
@@ -181,7 +178,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   const columnLayout = useMemo(() => computeColumns(dayBlocks), [dayBlocks]);
 
   const addBlock = useCallback((minuteOfDay: number) => {
-    const snapped = snapMinutes(minuteOfDay);
+    const snapped = Math.min(Math.floor(minuteOfDay / TAP_SNAP_MINUTES) * TAP_SNAP_MINUTES, END_HOUR * 60 - 30);
     const newBlock: TimeBlock = {
       id: generateId(),
       dayName,
@@ -367,11 +364,11 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
 
 
   // ─── "Now" line and starting scroll position ───
-  const isToday = dayName === todayKey();
-  const [nowMin, setNowMin] = useState(() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); });
+  const isToday = dayName === plannerDayKey();
+  const [nowMin, setNowMin] = useState(() => plannerNowMinutes());
   useEffect(() => {
     if (!isToday) return;
-    const id = setInterval(() => { const d = new Date(); setNowMin(d.getHours() * 60 + d.getMinutes()); }, 60_000);
+    const id = setInterval(() => setNowMin(plannerNowMinutes()), 60_000);
     return () => clearInterval(id);
   }, [isToday]);
   useEffect(() => {
@@ -379,8 +376,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
     if (!el) return;
     // Today: an hour before now. Other days: the first block, or 7 AM.
     const first = TB.get().filter(b => b.dayName === dayName).map(blockStartMinutes).sort((a, b) => a - b)[0];
-    const d = new Date();
-    const target = isToday ? d.getHours() * 60 + d.getMinutes() - 60 : (first ?? 7 * 60) - 30;
+    const target = isToday ? plannerNowMinutes() - 60 : (first ?? 7 * 60) - 30;
     el.scrollTop = Math.max(0, minutesToTop(target));
   }, [dayName, isToday]);
 
@@ -504,6 +500,24 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
               </div>
             );
           })}
+
+          {/* Exact time while moving or resizing (they now go minute by minute) */}
+          {(() => {
+            const id = dragging?.blockId ?? resizeDrag?.blockId;
+            const b = id ? dayBlocks.find(x => x.id === id) : undefined;
+            if (!b) return null;
+            const start = dragging && dragPreviewMin !== null ? dragPreviewMin : blockStartMinutes(b);
+            const dur = resizeDrag && resizePreview !== null ? resizePreview : b.durationMinutes;
+            const top = Math.max(0, minutesToTop(start) - 30);
+            return (
+              <div className="pointer-events-none absolute z-40 flex justify-center" style={{ top, left: LABEL_WIDTH, right: 6 }}>
+                <span className="rounded-full bg-foreground px-3 py-1 text-footnote font-semibold tabular-nums text-background shadow-lg">
+                  {formatTime(start)} – {formatTime(start + dur)}
+                  <span className="ml-1.5 font-normal opacity-70">{dur < 60 ? `${dur}m` : `${Math.floor(dur / 60)}h${dur % 60 ? ` ${dur % 60}m` : ''}`}</span>
+                </span>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

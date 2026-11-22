@@ -90,7 +90,7 @@ Screen structure:
 - Goals: list → goal screen; tasks open `TaskSheet` (`src/components/goals/`). Display helpers in `src/lib/goal-meta.ts`.
 - People: list by circle → person screen; sheets in `src/components/people/` (`ContactFormSheet`, `LogInteractionSheet`, `CommitmentSheet`). Shared labels/colors in `src/lib/people.ts`.
 - Gym: `WorkoutView` (today hero + focused logging), `ProgressView`, `ProgramView` (weekly split + `ExerciseSheet` targets) in `src/components/gym/`. Formatting helpers in `src/lib/gym-format.ts`.
-- Plan: week strip + `DailyTimeBlocks` timeline; tapping a block opens `BlockSheet`; `RoutinesSheet` / `CategoriesSheet` in `src/components/plan/`. Routine scheduling: `src/lib/routines.ts`.
+- Plan: week strip + `DailyTimeBlocks` timeline (5 AM → 3 AM; after-midnight blocks store `startHour` 24–26 on the day they belong to — helpers in `src/lib/plan-time.ts`; drag/resize move by the minute, tap-to-add starts on the quarter hour); tapping a block opens `BlockSheet`; `RoutinesSheet` / `CategoriesSheet` in `src/components/plan/`. Routine scheduling: `src/lib/routines.ts`.
 
 ### PWA
 

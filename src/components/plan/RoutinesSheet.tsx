@@ -6,7 +6,7 @@ import { Chips, FieldLabel } from '@/components/app/Chips';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { useStore } from '@/hooks/useStore';
-import { DAY_END_MIN } from '@/lib/plan-autofill';
+import { DAY_END_MIN, formatClock, fromTimeInput, toTimeInput } from '@/lib/plan-time';
 import { DEFAULT_CATEGORIES, generateId, stores, type RepeatableBlock, type RepeatPattern } from '@/lib/storage';
 import { cn } from '@/lib/utils';
 
@@ -17,11 +17,7 @@ const PATTERNS: { value: RepeatPattern; label: string }[] = [
 ];
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 
-const fmtTime = (h: number, m: number) => {
-  const p = h >= 12 ? 'PM' : 'AM';
-  const d = h === 0 ? 12 : h > 12 ? h - 12 : h;
-  return m === 0 ? `${d} ${p}` : `${d}:${String(m).padStart(2, '0')} ${p}`;
-};
+const fmtTime = (h: number, m: number) => formatClock(h * 60 + m);
 const fmtDuration = (m: number) => (m < 60 ? `${m}m` : m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`);
 const repeatText = (r: RepeatableBlock) => (r.repeatPattern === 'custom'
   ? (r.customDays?.length ? DAYS.filter(d => r.customDays!.includes(d)).map(d => d.slice(0, 3)).join(', ') : 'No days')
@@ -47,9 +43,9 @@ export function RoutinesSheet({ open, onClose }: { open: boolean; onClose: () =>
     if (!form.title.trim()) { toast.error('Give it a name'); return; }
     const startMin = form.startHour * 60 + form.startMinute;
     const maxDuration = DAY_END_MIN - startMin;
-    if (maxDuration <= 0) { toast.error('Pick a start time before 11 PM'); return; }
+    if (maxDuration <= 0) { toast.error('Pick a start time before 3 AM'); return; }
     const saved = { ...form, title: form.title.trim(), durationMinutes: Math.min(form.durationMinutes, maxDuration) };
-    if (saved.durationMinutes < form.durationMinutes) toast(`Shortened to ${saved.durationMinutes} min so it ends by 11 PM`);
+    if (saved.durationMinutes < form.durationMinutes) toast(`Shortened to ${saved.durationMinutes} min so it ends by 3 AM`);
     stores.REPEATABLE_BLOCKS.update(prev => (prev.some(r => r.id === saved.id) ? prev.map(r => (r.id === saved.id ? saved : r)) : [...prev, saved]));
     toast.success(isNew ? 'Routine added' : 'Routine saved', isNew ? { description: 'It fills in your Plan on the days you picked.' } : undefined);
     setForm(null);
@@ -120,9 +116,9 @@ export function RoutinesSheet({ open, onClose }: { open: boolean; onClose: () =>
                 <FieldLabel>Time</FieldLabel>
                 <label className="inline-flex h-11 items-center gap-2 rounded-xl bg-secondary px-3">
                   <Clock className="h-4 w-4 text-muted-foreground" />
-                  <input type="time" step={300} aria-label="Start time"
-                    value={`${String(form.startHour).padStart(2, '0')}:${String(form.startMinute).padStart(2, '0')}`}
-                    onChange={e => { const [h, m] = e.target.value.split(':').map(Number); if (Number.isFinite(h)) set({ startHour: Math.min(22, Math.max(5, h)), startMinute: m || 0 }); }}
+                  <input type="time" step={60} aria-label="Start time"
+                    value={toTimeInput(form.startHour * 60 + form.startMinute)}
+                    onChange={e => { const mins = fromTimeInput(e.target.value); if (mins !== null) set({ startHour: Math.floor(Math.min(mins, DAY_END_MIN - 1) / 60), startMinute: Math.min(mins, DAY_END_MIN - 1) % 60 }); }}
                     className="bg-transparent text-body font-semibold outline-none" />
                 </label>
                 <div className="mt-2">

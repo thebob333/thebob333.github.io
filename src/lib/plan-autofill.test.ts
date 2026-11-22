@@ -57,7 +57,10 @@ describe('autofillDay', () => {
 describe('findFreeSlot', () => {
   it('finds a gap between blocks and never runs past the end of the day', () => {
     expect(findFreeSlot([{ startHour: 9, startMinute: 0, durationMinutes: 30 }, { startHour: 10, startMinute: 0, durationMinutes: 30 }], 30)).toBe(9 * 60 + 30);
-    expect(findFreeSlot([{ startHour: 9, startMinute: 0, durationMinutes: 14 * 60 }], 60)).toBe(22 * 60);
+    // A day booked solid from 9 AM → the next free hour is 11 PM (the planner runs until 3 AM).
+    expect(findFreeSlot([{ startHour: 9, startMinute: 0, durationMinutes: 14 * 60 }], 60)).toBe(23 * 60);
+    // Nothing free before 3 AM → it goes at the very end.
+    expect(findFreeSlot([{ startHour: 9, startMinute: 0, durationMinutes: 18 * 60 }], 60)).toBe(26 * 60);
   });
 });
 

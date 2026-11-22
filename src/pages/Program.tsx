@@ -9,6 +9,7 @@ import { activeWorkoutActions, useActiveWorkout } from '@/hooks/useWorkouts';
 import { stores } from '@/lib/storage';
 import { addDays, dayOfWeek, parseDateKey, startOfWeekKey, type DateKey } from '@/lib/dates';
 import { flattenTodos } from '@/lib/goal-tree';
+import { plannerDayKey } from '@/lib/plan-time';
 import { getDaysRemaining } from '@/types/goals';
 import { getExerciseLabel } from '@/types/workout';
 import { splitLabel } from '@/lib/gym-format';
@@ -22,7 +23,9 @@ const LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 /** Plan: time-block any day, with your training and routines filled in. */
 export default function PlanPage() {
   const navigate = useNavigate();
-  const today = useTodayKey();
+  const calendarToday = useTodayKey();
+  // Plan's day runs 5 AM–3 AM, so at 1 AM you're still on last night.
+  const today = useMemo(() => plannerDayKey(), [calendarToday]); // eslint-disable-line react-hooks/exhaustive-deps
   const { goals, toggleToDo } = useGoals();
   const { days: plan } = useWeeklyPlan();
   const hasPlan = useStore(stores.WEEKLY_PLAN) !== null;
@@ -52,9 +55,9 @@ export default function PlanPage() {
   const backlog = useMemo<BacklogTodo[]>(() => all
     .filter(t => !t.done && !scheduled.has(t.todoId))
     .sort((a, b) => {
-      const da = getDaysRemaining(a.deadline, today); const db = getDaysRemaining(b.deadline, today);
+      const da = getDaysRemaining(a.deadline, calendarToday); const db = getDaysRemaining(b.deadline, calendarToday);
       return da !== null && db !== null ? da - db : da !== null ? -1 : db !== null ? 1 : 0;
-    }), [all, scheduled, today]);
+    }), [all, scheduled, calendarToday]);
   const todoStates = useMemo(() => Object.fromEntries(all.map(t => [t.todoId, t.done])), [all]);
 
   const startWorkout = () => {

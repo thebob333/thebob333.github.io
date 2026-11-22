@@ -123,9 +123,9 @@ export interface TimeBlock {
   dayName: string;
   categoryId: string;
   title: string;
-  startHour: number; // 0-23
-  startMinute: number; // 0 or 30
-  durationMinutes: number; // multiples of 30
+  startHour: number; // 5-26: Plan's day runs 5 AM–3 AM, so 24+ means after midnight (see lib/plan-time)
+  startMinute: number; // 0-59
+  durationMinutes: number; // any whole number of minutes
   todoId?: string; // optional link to a goal todo
   sourceTemplateId?: string; // created from a repeatable routine
   habitId?: string; // optional link to a goal habit

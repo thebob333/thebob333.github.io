@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useStore } from '@/hooks/useStore';
 import { stores, type Contact, type TimeBlock } from '@/lib/storage';
 import { getDaysRemaining } from '@/types/goals';
+import { DAY_END_MIN, clampStart, fromTimeInput, toTimeInput } from '@/lib/plan-time';
 import { cn } from '@/lib/utils';
 
 export interface BacklogTodo {
@@ -22,7 +23,7 @@ export interface BacklogTodo {
 
 const DURATIONS = [15, 30, 45, 60, 90, 120];
 const fmtDuration = (m: number) => (m < 60 ? `${m}m` : m % 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m / 60}h`);
-const toTimeValue = (b: TimeBlock) => `${String(b.startHour).padStart(2, '0')}:${String(b.startMinute).padStart(2, '0')}`;
+const startOf = (b: TimeBlock) => b.startHour * 60 + b.startMinute;
 
 type Picker = null | 'todo' | 'person';
 
@@ -57,12 +58,20 @@ export function BlockSheet({ block, contacts, backlogTodos, todoDone, onUpdate, 
   const close = () => { setPicker(null); setQuery(''); onClose(); };
   const openPicker = (p: Picker) => { setQuery(''); setPicker(p); };
 
-  const setTime = (v: string) => {
-    const [h, m] = v.split(':').map(Number);
-    if (!Number.isFinite(h) || !Number.isFinite(m)) return;
-    const startHour = Math.min(22, Math.max(5, h));
-    onUpdate({ startHour, startMinute: startHour === h ? m : 0 });
+  // Times before 5 AM mean after midnight — Plan's day runs until 3 AM.
+  const setStart = (v: string) => {
+    const mins = fromTimeInput(v);
+    if (mins === null) return;
+    const start = clampStart(mins, block.durationMinutes);
+    onUpdate({ startHour: Math.floor(start / 60), startMinute: start % 60 });
   };
+  const setEnd = (v: string) => {
+    const mins = fromTimeInput(v);
+    if (mins === null) return;
+    const end = Math.min(DAY_END_MIN, mins);
+    if (end - startOf(block) >= 1) onUpdate({ durationMinutes: end - startOf(block) });
+  };
+  const setDuration = (d: number) => onUpdate({ durationMinutes: Math.max(1, Math.min(d, DAY_END_MIN - startOf(block))) });
 
   const row = 'flex min-h-[52px] w-full items-center gap-3 px-4 text-left';
 
@@ -95,12 +104,16 @@ export function BlockSheet({ block, contacts, backlogTodos, todoDone, onUpdate, 
                 <div className="flex items-center gap-2">
                   <label className="flex h-11 items-center gap-2 rounded-xl bg-secondary px-3">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <input type="time" step={300} value={toTimeValue(block)} onChange={e => setTime(e.target.value)} className="bg-transparent text-body font-semibold outline-none" aria-label="Start time" />
+                    <input type="time" step={60} value={toTimeInput(startOf(block))} onChange={e => setStart(e.target.value)} className="bg-transparent text-body font-semibold outline-none" aria-label="Start time" />
+                  </label>
+                  <span className="text-footnote text-muted-foreground">to</span>
+                  <label className="flex h-11 items-center rounded-xl bg-secondary px-3">
+                    <input type="time" step={60} value={toTimeInput(startOf(block) + block.durationMinutes)} onChange={e => setEnd(e.target.value)} className="bg-transparent text-body font-semibold outline-none" aria-label="End time" />
                   </label>
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="Length">
                   {DURATIONS.map(d => (
-                    <button key={d} type="button" role="radio" aria-checked={block.durationMinutes === d} onClick={() => onUpdate({ durationMinutes: d })}
+                    <button key={d} type="button" role="radio" aria-checked={block.durationMinutes === d} onClick={() => setDuration(d)}
                       className={cn('pressable h-9 rounded-full px-3.5 text-footnote font-semibold', block.durationMinutes === d ? 'bg-primary text-primary-foreground' : 'bg-secondary')}>
                       {fmtDuration(d)}
                     </button>

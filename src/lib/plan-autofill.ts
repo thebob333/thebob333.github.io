@@ -8,9 +8,9 @@
  */
 import type { RepeatableBlock, TimeBlock, PlanDismissed } from '@/lib/storage';
 import { addDays } from '@/lib/dates';
+import { DAY_END_MIN, DAY_START_MIN } from '@/lib/plan-time';
 
-export const DAY_START_MIN = 5 * 60;
-export const DAY_END_MIN = 23 * 60;
+export { DAY_END_MIN, DAY_START_MIN };
 
 export interface DueTodo {
   todoId: string;
