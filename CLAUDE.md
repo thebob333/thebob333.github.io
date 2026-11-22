@@ -13,7 +13,12 @@ npm run typecheck    # TypeScript (vite build does NOT type-check)
 npm run check        # lint + typecheck + tests
 npm run test         # Run tests once
 npm run test:watch   # Run tests in watch mode
+npm run deploy       # Build + publish to GitHub Pages (https://thebob333.github.io/)
 ```
+
+### Hosting
+
+The live app is GitHub Pages: `origin` is `thebob333/thebob333.github.io`; source lives on `main`, and `npm run deploy` (`scripts/deploy-pages.sh`) force-pushes the built `dist/` to the `gh-pages` branch, adding `404.html` (so deep links like `/plan` load the app) and `.nojekyll`. It is served at the domain root, so no Vite `base` / router basename is needed. The old Lovable-connected repo (`bobbyTs-lab/goal-sculptor-engine`, remote `bobbyts`) is no longer updated.
 
 To run a single test file:
 ```bash
