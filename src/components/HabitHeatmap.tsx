@@ -92,7 +92,7 @@ export function HabitHeatmap({ goals, logs }: Props) {
 
   return (
     <div className="surface p-4">
-      <p className="mb-3 text-headline">Habit history</p>
+      <p className="mb-3 text-headline">Practice history</p>
       <svg width={width} height={height} className="w-full" viewBox={`0 0 ${width} ${height}`}>
         {/* Month labels */}
         {months.map((m, i) => (

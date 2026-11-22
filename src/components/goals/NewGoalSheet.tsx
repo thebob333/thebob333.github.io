@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { goalActions } from '@/hooks/useGoals';
-import type { GoalDomain } from '@/types/goals';
+import type { GoalDomain, GoalShape } from '@/types/goals';
 import { DOMAINS, DOMAIN_STYLE } from '@/lib/goal-meta';
+import { SHAPES } from '@/lib/goal-shapes';
+import { cn } from '@/lib/utils';
 
 /** Create a goal with just a title; everything else is optional. Opens the goal when done. */
 export function NewGoalSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -15,12 +17,14 @@ export function NewGoalSheet({ open, onClose }: { open: boolean; onClose: () => 
   const [why, setWhy] = useState('');
   const [deadline, setDeadline] = useState('');
   const [domain, setDomain] = useState<GoalDomain | ''>('');
+  const [shape, setShape] = useState<GoalShape>('build');
 
-  const reset = () => { setTitle(''); setWhy(''); setDeadline(''); setDomain(''); };
+  const reset = () => { setTitle(''); setWhy(''); setDeadline(''); setDomain(''); setShape('build'); };
 
   const create = () => {
     if (!title.trim()) return;
-    const g = goalActions.addGoal(title.trim(), '', why.trim(), deadline || undefined, domain || undefined);
+    const g = goalActions.addGoal(title.trim(), '', '', deadline || undefined, domain || undefined, shape);
+    if (why.trim()) goalActions.updateGoal(g.id, { why: why.trim() });
     reset();
     onClose();
     navigate(`/goals/${g.id}`);
@@ -35,7 +39,23 @@ export function NewGoalSheet({ open, onClose }: { open: boolean; onClose: () => 
         </DialogHeader>
         <form className="space-y-4" onSubmit={e => { e.preventDefault(); create(); }}>
           <Input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Run a half marathon" className="h-12 rounded-xl text-[17px] font-medium" />
-          <Textarea value={why} onChange={e => setWhy(e.target.value)} placeholder="What does success look like? (optional)" rows={2} className="rounded-xl" />
+          <Textarea value={why} onChange={e => setWhy(e.target.value)} placeholder="Why does it matter to you? (optional)" rows={2} className="rounded-xl" />
+          <div>
+            <p className="mb-2 text-footnote font-semibold text-muted-foreground">What kind of goal?</p>
+            <div className="grid grid-cols-2 gap-2">
+              {SHAPES.map(sh => {
+                const on = shape === sh.value;
+                const Icon = sh.icon;
+                return (
+                  <button key={sh.value} type="button" aria-pressed={on} onClick={() => setShape(sh.value)}
+                    className={cn('pressable flex flex-col items-start gap-1 rounded-xl p-3 text-left', on ? 'bg-primary text-primary-foreground' : 'bg-secondary', sh.value === 'become' && 'col-span-2')}>
+                    <span className="flex items-center gap-1.5 text-body font-semibold"><Icon className="h-4 w-4" /> {sh.label}</span>
+                    <span className={cn('text-footnote leading-snug', on ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{sh.examples}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div>
             <p className="mb-2 text-footnote font-semibold text-muted-foreground">Area of life</p>
             <div className="flex flex-wrap gap-2">

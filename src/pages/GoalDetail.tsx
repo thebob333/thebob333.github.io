@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Archive, ArrowDown, ArrowUp, Bookmark, CalendarDays, Check, ChevronDown, Copy, Pencil, Plus, Sparkles, Star, Trash2,
+  Archive, ArrowDown, ArrowUp, Bookmark, CalendarDays, Check, ChevronDown, Copy, Pause, Plus, Settings2, Sparkles, Star, Trash2, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGoals, goalActions } from '@/hooks/useGoals';
 import { useWeeklyFocus } from '@/hooks/useWeeklyFocus';
 import { PageHeader, HeaderButton } from '@/components/app/PageHeader';
-import { ListRow } from '@/components/app/ListRow';
+import { ListRow, CheckCircle } from '@/components/app/ListRow';
 import { RowMenu } from '@/components/app/RowMenu';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
@@ -21,11 +21,20 @@ import { addDays, dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 import { spreadPhaseDeadlines } from '@/lib/goal-tree';
 import { currentPhase, domainStyle, dueText, goalSummary, isTaskComplete, taskSummary, calculateTaskProgress } from '@/lib/goal-meta';
 import type { Goal } from '@/types/goals';
+import { GoalSettingsSheet } from '@/components/goals/GoalSettingsSheet';
+import { GoalPractices } from '@/components/goals/GoalPractices';
+import { MetricCard } from '@/components/goals/MetricCard';
+import { useStore } from '@/hooks/useStore';
+import { stores } from '@/lib/storage';
+import { goalProgress } from '@/lib/goal-progress';
+import { PUSHBACK, STATUSES, shapeInfo } from '@/lib/goal-shapes';
 
 export default function GoalDetailPage() {
   const { goalId } = useParams();
   const navigate = useNavigate();
   const { goals, toggleToDo, restoreGoal } = useGoals();
+  const allMetrics = useStore(stores.METRICS);
+  const habitLogs = useStore(stores.HABIT_LOGS);
   const { focusIds, toggle: toggleFocus, max } = useWeeklyFocus();
   const [task, setTask] = useState<TaskRef | null>(null);
   const [edit, setEdit] = useState<EditTarget | null>(null);
@@ -34,6 +43,8 @@ export default function GoalDetailPage() {
   const [addTaskPhase, setAddTaskPhase] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showProtocol, setShowProtocol] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [stepDraft, setStepDraft] = useState('');
 
   const goal = goals.find(g => g.id === goalId);
   if (!goal) {
@@ -50,6 +61,11 @@ export default function GoalDetailPage() {
   const focused = focusIds.includes(goal.id);
   const nowPhase = currentPhase(goal);
   const hasTasks = goal.phases.some(p => p.tasks.length > 0);
+  const shape = shapeInfo(goal.shape);
+  const ShapeIcon = shape.icon;
+  const status = goal.status ?? 'active';
+  const hero = goalProgress(goal, allMetrics, habitLogs, todayKey());
+  const checklist = goal.phases.flatMap(p => p.tasks.flatMap(t => (t.todos ?? []).map(todo => ({ todo, phase: p, task: t }))));
 
   const withUndo = (message: string, action: () => void, snapshot: Goal = goal) => {
     action();
@@ -84,7 +100,7 @@ export default function GoalDetailPage() {
               <Star className={`h-[18px] w-[18px] ${focused ? 'fill-warning text-warning' : ''}`} />
             </HeaderButton>
             <RowMenu label="Goal actions" className="h-9 w-9 rounded-full bg-secondary md:h-9 md:w-9" items={[
-              { label: 'Edit goal', icon: Pencil, onSelect: () => setEdit({ kind: 'goal', goal }) },
+              { label: 'Goal settings', icon: Settings2, onSelect: () => setSettingsOpen(true) },
               { label: 'Plan with AI', icon: Sparkles, onSelect: () => setAiOpen(true) },
               { label: 'Spread deadlines', icon: CalendarDays, onSelect: spread },
               { label: 'Duplicate', icon: Copy, separated: true, onSelect: () => { const c = goalActions.cloneGoal(goal.id); if (c) navigate(`/goals/${c.id}`); toast.success('Goal duplicated'); } },
@@ -103,20 +119,28 @@ export default function GoalDetailPage() {
       <section className="relative overflow-hidden rounded-[28px] p-6 text-white shadow-[0_12px_36px_-14px_rgb(60_40_200/0.5)]" style={{ background: style.gradient }}>
         <div aria-hidden className="pointer-events-none absolute -right-14 -top-16 h-52 w-52 rounded-full bg-white/15 blur-2xl" />
         <div className="relative">
-          <div className="flex items-end justify-between">
-            <div>
-              <p className="text-[44px] font-bold leading-none tracking-tight tabular-nums">{s.progress}%</p>
-              <p className="mt-1 text-footnote font-semibold uppercase tracking-wider text-white/80">complete</p>
+          <button type="button" onClick={() => setSettingsOpen(true)} className="mb-4 flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-footnote font-semibold backdrop-blur-sm">
+            <ShapeIcon className="h-3.5 w-3.5" /> {shape.label} · {PUSHBACK.find(p => p.value === (goal.pushback ?? 'honest'))!.label} coach
+            {status !== 'active' && <> · {STATUSES.find(x => x.value === status)!.label}</>}
+          </button>
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[44px] font-bold leading-none tracking-tight tabular-nums">{hero.value}%</p>
+              <p className="mt-1 text-footnote font-semibold uppercase tracking-wider text-white/80">{hero.label}</p>
             </div>
-            <div className="text-right text-footnote font-semibold text-white/85">
-              {s.daysLeft !== null && <p>{s.daysLeft < 0 ? `${-s.daysLeft} days past target` : `${s.daysLeft} days left`}</p>}
-              <p>{s.todosDone}/{s.todosTotal} to-dos{s.habits ? ` · ${s.habits} habits` : ''}</p>
-            </div>
+            {s.daysLeft !== null && (
+              <p className="shrink-0 text-right text-footnote font-semibold text-white/85">{s.daysLeft < 0 ? `${-s.daysLeft} days past target` : `${s.daysLeft} days left`}</p>
+            )}
           </div>
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/25">
-            <div className="h-full rounded-full bg-white transition-[width] duration-700" style={{ width: `${s.progress}%` }} />
+            <div className="h-full rounded-full bg-white transition-[width] duration-700" style={{ width: `${hero.value}%` }} />
           </div>
-          {goal.endGoal && <p className="mt-4 text-body text-white/90">“{goal.endGoal}”</p>}
+          <p className="mt-2 text-footnote font-medium text-white/80">
+            {[s.todosTotal ? `${s.todosDone}/${s.todosTotal} steps` : null, s.habits ? `${s.habits} practice${s.habits === 1 ? '' : 's'}` : null].filter(Boolean).join(' · ') || 'Nothing planned yet'}
+          </p>
+          {goal.why
+            ? <p className="mt-4 text-body text-white/90"><span className="font-semibold">Why: </span>{goal.why}</p>
+            : goal.endGoal && <p className="mt-4 text-body text-white/90">“{goal.endGoal}”</p>}
           {s.next && (
             <div className="mt-5 flex items-center gap-3 rounded-2xl bg-white/15 p-3 backdrop-blur-sm">
               <div className="min-w-0 flex-1">
@@ -132,7 +156,54 @@ export default function GoalDetailPage() {
         </div>
       </section>
 
-      {!hasTasks && (
+      {status === 'paused' && (
+        <div className="surface flex items-center gap-3 p-4">
+          <Pause className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <p className="min-w-0 flex-1 text-footnote text-muted-foreground">Paused. It's off Today and the plan isn't adjusting.</p>
+          <button type="button" onClick={() => goalActions.updateGoal(goal.id, { status: 'active' })} className="pressable h-9 rounded-full bg-primary px-3.5 text-footnote font-semibold text-primary-foreground">Resume</button>
+        </div>
+      )}
+
+      {goal.shape === 'better' && <MetricCard goal={goal} onSetUp={() => setSettingsOpen(true)} />}
+
+      <GoalPractices goal={goal} onEdit={setEdit} onAdd={() => {
+        const p = goal.phases.find(ph => ph.tasks.length) ?? goal.phases[0];
+        if (p?.tasks[0]) setTask({ goalId: goal.id, phaseId: p.id, taskId: p.tasks[0].id });
+        else if (p) setAddTaskPhase(p.id);
+      }} />
+
+      {goal.shape === 'once' && (
+        <section className="space-y-2">
+          <h2 className="section-label">Checklist</h2>
+          <div className="list-group">
+            {checklist.map(({ todo, phase, task: t }) => (
+              <ListRow key={todo.id} muted={todo.done}
+                leading={<CheckCircle done={todo.done} color="hsl(var(--tasks))" label={todo.title} onToggle={() => toggleToDo(goal.id, phase.id, t.id, todo.id)} />}
+                title={todo.title} subtitle={todo.deadline && !todo.done ? dueText(todo.deadline) : undefined}
+                onClick={() => setTask({ goalId: goal.id, phaseId: phase.id, taskId: t.id })} />
+            ))}
+            <form className="flex items-center gap-2 px-3 py-2" onSubmit={e => {
+              e.preventDefault();
+              const title = stepDraft.trim();
+              if (!title) return;
+              const phase = goal.phases[0];
+              if (!phase) return;
+              if (phase.tasks[0]) goalActions.addToDo(goal.id, phase.id, phase.tasks[0].id, title);
+              else { goalActions.addTask(goal.id, phase.id, 'Checklist', ''); toast('Tap again to add the step'); }
+              setStepDraft('');
+            }}>
+              <Plus className="ml-1 h-5 w-5 shrink-0 text-tasks" />
+              <input value={stepDraft} onChange={e => setStepDraft(e.target.value)} placeholder={checklist.length ? 'Add a step' : 'First step, e.g. Watch a 2-minute video'} enterKeyHint="done"
+                className="h-10 min-w-0 flex-1 bg-transparent px-1 text-body outline-none placeholder:text-muted-foreground" />
+              {stepDraft && <button type="submit" className="h-9 shrink-0 rounded-full bg-primary px-3 text-footnote font-semibold text-primary-foreground">Add</button>}
+            </form>
+          </div>
+        </section>
+      )}
+
+      {hasTasks && goal.shape !== 'once' && <h2 className="section-label -mb-3">{shape.stages}</h2>}
+
+      {!hasTasks && goal.shape !== 'once' && (
         <div className="surface p-5">
           <p className="text-headline">Break it down</p>
           <p className="mt-1 text-body text-muted-foreground">Let AI draft a full plan in a minute, or add tasks yourself.</p>
@@ -143,8 +214,8 @@ export default function GoalDetailPage() {
         </div>
       )}
 
-      {/* Phases */}
-      {goal.phases.map((phase, pi) => {
+      {/* Stages ("Do once" goals are just the checklist above) */}
+      {goal.shape !== 'once' && goal.phases.map((phase, pi) => {
         const isNow = phase.id === nowPhase?.id && hasTasks;
         const pp = calculatePhaseProgress(phase);
         const allDone = phase.tasks.length > 0 && phase.tasks.every(isTaskComplete);
@@ -195,7 +266,7 @@ export default function GoalDetailPage() {
       })}
 
       <div className="flex gap-2">
-        <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAddPhaseOpen(true)}><Plus className="mr-1.5 h-4 w-4" /> Add phase</Button>
+        {goal.shape !== 'once' && <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAddPhaseOpen(true)}><Plus className="mr-1.5 h-4 w-4" /> Add stage</Button>}
         <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with AI</Button>
       </div>
 
@@ -223,8 +294,9 @@ export default function GoalDetailPage() {
 
       <TaskSheet target={task} onClose={() => setTask(null)} onEdit={setEdit} />
       <EditItemDialog target={edit} onClose={() => setEdit(null)} />
+      <GoalSettingsSheet goal={settingsOpen ? goal : null} onClose={() => setSettingsOpen(false)} />
       <AIPlanSheet goal={aiOpen ? goal : null} onClose={() => setAiOpen(false)} />
-      <QuickFormSheet open={addPhaseOpen} title="Add phase" placeholder="e.g. Build" cta="Add phase"
+      <QuickFormSheet open={addPhaseOpen} title="Add stage" placeholder="e.g. Build" cta="Add stage"
         onSubmit={(name, deadline) => goalActions.addPhase(goal.id, name, '', deadline)} onClose={() => setAddPhaseOpen(false)} />
       <QuickFormSheet open={!!addTaskPhase} title="Add task" placeholder="e.g. Get proper running shoes" cta="Add task"
         onSubmit={(name, deadline) => addTaskPhase && goalActions.addTask(goal.id, addTaskPhase, name, '', deadline)} onClose={() => setAddTaskPhase(null)} />

@@ -1,11 +1,28 @@
-import { Goal, Phase, Task, ToDo, Habit, TaskNote, GoalDomain } from '@/types/goals';
+import { Goal, Phase, Task, ToDo, Habit, TaskNote, GoalDomain, GoalShape } from '@/types/goals';
 import { stores, generateId, GoalTemplate } from '@/lib/storage';
+import { derivePerWeek } from '@/lib/practice';
 import { mapGoal, mapPhase, mapTask, moveById } from '@/lib/goal-tree';
 import { useStore } from '@/hooks/useStore';
 import { addDays, dateKeyOf, daysBetween, todayKey } from '@/lib/dates';
 
 const G = stores.GOALS;
 const T = stores.GOAL_TEMPLATES;
+
+/** Starting structure per goal shape (a "Do once" goal is just a checklist, etc.). */
+const SHAPE_PHASES: Partial<Record<GoalShape, { title: string; description: string; task?: string }[]>> = {
+  once: [{ title: 'Steps', description: '', task: 'Checklist' }],
+  keep: [{ title: 'Practice', description: '', task: 'Rhythm' }],
+  better: [
+    { title: 'Base', description: 'Build the habit and a starting level.', task: 'Training' },
+    { title: 'Build', description: 'Raise the level week by week.' },
+    { title: 'Peak', description: 'Hit the target.' },
+  ],
+  become: [
+    { title: 'Now', description: 'What you can do this season.', task: 'First stepping stone' },
+    { title: 'Next', description: 'What opens up after that.' },
+    { title: 'Later', description: 'The long road.' },
+  ],
+};
 
 const DEFAULT_PHASES = [
   { title: 'Foundation', description: 'Research, planning, and initial setup — lay the groundwork.' },
@@ -20,13 +37,15 @@ const DEFAULT_PHASES = [
  * anywhere — not just inside React.
  */
 export const goalActions = {
-  addGoal(title: string, description: string, endGoal: string, deadline?: string, domain?: GoalDomain): Goal {
-    const phases: Phase[] = DEFAULT_PHASES.map((p, i) => ({
-      id: generateId(), title: p.title, description: p.description, tasks: [], order: i,
+  addGoal(title: string, description: string, endGoal: string, deadline?: string, domain?: GoalDomain, shape?: GoalShape): Goal {
+    const phases: Phase[] = ((shape && SHAPE_PHASES[shape]) ?? DEFAULT_PHASES).map((p: { title: string; description: string; task?: string }, i) => ({
+      id: generateId(), title: p.title, description: p.description, order: i,
+      tasks: p.task ? [{ id: generateId(), title: p.task, description: '', status: 'not_started' as const, todos: [], habits: [], order: 0 }] : [],
     }));
     const newGoal: Goal = {
       id: generateId(), title, description, endGoal, deadline, domain, phases,
       createdAt: new Date().toISOString(),
+      ...(shape ? { shape, status: 'active' as const, pushback: 'honest' as const } : {}),
     };
     G.update(goals => [...goals, newGoal]);
     return newGoal;
@@ -86,7 +105,8 @@ export const goalActions = {
   },
 
   addHabit(goalId: string, phaseId: string, taskId: string, title: string, frequency: string, target?: string) {
-    const habit: Habit = { id: generateId(), title, frequency, target, active: true };
+    const perWeek = derivePerWeek(frequency);
+    const habit: Habit = { id: generateId(), title, frequency, target, active: true, perWeek, maxPerWeek: perWeek, auto: true, since: todayKey() };
     G.update(goals => mapTask(goals, goalId, phaseId, taskId, t => ({ ...t, habits: [...(t.habits ?? []), habit] })));
   },
 
@@ -259,6 +279,7 @@ export const goalActions = {
           }),
           habits: (t.habits ?? []).map(h => ({
             id: generateId(), title: h.title, frequency: h.frequency, target: h.target, evolution: h.evolution, active: true,
+            perWeek: derivePerWeek(h.frequency), maxPerWeek: derivePerWeek(h.frequency), auto: true, since: today,
           })),
         })),
       })),

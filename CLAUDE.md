@@ -27,7 +27,7 @@ npx vitest run src/path/to/file.test.ts
 
 ## Architecture
 
-**TELOS** is a client-side-only React SPA for goal tracking and fitness. There is no backend — all data is persisted in `localStorage` via `src/lib/storage.ts`.
+**TELOS** is a client-side-only React SPA for goal tracking and fitness. There is no backend — all data is persisted in `localStorage` via `src/lib/storage.ts`. The product direction ("Project Apex") is in `docs/apex-blueprint.md` — read it before feature work.
 
 ### Data Flow
 
@@ -55,7 +55,14 @@ Goals have a strict hierarchy:
 ```
 Goal → Phase[] → Task[] → ToDo[] | Habit[]
 ```
-Types and utility functions for this hierarchy live in `src/types/goals.ts`.
+Types and utility functions for this hierarchy live in `src/types/goals.ts`. In the UI: phases are **stages**, to-dos are **steps**, habits are **practices**.
+
+- Every goal has a **shape** (`once | better | build | keep | become`, labels in `src/lib/goal-shapes.ts`), plus `why`, `pushback` (coach style), `status` (`active | paused | achieved | dropped` — only active goals reach Today or get adjusted) and, for "get better", a `metric` (entries in `stores.METRICS`, `src/hooks/useMetrics.ts`). What "progress" means per shape is `src/lib/goal-progress.ts`.
+- A practice's **load** is `perWeek` (+ optional `amount`/`unit`/`step`/`maxAmount`), building toward `maxPerWeek`, with an easy version (`minimum`), `auto` (false = engine proposes instead of changing) and `restartUntil`. `frequency` is kept in step for display. Shared logic (what's due today, step up / ease off, consistency) is `src/lib/practice.ts` — a "3x/week" practice rests once the week's sessions are done.
+
+### Adaptation engine
+
+`src/lib/adapt.ts` (pure, tested in `adapt.test.ts`): weekly step up (≥90% of plan) / hold / ease off (<50%), mid-week ease after two missed due days, a restart week after 7+ days with nothing logged, and a rethink flag after 3 eases. Every change is an `Adjustment` in `stores.ADJUSTMENTS` with a reason and Undo / Accept. `src/hooks/useAdaptation.ts` runs it app-wide (`EngineRunner` in `App.tsx`, on open and at midnight) and holds the undo/accept actions; Today shows unseen changes in `AdjustmentNotices`. Never change deadlines or goal scope automatically — only practice loads.
 
 ### Workout Domain
 
@@ -77,18 +84,17 @@ Device-only keys (not backed up, not in `KEYS`): `telos-theme`, `telos_onboarded
 
 ### Storage Keys
 
-All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/storage.ts` (goals, sessions, exercise configs, weekly plan, settings, achievements, templates, weekly schedule/focus, time blocks, block categories, repeatable blocks, contacts, interactions, commitments, relationship goals, custom exercises, habit logs, goal templates). Meta keys (`telos_schema_version`, `telos_last_export_at`) are excluded from backups.
+All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/storage.ts` (goals, sessions, exercise configs, weekly plan, settings, achievements, templates, weekly schedule/focus, time blocks, block categories, repeatable blocks, custom exercises, habit logs, goal templates, active workout, plan dismissals, adjustments, engine state, metrics). Meta keys (`telos_schema_version`, `telos_last_export_at`) are excluded from backups.
 
 ### Routing & Layout
 
-`src/App.tsx` defines routes: Today `/` (`Index.tsx`), Plan `/plan` (`Program.tsx`), Goals `/goals` and `/goals/:goalId` (`GoalDetail.tsx`), People `/people` and `/people/:contactId` (`PersonDetail.tsx`), Gym `/gym` (`Workouts.tsx`; sections via `?s=progress` / `?s=program`), Settings `/settings`. Old `/program` and `/workouts` redirect. Tab/sidebar labels come from `src/components/layout/nav.ts`. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile) plus a per-route error boundary. Every page starts with `PageHeader` (`src/components/app/PageHeader.tsx`), which carries the Settings gear on phones.
+`src/App.tsx` defines routes: Today `/` (`Index.tsx`), Plan `/plan` (`Program.tsx`), Goals `/goals` and `/goals/:goalId` (`GoalDetail.tsx`), Gym `/gym` (`Workouts.tsx`; sections via `?s=progress` / `?s=program`), Settings `/settings`. Old `/program`, `/workouts` and `/people/*` redirect (People was removed; migration v6 deletes its keys, listed in `RETIRED_KEYS`). Tab/sidebar labels come from `src/components/layout/nav.ts`. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile) plus a per-route error boundary. Every page starts with `PageHeader` (`src/components/app/PageHeader.tsx`), which carries the Settings gear on phones.
 
 Naming: goal templates are **Blueprints**, repeatable Plan blocks are **Routines**, workout templates are **Saved workouts**. Habits are always shown with their goal/task, and live on Today (not duplicated on Plan).
 
 Screen structure:
-- Today: `NowCard` (one hero item) + `UpNext` list (`src/components/today/`).
-- Goals: list → goal screen; tasks open `TaskSheet` (`src/components/goals/`). Display helpers in `src/lib/goal-meta.ts`.
-- People: list by circle → person screen; sheets in `src/components/people/` (`ContactFormSheet`, `LogInteractionSheet`, `CommitmentSheet`). Shared labels/colors in `src/lib/people.ts`.
+- Today: `NowCard` (one hero item), `AdjustmentNotices` (what the engine changed) and `UpNext` list (`src/components/today/`).
+- Goals: list → goal screen (hero adapts to the shape; `MetricCard` for "get better", `GoalPractices` with live loads, an inline checklist for "do once"); `GoalSettingsSheet` edits shape / why / coach / status / metric; tasks open `TaskSheet`; practices are edited in `EditItemDialog` (`src/components/goals/`). Display helpers in `src/lib/goal-meta.ts`.
 - Gym: `WorkoutView` (today hero + focused logging), `ProgressView`, `ProgramView` (weekly split + `ExerciseSheet` targets) in `src/components/gym/`. Formatting helpers in `src/lib/gym-format.ts`.
 - Plan: week strip + `DailyTimeBlocks` timeline (5 AM → 3 AM; after-midnight blocks store `startHour` 24–26 on the day they belong to — helpers in `src/lib/plan-time.ts`; drag/resize move by the minute, tap-to-add starts on the quarter hour); tapping a block opens `BlockSheet`; `RoutinesSheet` / `CategoriesSheet` in `src/components/plan/`. Routine scheduling: `src/lib/routines.ts`.
 
@@ -104,7 +110,7 @@ Built on **shadcn/ui** (`src/components/ui/`) over Radix UI primitives, styled w
 - Use **semantic status tokens** — `success`, `warning`, `destructive`, `info` (e.g. `text-success`, `bg-warning/10`) — never raw `green-500`/`amber-500`/`red-500`. Section accents `coral/teal/violet/amber/sky` keep their token as DEFAULT (`text-amber`) plus Tailwind's shade scale.
 - Charts/SVG take colors from CSS vars (`hsl(var(--primary))`, `hsl(var(--border))`), so they work in both themes.
 - Type scale (Tailwind `fontSize`): `text-large-title`, `text-title`, `text-headline`, `text-body`, `text-footnote`, `text-caption`; minimum 11px. `cn()` knows these sizes (`src/lib/utils.ts`) — add any new custom size there too, or tailwind-merge will strip text colors.
-- Building blocks: `.list-group` (iOS grouped list) with `ListRow`, `.surface` cards, `.section-label` headings, `PageHeader` / `HeaderButton`, `Chips` / `FieldLabel`. Life-area colors: `habits`, `tasks`, `move`, `people`.
+- Building blocks: `.list-group` (iOS grouped list) with `ListRow`, `.surface` cards, `.section-label` headings, `PageHeader` / `HeaderButton`, `Chips` / `FieldLabel`. Life-area colors: `habits`, `tasks`, `move` (`people` remains in the palette but is unused).
 - Touch-first: never hide controls behind hover. Row actions go in `RowMenu` (visible ⋯, `src/components/app/RowMenu.tsx`); checks use `CheckCircle` (`src/components/app/ListRow.tsx`, 44px target). `ListRow` is a div with button behavior so rows can contain their own buttons — never nest `<button>`s. Import `Dialog*` from `@/components/app/ResponsiveDialog` (bottom sheet on phones, dialog on desktop), not from `ui/dialog`. Destructive actions offer Undo in the toast; whole goals/people also confirm first.
 
 ### TypeScript

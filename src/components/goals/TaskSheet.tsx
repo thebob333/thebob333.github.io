@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Flame, Pause, Pencil, Play, Plus, Send, Trash2, Trophy } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, CheckCircle2, Pause, Pencil, Play, Plus, Send, Trash2, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { RowMenu } from '@/components/app/RowMenu';
@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { useGoals, goalActions } from '@/hooks/useGoals';
 import { useHabits } from '@/hooks/useHabits';
 import { useTodayKey } from '@/hooks/useToday';
-import { getCurrentStreak, isHabitCompletedOn } from '@/lib/habits';
+import { isHabitCompletedOn } from '@/lib/habits';
+import { doneBetween, loadLabel, perWeekOf, weekStart } from '@/lib/practice';
+import { addDays } from '@/lib/dates';
 import { dueText } from '@/lib/goal-meta';
 import { calculateTaskProgress } from '@/types/goals';
 import type { EditTarget } from './EditItemDialog';
@@ -143,32 +145,32 @@ export function TaskSheet({ target, onClose, onEdit }: { target: TaskRef | null;
             </div>
 
             {/* Habits */}
-            <h3 className="mb-1.5 text-headline">Habits</h3>
+            <h3 className="mb-1.5 text-headline">Practices</h3>
             <div className="list-group mb-5">
               {habits.map(h => {
                 const done = isHabitCompletedOn(h.id, today, logs);
-                const streak = getCurrentStreak(h.id, logs, today);
+                const ws = weekStart(today);
+                const weekDone = doneBetween(h.id, logs, ws, addDays(ws, 6));
                 return (
                   <div key={h.id} className={`flex min-h-[54px] items-center gap-3 px-4 py-1.5 ${h.active ? '' : 'opacity-60'}`}>
                     <CheckCircle done={done} color="hsl(var(--habits))" label={h.title} onToggle={() => h.active && toggleCheckIn(h.id)} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-body font-medium">{h.title}{h.target ? ` · ${h.target}` : ''}</p>
                       <p className="flex items-center gap-1.5 text-footnote text-muted-foreground">
-                        {h.active ? h.frequency : 'Paused'}
-                        {streak > 0 && h.active && <span className="flex items-center gap-0.5 font-semibold text-habits"><Flame className="h-3 w-3" />{streak}</span>}
+                        {h.active ? <>{loadLabel(h)}{perWeekOf(h) < 7 && <span className="font-semibold text-habits">· {Math.min(weekDone, perWeekOf(h))} of {perWeekOf(h)} this week</span>}</> : 'Paused'}
                       </p>
                     </div>
                     <RowMenu label={`Actions for ${h.title}`} items={[
                       { label: 'Edit', icon: Pencil, onSelect: () => onEdit({ kind: 'habit', goalId, phaseId, taskId, habit: h }) },
                       { label: h.active ? 'Pause' : 'Resume', icon: h.active ? Pause : Play, onSelect: () => goalActions.toggleHabit(goalId, phaseId, taskId, h.id) },
-                      { label: 'Delete', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo('Habit deleted', () => goalActions.deleteHabit(goalId, phaseId, taskId, h.id)) },
+                      { label: 'Delete', icon: Trash2, destructive: true, separated: true, onSelect: () => withUndo('Practice deleted', () => goalActions.deleteHabit(goalId, phaseId, taskId, h.id)) },
                     ]} />
                   </div>
                 );
               })}
               <form className="flex items-center gap-2 px-3 py-2" onSubmit={e => { e.preventDefault(); addHabit(); }}>
                 <Plus className="ml-1 h-5 w-5 shrink-0 text-habits" />
-                <Input value={habitDraft} onChange={e => setHabitDraft(e.target.value)} placeholder="Add a habit" enterKeyHint="done"
+                <Input value={habitDraft} onChange={e => setHabitDraft(e.target.value)} placeholder="Add a practice" enterKeyHint="done"
                   className="h-10 border-0 bg-transparent px-1 shadow-none focus-visible:ring-0" />
                 {habitDraft && (
                   <>
