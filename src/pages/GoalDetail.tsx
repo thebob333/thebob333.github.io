@@ -24,6 +24,7 @@ import type { Goal } from '@/types/goals';
 import { GoalSettingsSheet } from '@/components/goals/GoalSettingsSheet';
 import { GoalPractices } from '@/components/goals/GoalPractices';
 import { MetricCard } from '@/components/goals/MetricCard';
+import { ForecastCard } from '@/components/goals/ForecastCard';
 import { useStore } from '@/hooks/useStore';
 import { stores } from '@/lib/storage';
 import { goalProgress } from '@/lib/goal-progress';
@@ -165,6 +166,8 @@ export default function GoalDetailPage() {
       )}
 
       {goal.shape === 'better' && <MetricCard goal={goal} onSetUp={() => setSettingsOpen(true)} />}
+
+      {(hasTasks || goal.shape === 'better') && <ForecastCard goal={goal} />}
 
       <GoalPractices goal={goal} onEdit={setEdit} onAdd={() => {
         const p = goal.phases.find(ph => ph.tasks.length) ?? goal.phases[0];

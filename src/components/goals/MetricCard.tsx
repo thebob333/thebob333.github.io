@@ -97,7 +97,7 @@ export function MetricCard({ goal, onSetUp }: { goal: Goal; onSetUp: () => void 
           <button type="submit" disabled={!value.trim()} className="pressable h-11 rounded-xl bg-primary px-4 text-body font-semibold text-primary-foreground disabled:opacity-40">Log</button>
         </form>
         <p className="mt-2 text-footnote text-muted-foreground">
-          {entries.length < 3 ? 'Log a few times — an honest finish-date range appears once there\'s enough data.' : `${entries.length} entries since ${fmtDate(entries[0].date)}.`}
+          {entries.length ? `${entries.length} entr${entries.length === 1 ? 'y' : 'ies'} since ${fmtDate(entries[0].date)}.` : 'Log your first measurement to start the trend.'}
         </p>
         {entries.length > 0 && (
           <>

@@ -6,6 +6,7 @@ import type { Adjustment, Goal, HabitLog, MetricEntry } from '@/types/goals';
 import { addDays, daysBetween, dateKeyOf, type DateKey } from '@/lib/dates';
 import { doneBetween, loadLabel, perWeekOf, weekStart, weeksOnTarget } from '@/lib/practice';
 import { goalProgress } from '@/lib/goal-progress';
+import { goalForecast } from '@/lib/forecast';
 import { shapeInfo, isActiveGoal } from '@/lib/goal-shapes';
 
 const PUSHBACK_RULES = `Coach styles (set per goal — match each goal's style):
@@ -37,6 +38,8 @@ export function goalFacts(goal: Goal, logs: HabitLog[], metrics: MetricEntry[], 
   if (goal.endGoal) lines.push(`  Success looks like: ${goal.endGoal}`);
   if (goal.deadline) lines.push(`  Target date: ${dateKeyOf(goal.deadline)} (${daysBetween(today, dateKeyOf(goal.deadline))} days from today)`);
   lines.push(`  Progress: ${pr.value}% ${pr.label}`);
+  const f = goalForecast(goal, metrics, today);
+  if (f) lines.push(`  Forecast: ${f.kind === 'range' ? `${f.from} to ${f.to} (likely ${f.likely}) — ${f.basis}` : f.basis}`);
   if (goal.metric) {
     const mine = metrics.filter(m => m.goalId === goal.id).sort((a, b) => a.date.localeCompare(b.date)).slice(-6);
     lines.push(`  Measure: ${goal.metric.name} (${goal.metric.unit}, ${goal.metric.higherIsBetter ? 'higher' : 'lower'} is better), start ${goal.metric.start ?? '?'}, target ${goal.metric.target ?? '?'}; recent: ${mine.map(m => `${m.date}=${m.value}`).join(', ') || 'none logged'}`);
