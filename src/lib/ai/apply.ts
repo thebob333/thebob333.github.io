@@ -2,7 +2,7 @@
 import type { Goal, Habit, Phase } from '@/types/goals';
 import { addDays, type DateKey } from '@/lib/dates';
 import { frequencyFor } from '@/lib/practice';
-import type { GoalPlan, Proposal } from './schemas';
+import type { CaptureAction, GoalPlan, Proposal } from './schemas';
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(n)));
 const pos = (n: number | null | undefined) => (typeof n === 'number' && Number.isFinite(n) && n > 0 ? n : undefined);
@@ -101,6 +101,47 @@ export function applyProposal(goals: Goal[], p: Proposal, today: DateKey, newId:
       const text = p.title?.trim();
       if (!text) return null;
       return { label: 'If-then plan saved', goals: update(g => ({ ...g, ifThen: [...new Set([...(g.ifThen ?? []), text])] })) };
+    }
+  }
+}
+
+export type CaptureEffect =
+  | { type: 'goals'; goals: Goal[] }
+  | { type: 'checkin'; habitId: string }
+  | { type: 'metric'; goalId: string; value: number }
+  | null;
+
+/** What one brain-dump action should do, or null if it doesn't match your goals. */
+export function captureEffect(goals: Goal[], a: CaptureAction, today: DateKey, newId: () => string = () => crypto.randomUUID()): CaptureEffect {
+  const goal = goals.find(g => g.id === a.goalId);
+  if (!goal) return null;
+  const tasks = goal.phases.flatMap(p => p.tasks.map(t => ({ p, t })));
+  switch (a.kind) {
+    case 'practice_done':
+      return tasks.some(({ t }) => (t.habits ?? []).some(h => h.id === a.habitId)) ? { type: 'checkin', habitId: a.habitId! } : null;
+    case 'metric':
+      return goal.metric && typeof a.value === 'number' && Number.isFinite(a.value) ? { type: 'metric', goalId: goal.id, value: a.value } : null;
+    case 'step_done': {
+      if (!tasks.some(({ t }) => (t.todos ?? []).some(x => x.id === a.todoId && !x.done))) return null;
+      const at = new Date().toISOString();
+      return { type: 'goals', goals: goals.map(g => g.id !== goal.id ? g : { ...g, phases: g.phases.map(p => ({ ...p, tasks: p.tasks.map(t => ({ ...t, todos: (t.todos ?? []).map(x => (x.id === a.todoId ? { ...x, done: true, doneAt: at } : x)) })) })) }) };
+    }
+    case 'step': {
+      const r = applyProposal(goals, { kind: 'step', goalId: goal.id, habitId: null, perWeek: null, amount: null, deadline: null, title: a.title, reason: '' }, today, newId);
+      if (!r) return null;
+      if (a.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(a.dueDate)) {
+        // applyProposal dates new steps in 2 days; use the date they said instead.
+        const g = r.goals.find(x => x.id === goal.id)!;
+        const last = g.phases.flatMap(p => p.tasks.flatMap(t => t.todos ?? [])).find(x => x.title === a.title?.trim() && !x.done && x.deadline === addDays(today, 2));
+        if (last) last.deadline = a.dueDate;
+      }
+      return { type: 'goals', goals: r.goals };
+    }
+    case 'note': {
+      const text = a.title?.trim();
+      const target = tasks.find(({ t }) => (t.todos ?? []).some(x => !x.done) || (t.habits ?? []).length) ?? tasks[0];
+      if (!text || !target) return null;
+      return { type: 'goals', goals: goals.map(g => g.id !== goal.id ? g : { ...g, phases: g.phases.map(p => ({ ...p, tasks: p.tasks.map(t => t.id !== target.t.id ? t : { ...t, notes: [...(t.notes ?? []), { id: newId(), text, createdAt: new Date().toISOString() }] }) })) }) };
     }
   }
 }

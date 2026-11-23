@@ -77,7 +77,14 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 - Calls go straight from the phone to Anthropic with the user's own key (`@anthropic-ai/sdk` with `dangerouslyAllowBrowser`; the API allows browser origins). Model `claude-opus-5-5`, structured outputs via `betaZodOutputFormat` (schemas use `zod/v4`), server-side refusal fallbacks on. All in `src/lib/ai/`.
 - `device.ts`: the key and monthly usage live in device-only localStorage (`telos_ai_key`, `telos_ai_usage`) — never in `KEYS`, so never backed up. Never put a key in code.
 - `schemas.ts` (reply shapes, plus `parsePasted` for the copy-paste fallback), `prompts.ts` (coach system prompt + `weekFacts`/`goalFacts` built by code), `apply.ts` (plan → goal, accepted suggestions → goals; ids from the coach are validated; tested), `client.ts` (`askJSON`, plain-language `AiError`s).
-- UI: `CoachPlanSheet` (2–5 questions → plan preview → import), `CheckInSheet` (review → your answer → suggestions to Accept/Skip, focus goals, next step; lazy-loaded from Today), `AiCoachCard` in Settings, `PasteFallback` when there's no key.
+- UI: `CoachPlanSheet` (2–5 questions → plan preview → import), `AskCoachSheet` (questions about one goal, "Add to plan"), `CaptureSheet` (brain dump → confirm actions; `captureEffect` validates them), `CheckInSheet` (review → your answer → suggestions to Accept/Skip, focus goals, next step; lazy-loaded from Today), `AiCoachCard` in Settings, `PasteFallback` when there's no key.
+
+### Forecasts, Gym extras, Plan suggestions (Phase C)
+
+- `src/lib/forecast.ts` (tested): metric trend for "get better", recent step pace for build/once; always a range (≥ ±20%), only after 3+ entries over 14+ days; never for keep/become. Shown by `ForecastCard`, passed to the coach.
+- `src/lib/gym-stats.ts` (tested): muscle map (`APP_MUSCLE_EXERCISES`), weekly sets per muscle, estimated-max series, `buildSummary` for the post-workout `SessionSummarySheet`. `addSession` applies lighter weeks for stalled lifts automatically (the summary offers Undo) and takes `{ quiet }` to skip toasts.
+- Cardio: `stores.CARDIO` (`CardioEntry` in `types/workout.ts`, `src/hooks/useCardio.ts`, `CardioSheet`); a run can also log its time to a timed "get better" goal.
+- Plan: `PlanSuggestions` offers free slots for practices due that day; practice blocks (`habitId`) are kept and their tick checks the practice off for that day.
 
 ### Other domain modules
 

@@ -112,3 +112,26 @@ ${task}
 Reply with ONLY a JSON object (no other text) matching this JSON Schema:
 ${schema}`;
 }
+
+/** Ids the coach can use to turn a brain dump into actions. */
+export function captureContext(goals: Goal[], today: DateKey): string {
+  const lines = [`Today is ${today}.`, 'Goals (use these ids exactly):'];
+  for (const g of goals.filter(isActiveGoal)) {
+    lines.push(`- GOAL id=${g.id} "${g.title}"${g.metric ? ` — measures ${g.metric.name} in ${g.metric.unit}` : ''}`);
+    for (const p of g.phases) for (const t of p.tasks) {
+      for (const h of t.habits ?? []) if (h.active) lines.push(`  - PRACTICE id=${h.id} "${h.title}"`);
+      for (const td of t.todos ?? []) if (!td.done) lines.push(`  - OPEN STEP id=${td.id} "${td.title}"`);
+    }
+  }
+  return lines.join('\n');
+}
+
+export const CAPTURE_TASK = `The user dumped a quick note. Turn it into actions on their goals:
+- "practice_done": they did a practice today (use its id).
+- "step_done": they finished an open step (use its id).
+- "step": a new to-do for a goal, with dueDate if they gave a day (resolve "Friday" etc. from today's date).
+- "metric": a measurement for a goal that measures something (value in that goal's unit; convert "28:30" minutes to 28.5).
+- "note": anything worth remembering about a goal.
+Only include what they clearly said. Anything that fits no goal goes in "unmatched".`;
+
+export const ASK_TASK = `Answer the user's question about this goal. Be practical and specific to their situation and numbers. If the answer implies concrete changes, propose them ("step", "practice" with the practice id, "deadline", "ifThen"); otherwise leave proposals empty.`;

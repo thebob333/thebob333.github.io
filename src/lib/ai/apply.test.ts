@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlan, applyProposal } from './apply';
+import { applyPlan, applyProposal, captureEffect } from './apply';
 import { CheckInPlan, GoalPlan, extractJson, parsePasted } from './schemas';
 import type { Goal } from '@/types/goals';
 
@@ -89,5 +89,25 @@ describe('pasted replies', () => {
     expect(parsePasted(CheckInPlan, `Here you go: ${reply}`).nextStep).toBe('Run tomorrow');
     expect(() => parsePasted(CheckInPlan, '{"message": 1}')).toThrow(/expected format/);
     expect(() => parsePasted(GoalPlan, 'no json here')).toThrow();
+  });
+});
+
+describe('captureEffect', () => {
+  const gs = () => [applyPlan(emptyGoal(), plan, TODAY, id)];
+  const base = { goalId: 'g', habitId: null, todoId: null, title: null, dueDate: null, value: null, summary: '' };
+  it('maps brain-dump actions onto your goals and rejects ones that do not match', () => {
+    const goals = gs();
+    const hid = goals[0].phases[0].tasks[0].habits[0].id;
+    const tid = goals[0].phases[0].tasks[0].todos[1].id;
+    expect(captureEffect(goals, { ...base, kind: 'practice_done', habitId: hid }, TODAY)).toEqual({ type: 'checkin', habitId: hid });
+    expect(captureEffect(goals, { ...base, kind: 'practice_done', habitId: 'nope' }, TODAY)).toBeNull();
+    expect(captureEffect(goals, { ...base, kind: 'metric', value: 28.5 }, TODAY)).toEqual({ type: 'metric', goalId: 'g', value: 28.5 });
+    const done = captureEffect(goals, { ...base, kind: 'step_done', todoId: tid }, TODAY);
+    expect(done?.type === 'goals' && done.goals[0].phases[0].tasks[0].todos[1].done).toBe(true);
+    const step = captureEffect(goals, { ...base, kind: 'step', title: 'Email the coach', dueDate: '2026-11-27' }, TODAY, id);
+    expect(step?.type === 'goals' && step.goals[0].phases[0].tasks[0].todos.at(-1)).toMatchObject({ title: 'Email the coach', deadline: '2026-11-27' });
+    const note = captureEffect(goals, { ...base, kind: 'note', title: 'Left knee a bit sore' }, TODAY, id);
+    expect(note?.type === 'goals' && note.goals[0].phases[0].tasks[0].notes?.[0].text).toBe('Left knee a bit sore');
+    expect(captureEffect(goals, { ...base, goalId: 'missing', kind: 'note', title: 'x' }, TODAY)).toBeNull();
   });
 });

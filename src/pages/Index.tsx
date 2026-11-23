@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button';
 
 // Loaded on first open, so the AI SDK isn't part of Today's instant load.
 const CheckInSheet = lazy(() => import('@/components/today/CheckInSheet').then(m => ({ default: m.CheckInSheet })));
+const CaptureSheet = lazy(() => import('@/components/today/CaptureSheet').then(m => ({ default: m.CaptureSheet })));
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -151,6 +152,7 @@ export default function Index() {
   const isNew = goals.length === 0 && sessions.length === 0;
   const [reviewOpen, setReviewOpen] = useState(false);
   const [checkInOpen, setCheckInOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
   const reviewDue = !isNew && isReviewDue(today, settings.lastReviewWeek);
   const showOnboarding = useShowOnboarding(isNew);
   const dateLabel = parseDateKey(today).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -203,7 +205,8 @@ export default function Index() {
 
       <WeeklyReview open={reviewOpen} onClose={() => setReviewOpen(false)} today={today} onCheckIn={() => { setReviewOpen(false); setCheckInOpen(true); }} />
       {checkInOpen && <Suspense fallback={null}><CheckInSheet open={checkInOpen} onClose={() => setCheckInOpen(false)} /></Suspense>}
-      {!isNew && <QuickAdd onStartWorkout={startWorkout} onReview={() => setReviewOpen(true)} onCheckIn={() => setCheckInOpen(true)} />}
+      {captureOpen && <Suspense fallback={null}><CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} /></Suspense>}
+      {!isNew && <QuickAdd onStartWorkout={startWorkout} onReview={() => setReviewOpen(true)} onCheckIn={() => setCheckInOpen(true)} onCapture={() => setCaptureOpen(true)} />}
       {showOnboarding && <Onboarding />}
     </div>
   );

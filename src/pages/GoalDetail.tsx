@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  Archive, ArrowDown, ArrowUp, Bookmark, CalendarDays, Check, ChevronDown, Copy, Pause, Plus, Settings2, Sparkles, Star, Trash2, Pencil, X, Zap,
+  Archive, ArrowDown, ArrowUp, Bookmark, CalendarDays, Check, ChevronDown, Copy, Pause, Plus, Settings2, Sparkles, Star, Trash2, Pencil, X, Zap, MessageCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useGoals, goalActions } from '@/hooks/useGoals';
@@ -30,6 +30,8 @@ import { stores } from '@/lib/storage';
 import { goalProgress } from '@/lib/goal-progress';
 import { PUSHBACK, STATUSES, shapeInfo } from '@/lib/goal-shapes';
 
+const AskCoachSheet = lazy(() => import('@/components/goals/AskCoachSheet').then(m => ({ default: m.AskCoachSheet })));
+
 export default function GoalDetailPage() {
   const { goalId } = useParams();
   const navigate = useNavigate();
@@ -46,6 +48,7 @@ export default function GoalDetailPage() {
   const [showProtocol, setShowProtocol] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [stepDraft, setStepDraft] = useState('');
+  const [askOpen, setAskOpen] = useState(false);
 
   const goal = goals.find(g => g.id === goalId);
   if (!goal) {
@@ -103,6 +106,7 @@ export default function GoalDetailPage() {
             <RowMenu label="Goal actions" className="h-9 w-9 rounded-full bg-secondary md:h-9 md:w-9" items={[
               { label: 'Goal settings', icon: Settings2, onSelect: () => setSettingsOpen(true) },
               { label: 'Plan with the coach', icon: Sparkles, onSelect: () => setAiOpen(true) },
+              { label: 'Ask the coach', icon: MessageCircle, onSelect: () => setAskOpen(true) },
               { label: 'Spread deadlines', icon: CalendarDays, onSelect: spread },
               { label: 'Duplicate', icon: Copy, separated: true, onSelect: () => { const c = goalActions.cloneGoal(goal.id); if (c) navigate(`/goals/${c.id}`); toast.success('Goal duplicated'); } },
               { label: 'Save as blueprint', icon: Bookmark, onSelect: () => { goalActions.saveAsTemplate(goal.id); toast.success('Saved as a blueprint'); } },
@@ -287,6 +291,7 @@ export default function GoalDetailPage() {
         {goal.shape !== 'once' && <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAddPhaseOpen(true)}><Plus className="mr-1.5 h-4 w-4" /> Add stage</Button>}
         <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with the coach</Button>
       </div>
+      <Button variant="secondary" className="-mt-3 h-12 w-full rounded-2xl text-body font-semibold" onClick={() => setAskOpen(true)}><MessageCircle className="mr-1.5 h-4 w-4" /> Ask the coach</Button>
 
       {goal.adaptationProtocol && (
         <section>
@@ -313,6 +318,7 @@ export default function GoalDetailPage() {
       <TaskSheet target={task} onClose={() => setTask(null)} onEdit={setEdit} />
       <EditItemDialog target={edit} onClose={() => setEdit(null)} />
       <GoalSettingsSheet goal={settingsOpen ? goal : null} onClose={() => setSettingsOpen(false)} />
+      {askOpen && <Suspense fallback={null}><AskCoachSheet goal={goal} onClose={() => setAskOpen(false)} /></Suspense>}
       <CoachPlanSheet goal={aiOpen ? goal : null} onClose={() => setAiOpen(false)} />
       <QuickFormSheet open={addPhaseOpen} title="Add stage" placeholder="e.g. Build" cta="Add stage"
         onSubmit={(name, deadline) => goalActions.addPhase(goal.id, name, '', deadline)} onClose={() => setAddPhaseOpen(false)} />

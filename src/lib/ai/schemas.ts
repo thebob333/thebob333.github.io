@@ -95,3 +95,27 @@ export function parsePasted<S extends z.ZodType>(schema: S, text: string): z.inf
 }
 
 export const schemaText = (schema: z.ZodType) => JSON.stringify(z.toJSONSchema(schema), null, 1);
+
+export const CaptureAction = z.object({
+  kind: z.enum(['practice_done', 'step', 'step_done', 'metric', 'note']),
+  goalId: z.string(),
+  habitId: z.string().nullable().describe('For practice_done.'),
+  todoId: z.string().nullable().describe('For step_done.'),
+  title: z.string().nullable().describe('For step: the new step. For note: the note text.'),
+  dueDate: z.string().nullable().describe('For step: YYYY-MM-DD if a date was mentioned.'),
+  value: z.number().nullable().describe('For metric: the measured number in the goal\'s unit.'),
+  summary: z.string().describe('What this does, in a few words, e.g. "Mark Run done".'),
+});
+export type CaptureAction = z.infer<typeof CaptureAction>;
+
+export const Capture = z.object({
+  actions: z.array(CaptureAction).describe('Only things clearly stated. Empty if nothing matches a goal.'),
+  unmatched: z.array(z.string()).describe('Bits that matched no goal, in the user\'s words.'),
+});
+export type Capture = z.infer<typeof Capture>;
+
+export const CoachAnswer = z.object({
+  answer: z.string().describe('A direct, practical answer in 2-6 short paragraphs or a short list.'),
+  proposals: z.array(Proposal).describe('0-4 concrete changes to this goal the user can add with one tap.'),
+});
+export type CoachAnswer = z.infer<typeof CoachAnswer>;
