@@ -8,17 +8,17 @@ const ids = () => { let n = 0; return () => `id${++n}`; };
 
 const task = (key: string, over: Partial<ArchRoute['stages'][number]['tasks'][number]> = {}) => ({
   key, title: `Task ${key}`, description: '', effortHours: 4, waitDays: 0, dependsOn: [] as string[], milestone: false,
-  steps: [{ title: `Do ${key}`, minutes: 60 }], ...over,
+  steps: [`Do ${key}`], ...over,
 });
 const route = (name: string, keys: string[]): ArchRoute => ({
   name, summary: '', tradeoff: '',
   stages: [
     { title: 'Write', description: '', tasks: [task(keys[0]), task(keys[1], { dependsOn: [keys[0]], waitDays: 7 })], practices: [] },
-    { title: 'Shoot', description: '', tasks: [task(keys[2], { dependsOn: [keys[1], 'ghost', keys[2]], milestone: true })], practices: [{ title: 'Watch a short', perWeek: 2, buildToPerWeek: 3, amount: null, unit: null, step: null, maxAmount: null, easyVersion: 'Watch 5 min', details: null }] },
+    { title: 'Shoot', description: '', tasks: [task(keys[2], { dependsOn: [keys[1], 'ghost', keys[2]], milestone: true })], practices: [{ title: 'Watch a short', perWeek: 2, buildToPerWeek: 3, minutes: 0, easyVersion: 'Watch 5 min' }] },
   ],
 });
 const plan = (over: Partial<DayZeroPlan> = {}): DayZeroPlan => ({
-  title: 'Make an award-winning short film', shape: 'build', why: 'To prove I can', metric: null,
+  title: 'Make an award-winning short film', shape: 'build', why: 'To prove I can', metricName: '', metricUnit: '', metricTarget: 0, metricHigherIsBetter: true,
   strategy: 'Small crew, festival deadlines.', research: 'Sundance deadline is in August.', assumptions: ['Has a phone camera'],
   risks: [{ risk: 'Script stalls', mitigation: 'Table read' }],
   routes: [route('Scrappy solo', ['a', 'b', 'c']), route('Build a crew', ['x', 'b', 'y'])],

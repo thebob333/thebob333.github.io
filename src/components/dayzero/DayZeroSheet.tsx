@@ -47,6 +47,7 @@ export function DayZeroSheet({ open, goal, onClose }: { open: boolean; goal?: Go
   const [answers, setAnswers] = useState<string[]>([]);
   const [searches, setSearches] = useState<string[]>([]);
   const [found, setFound] = useState<Research | null>(null);
+  const [researchNote, setResearchNote] = useState<string | null>(null);
   const [plan, setPlan] = useState<DayZeroPlan | null>(null);
   const [routeIndex, setRouteIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export function DayZeroSheet({ open, goal, onClose }: { open: boolean; goal?: Go
   // Fill from the goal each time the sheet opens.
   useEffect(() => {
     if (!open) return;
-    setStep('brief'); setQuestions([]); setAnswers([]); setSearches([]); setFound(null); setPlan(null); setError(null); setChanged('');
+    setStep('brief'); setQuestions([]); setAnswers([]); setSearches([]); setFound(null); setResearchNote(null); setPlan(null); setError(null); setChanged('');
     setBrief(goal ? (goal.architect?.brief || [goal.title, goal.why].filter(Boolean).join(' — ')) : '');
     setHours(goal?.hoursPerWeek ?? 5);
     setDeadline(goal?.deadline ? dateKeyOf(goal.deadline) : '');
@@ -101,8 +102,9 @@ export function DayZeroSheet({ open, goal, onClose }: { open: boolean; goal?: Go
       try {
         notes = await research(RESEARCH_SYSTEM, `${context()}\n\nResearch how people actually achieve this.`, q => setSearches(s => [...s, q]));
         setFound(notes);
-      } catch {
-        notes = null; // Research is a bonus: keep going without it.
+      } catch (e) {
+        notes = null; // Research is a bonus: keep going without it, but say so.
+        setResearchNote(e instanceof AiError ? e.message : 'Research was unavailable.');
       }
     }
     setStep('designing');
@@ -306,6 +308,7 @@ export function DayZeroSheet({ open, goal, onClose }: { open: boolean; goal?: Go
                   ))}
                 </div>
               )}
+              {researchNote && <p className="text-footnote text-muted-foreground">Web research was skipped this time ({researchNote}) — the plan is based on Claude's own knowledge.</p>}
               {found?.sources?.length ? <p className="text-footnote text-muted-foreground">Researched from {found.sources.length} source{found.sources.length === 1 ? '' : 's'} — listed under Strategy on the goal.</p> : null}
             </div>
           )}

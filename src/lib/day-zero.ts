@@ -29,13 +29,14 @@ export function toRoute(r: ArchRoute, newId: NewId): Route {
         effortHours: clamp(Number(t.effortHours) || 2, 0.25, 400),
         waitDays: clamp(Math.round(Number(t.waitDays) || 0), 0, 365),
         dependsOn: t.dependsOn ?? [], milestone: !!t.milestone,
-        steps: (t.steps ?? []).filter(s => s.title?.trim()).map(s => ({ title: s.title.trim(), minutes: pos(s.minutes) ?? null })),
+        steps: (t.steps ?? []).map(x => (typeof x === 'string' ? x : '').trim()).filter(Boolean).map(title => ({ title, minutes: null })),
         practices: [],
       };
     }),
     practices: (st.practices ?? []).map((p): BlueprintTask['practices'][number] => ({
       title: p.title, perWeek: p.perWeek, buildToPerWeek: p.buildToPerWeek, easyVersion: p.easyVersion,
-      amount: p.amount ?? null, unit: p.unit ?? null, step: p.step ?? null, maxAmount: p.maxAmount ?? null, details: p.details ?? null,
+      // A session length becomes a growable amount (+5 min when on target).
+      amount: pos(p.minutes) ?? null, unit: pos(p.minutes) ? 'min' : null, step: pos(p.minutes) ? 5 : null, maxAmount: null, details: null,
     })),
   }));
   const keys = new Set(stages.flatMap(s => s.tasks.map(t => t.key)));
@@ -165,7 +166,6 @@ export function architect(plan: DayZeroPlan, opts: ArchitectOptions, existing?: 
   }
   const phases = existing ? carryOver(existing.phases, fresh, opts.newId) : fresh;
   const hoursPerWeek = clamp(opts.hoursPerWeek || plan.suggestedHoursPerWeek || DEFAULT_HOURS_PER_WEEK, 0.5, 80);
-  const m = plan.metric;
   const nowIso = opts.now.toISOString();
   const arch: Architecture = {
     brief: opts.brief.trim(),
@@ -186,7 +186,7 @@ export function architect(plan: DayZeroPlan, opts: ArchitectOptions, existing?: 
     : {
       id: opts.newId(), title: plan.title.trim() || opts.brief.trim().slice(0, 60), description: '', endGoal: opts.brief.trim(),
       createdAt: nowIso, phases, shape: plan.shape, status: 'active', pushback: 'honest', why: plan.why?.trim() || undefined,
-      metric: plan.shape === 'better' && m && m.name ? { name: m.name, unit: m.unit, start: m.start ?? undefined, target: m.target ?? undefined, higherIsBetter: m.higherIsBetter } : undefined,
+      metric: plan.shape === 'better' && plan.metricName?.trim() ? { name: plan.metricName.trim(), unit: plan.metricUnit ?? '', target: pos(plan.metricTarget), higherIsBetter: !!plan.metricHigherIsBetter } : undefined,
       deadline: opts.deadline ?? (plan.targetDateDays && plan.targetDateDays > 0 ? addDays(opts.today, plan.targetDateDays) : undefined),
       ifThen: plan.ifThen.map(s => s.trim()).filter(Boolean),
       hoursPerWeek, architect: arch,

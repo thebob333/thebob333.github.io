@@ -23,6 +23,13 @@ function client(): Anthropic {
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 2, timeout: 120_000 });
 }
 
+/** The server's own explanation, e.g. "Schema is too complex for compilation." */
+function apiMessage(err: InstanceType<typeof Anthropic.APIError>): string {
+  const body = err.error as { error?: { message?: unknown } } | undefined;
+  const m = body?.error?.message;
+  return typeof m === 'string' ? m : '';
+}
+
 function friendly(err: unknown): AiError {
   if (err instanceof AiError) return err;
   if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
@@ -33,7 +40,11 @@ function friendly(err: unknown): AiError {
   if (err instanceof Anthropic.BadRequestError && /credit|balance|billing/i.test(err.message)) {
     return new AiError('Your Anthropic account is out of credit. Add some at console.anthropic.com.', 'credit');
   }
-  if (err instanceof Anthropic.APIError) return new AiError(`Claude had a problem (${err.status ?? 'error'}). Try again.`, 'other');
+  if (err instanceof Anthropic.APIError) {
+    const detail = apiMessage(err);
+    console.error('Claude API error', err.status, detail);
+    return new AiError(`Claude had a problem (${err.status ?? 'error'})${detail ? `: ${detail.slice(0, 220)}` : '. Try again.'}`, 'other');
+  }
   return new AiError('Something went wrong talking to Claude. Try again.', 'other');
 }
 
@@ -63,9 +74,18 @@ export async function askJSON<S extends z.ZodType>(opts: AskOptions<S>): Promise
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default' as const,
     };
-    const res = opts.stream
-      ? await client().beta.messages.stream(params).finalMessage()
-      : await client().beta.messages.parse(params);
+    const send = (p: typeof params | Omit<typeof params, 'betas' | 'fallbacks'>) => (opts.stream
+      ? client().beta.messages.stream(p).finalMessage()
+      : client().beta.messages.parse(p));
+    let res: Awaited<ReturnType<typeof send>>;
+    try {
+      res = await send(params);
+    } catch (e) {
+      // Some accounts or request shapes reject the refusal-fallback beta: retry once without it.
+      if (!(e instanceof Anthropic.BadRequestError) || /credit|balance|billing|schema/i.test(apiMessage(e))) throw e;
+      const { betas: _b, fallbacks: _f, ...plain } = params;
+      res = await send(plain);
+    }
     track(res.usage);
     if (res.stop_reason === 'refusal') throw new AiError("Claude couldn't help with that one. Try rewording it.", 'refusal');
     if (res.stop_reason === 'max_tokens') throw new AiError('The reply was too long and got cut off. Try again.', 'bad-reply');
@@ -88,24 +108,33 @@ export async function research(system: string, prompt: string, onSearch?: (query
     const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: prompt }];
     let final: Anthropic.Beta.BetaMessage | null = null;
     // Long searches can pause; send the turn back so the server continues it.
+    let withFallback = true;
     for (let i = 0; i < 4; i++) {
-      const stream = c.beta.messages.stream({
-        model: MODEL,
-        max_tokens: 12000,
-        system,
-        messages,
-        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }],
-        output_config: { effort: 'medium' },
-        betas: ['server-side-fallback-2026-07-01'],
-        fallbacks: 'default',
-      });
-      stream.on('contentBlock', block => {
-        if (block.type === 'server_tool_use' && block.name === 'web_search') {
-          const q = (block.input as { query?: unknown })?.query;
-          if (typeof q === 'string') onSearch?.(q);
-        }
-      });
-      final = await stream.finalMessage();
+      const run = () => {
+        const stream = c.beta.messages.stream({
+          model: MODEL,
+          max_tokens: 12000,
+          system,
+          messages,
+          tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }],
+          output_config: { effort: 'medium' },
+          ...(withFallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {}),
+        });
+        stream.on('contentBlock', block => {
+          if (block.type === 'server_tool_use' && block.name === 'web_search') {
+            const q = (block.input as { query?: unknown })?.query;
+            if (typeof q === 'string') onSearch?.(q);
+          }
+        });
+        return stream.finalMessage();
+      };
+      try {
+        final = await run();
+      } catch (e) {
+        if (!withFallback || !(e instanceof Anthropic.BadRequestError)) throw e;
+        withFallback = false;
+        final = await run();
+      }
       track(final.usage);
       if (final.stop_reason !== 'pause_turn') break;
       messages.push({ role: 'assistant', content: final.content });

@@ -121,52 +121,60 @@ export const CoachAnswer = z.object({
 export type CoachAnswer = z.infer<typeof CoachAnswer>;
 
 // ─── Day Zero: the goal architect ───────────────────────────────────────────
+// Kept deliberately flat and free of nullable fields: big nested schemas with
+// many optional/union fields are rejected as "too complex" by structured outputs.
+// Use 0 / "" for "none".
+
+export const ArchPractice = z.object({
+  title: z.string().describe('Short verb phrase, e.g. "Practise editing".'),
+  perWeek: z.number().int().describe('Sessions per week to start with, 1-7. Start achievable.'),
+  buildToPerWeek: z.number().int().describe('Sessions per week to build toward, 1-7, >= perWeek.'),
+  minutes: z.number().int().describe('Minutes per session, or 0 if it does not matter.'),
+  easyVersion: z.string().describe('The minimum version for bad weeks.'),
+});
 
 export const ArchTask = z.object({
   key: z.string().describe('Short unique id within the route, e.g. "t1".'),
-  title: z.string().describe('A concrete chunk of work, starting with a verb, e.g. "Write the first draft of the script".'),
+  title: z.string().describe('A concrete chunk of work, starting with a verb.'),
   description: z.string().describe('One sentence: what "done" looks like.'),
-  effortHours: z.number().describe('Honest hands-on hours for the whole task for THIS person, including learning curves. Not calendar time.'),
-  waitDays: z.number().int().describe('Calendar days of waiting after this is done before dependent tasks can start (replies, reviews, shipping, festival decisions). 0 if none.'),
-  dependsOn: z.array(z.string()).describe('Keys of tasks (in this route) that must be finished first. Only real dependencies; leave empty when it can start any time.'),
-  milestone: z.boolean().describe('True for the few tasks that mark a meaningful achievement on the way.'),
-  steps: z.array(z.object({
-    title: z.string().describe('One action doable in one sitting, starting with a verb.'),
-    minutes: z.number().int().nullable().describe('Rough minutes (15–120), or null.'),
-  })).describe('2–6 concrete steps for the recommended route; 1–3 for alternative routes.'),
+  effortHours: z.number().describe('Honest hands-on hours for the whole task for THIS person, including learning. Not calendar time.'),
+  waitDays: z.number().int().describe('Calendar days of waiting after this is done before dependent tasks can start (replies, reviews, decisions). 0 if none.'),
+  dependsOn: z.array(z.string()).describe('Keys of tasks in this route that must be finished first. Only real dependencies.'),
+  milestone: z.boolean().describe('True for the few tasks that mark a meaningful achievement.'),
+  steps: z.array(z.string()).describe('Concrete one-sitting actions starting with a verb: 2-6 for the recommended route, 1-3 for others.'),
 });
 
 export const ArchStage = z.object({
   title: z.string(),
   description: z.string().describe('One sentence: what this stage is for.'),
   tasks: z.array(ArchTask),
-  practices: z.array(PlanPractice).describe('Recurring practices for this stage, only where repeated skill-building or upkeep matters (often empty).'),
+  practices: z.array(ArchPractice).describe('Recurring practices, only where repeated skill-building or upkeep matters (often empty).'),
 });
 
 export const ArchRoute = z.object({
-  name: z.string().describe('2–4 words, e.g. "Scrappy solo", "Build a crew", "Learn then make".'),
+  name: z.string().describe('2-4 words, e.g. "Scrappy solo", "Build a crew".'),
   summary: z.string().describe('One or two sentences: how this route gets there.'),
-  tradeoff: z.string().describe('One sentence: what you gain and what you give up versus the other routes.'),
-  stages: z.array(ArchStage).describe('2–5 stages in order.'),
+  tradeoff: z.string().describe('One sentence: what you gain and give up versus the other routes.'),
+  stages: z.array(ArchStage).describe('2-5 stages in order.'),
 });
 
 export const DayZeroPlan = z.object({
-  title: z.string().describe('The goal as a short title (under 60 characters), in the user\'s spirit.'),
+  title: z.string().describe("The goal as a short title (under 60 characters), in the user's spirit."),
   shape: SHAPE,
-  why: z.string().nullable().describe("The user's reason in their words, if they gave one."),
-  metric: z.object({
-    name: z.string(), unit: z.string(),
-    start: z.number().nullable(), target: z.number().nullable(), higherIsBetter: z.boolean(),
-  }).nullable().describe('For "better" goals: the number being moved. Null otherwise.'),
-  strategy: z.string().describe('3–5 sentences: the core strategy, why it works, and what matters most.'),
-  research: z.string().describe('2–4 sentences: the key facts from research that shaped this plan (real deadlines, typical timelines, what most people get wrong). Empty string if no research was provided.'),
-  assumptions: z.array(z.string()).describe('2–4 assumptions the plan rests on, so the user can correct them.'),
-  risks: z.array(z.object({ risk: z.string(), mitigation: z.string() })).describe('2–4 likeliest ways this fails and what the plan does about each.'),
-  routes: z.array(ArchRoute).describe('2–3 genuinely different routes. The recommended one is fully detailed.'),
-  recommendedRoute: z.number().int().describe('Index into routes of the one you recommend.'),
-  suggestedHoursPerWeek: z.number().describe('Hours a week this realistically needs, given what the user said.'),
-  targetDateDays: z.number().int().nullable().describe('Realistic days from today to finish the recommended route at the suggested hours, or null if open-ended.'),
-  ifThen: z.array(z.string()).describe('2–3 if-then plans for the likeliest obstacles, each "If …, then I will …".'),
+  why: z.string().describe("The user's reason in their words, or an empty string."),
+  metricName: z.string().describe('For "better" goals: the number being moved (e.g. "5K time"). Empty string otherwise.'),
+  metricUnit: z.string().describe('Unit for the metric, or empty string.'),
+  metricTarget: z.number().describe('Target value for the metric, or 0.'),
+  metricHigherIsBetter: z.boolean().describe('For the metric: true if higher is better.'),
+  strategy: z.string().describe('3-5 sentences: the core strategy, why it works, what matters most.'),
+  research: z.string().describe('2-4 sentences: key facts from the research that shaped this plan (real deadlines, typical timelines). Empty string if none.'),
+  assumptions: z.array(z.string()).describe('2-4 assumptions the plan rests on.'),
+  risks: z.array(z.object({ risk: z.string(), mitigation: z.string() })).describe('2-4 likeliest ways this fails and what the plan does about each.'),
+  routes: z.array(ArchRoute).describe('2-3 genuinely different routes; the recommended one fully detailed.'),
+  recommendedRoute: z.number().int().describe('Index into routes of the recommended one.'),
+  suggestedHoursPerWeek: z.number().describe('Hours a week this realistically needs.'),
+  targetDateDays: z.number().int().describe('Realistic days from today to finish the recommended route at the suggested hours, or 0 if open-ended.'),
+  ifThen: z.array(z.string()).describe('2-3 if-then plans, each "If ..., then I will ...".'),
   firstStep: z.string().describe('The very first action, under 30 minutes, doable today.'),
 });
 export type DayZeroPlan = z.infer<typeof DayZeroPlan>;
