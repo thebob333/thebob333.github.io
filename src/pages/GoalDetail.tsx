@@ -13,7 +13,6 @@ import { ProgressRing } from '@/components/ProgressRing';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Button } from '@/components/ui/button';
 import { TaskSheet, type TaskRef } from '@/components/goals/TaskSheet';
-import { CoachPlanSheet } from '@/components/goals/CoachPlanSheet';
 import { QuickFormSheet } from '@/components/goals/QuickFormSheet';
 import { EditItemDialog, type EditTarget } from '@/components/goals/EditItemDialog';
 import { calculatePhaseProgress } from '@/types/goals';
@@ -25,11 +24,14 @@ import { GoalSettingsSheet } from '@/components/goals/GoalSettingsSheet';
 import { GoalPractices } from '@/components/goals/GoalPractices';
 import { MetricCard } from '@/components/goals/MetricCard';
 import { ForecastCard } from '@/components/goals/ForecastCard';
+import { PathCard } from '@/components/path/PathCard';
+import { isPathTask } from '@/lib/path';
 import { useStore } from '@/hooks/useStore';
 import { stores } from '@/lib/storage';
 import { goalProgress } from '@/lib/goal-progress';
 import { PUSHBACK, STATUSES, shapeInfo } from '@/lib/goal-shapes';
 
+const DayZeroSheet = lazy(() => import('@/components/dayzero/DayZeroSheet').then(m => ({ default: m.DayZeroSheet })));
 const AskCoachSheet = lazy(() => import('@/components/goals/AskCoachSheet').then(m => ({ default: m.AskCoachSheet })));
 
 export default function GoalDetailPage() {
@@ -65,6 +67,7 @@ export default function GoalDetailPage() {
   const focused = focusIds.includes(goal.id);
   const nowPhase = currentPhase(goal);
   const hasTasks = goal.phases.some(p => p.tasks.length > 0);
+  const hasPathTasks = goal.shape !== 'keep' && goal.phases.some(p => p.tasks.some(t => isPathTask(t) && ((t.todos ?? []).length > 0 || (t.effortHours ?? 0) > 0)));
   const shape = shapeInfo(goal.shape);
   const ShapeIcon = shape.icon;
   const status = goal.status ?? 'active';
@@ -105,7 +108,7 @@ export default function GoalDetailPage() {
             </HeaderButton>
             <RowMenu label="Goal actions" className="h-9 w-9 rounded-full bg-secondary md:h-9 md:w-9" items={[
               { label: 'Goal settings', icon: Settings2, onSelect: () => setSettingsOpen(true) },
-              { label: 'Plan with the coach', icon: Sparkles, onSelect: () => setAiOpen(true) },
+              { label: goal.architect ? 'Rethink the plan' : 'Design with Day Zero', icon: Sparkles, onSelect: () => setAiOpen(true) },
               { label: 'Ask the coach', icon: MessageCircle, onSelect: () => setAskOpen(true) },
               { label: 'Spread deadlines', icon: CalendarDays, onSelect: spread },
               { label: 'Duplicate', icon: Copy, separated: true, onSelect: () => { const c = goalActions.cloneGoal(goal.id); if (c) navigate(`/goals/${c.id}`); toast.success('Goal duplicated'); } },
@@ -171,7 +174,12 @@ export default function GoalDetailPage() {
 
       {goal.shape === 'better' && <MetricCard goal={goal} onSetUp={() => setSettingsOpen(true)} />}
 
-      {(hasTasks || goal.shape === 'better') && <ForecastCard goal={goal} />}
+      {hasPathTasks && (
+        <PathCard goal={goal} today={todayKey()} onRethink={() => setAiOpen(true)}
+          onOpenTask={n => setTask({ goalId: goal.id, phaseId: n.phaseId, taskId: n.id })} />
+      )}
+
+      {(goal.shape === 'better' || (hasTasks && !hasPathTasks)) && <ForecastCard goal={goal} />}
 
       <GoalPractices goal={goal} onEdit={setEdit} onAdd={() => {
         const p = goal.phases.find(ph => ph.tasks.length) ?? goal.phases[0];
@@ -230,7 +238,7 @@ export default function GoalDetailPage() {
           <p className="text-headline">Break it down</p>
           <p className="mt-1 text-body text-muted-foreground">Let AI draft a full plan in a minute, or add tasks yourself.</p>
           <div className="mt-4 flex gap-2">
-            <Button className="h-12 flex-1 rounded-xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with the coach</Button>
+            <Button className="h-12 flex-1 rounded-xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> {goal.architect ? 'Rethink the plan' : 'Design with Day Zero'}</Button>
             <Button variant="secondary" className="h-12 rounded-xl text-body" onClick={() => setAddTaskPhase(goal.phases[0]?.id ?? null)} disabled={!goal.phases.length}>Add a task</Button>
           </div>
         </div>
@@ -289,7 +297,7 @@ export default function GoalDetailPage() {
 
       <div className="flex gap-2">
         {goal.shape !== 'once' && <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAddPhaseOpen(true)}><Plus className="mr-1.5 h-4 w-4" /> Add stage</Button>}
-        <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> Plan with the coach</Button>
+        <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setAiOpen(true)}><Sparkles className="mr-1.5 h-4 w-4" /> {goal.architect ? 'Rethink the plan' : 'Design with Day Zero'}</Button>
       </div>
       <Button variant="secondary" className="-mt-3 h-12 w-full rounded-2xl text-body font-semibold" onClick={() => setAskOpen(true)}><MessageCircle className="mr-1.5 h-4 w-4" /> Ask the coach</Button>
 
@@ -319,7 +327,7 @@ export default function GoalDetailPage() {
       <EditItemDialog target={edit} onClose={() => setEdit(null)} />
       <GoalSettingsSheet goal={settingsOpen ? goal : null} onClose={() => setSettingsOpen(false)} />
       {askOpen && <Suspense fallback={null}><AskCoachSheet goal={goal} onClose={() => setAskOpen(false)} /></Suspense>}
-      <CoachPlanSheet goal={aiOpen ? goal : null} onClose={() => setAiOpen(false)} />
+      {aiOpen && <Suspense fallback={null}><DayZeroSheet open goal={goal} onClose={() => setAiOpen(false)} /></Suspense>}
       <QuickFormSheet open={addPhaseOpen} title="Add stage" placeholder="e.g. Build" cta="Add stage"
         onSubmit={(name, deadline) => goalActions.addPhase(goal.id, name, '', deadline)} onClose={() => setAddPhaseOpen(false)} />
       <QuickFormSheet open={!!addTaskPhase} title="Add task" placeholder="e.g. Get proper running shoes" cta="Add task"

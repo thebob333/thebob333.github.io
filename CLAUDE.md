@@ -87,6 +87,13 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 - Cardio: `stores.CARDIO` (`CardioEntry` in `types/workout.ts`, `src/hooks/useCardio.ts`, `CardioSheet`); a run can also log its time to a timed "get better" goal.
 - Plan: `PlanSuggestions` offers free slots for practices due that day; practice blocks (`habitId`) are kept and their tick checks the practice off for that day.
 
+### Day Zero and The Path
+
+- `src/lib/path.ts` (tested): the Path engine. Effort per task (`effortHours`, else its steps), dependencies (`Task.dependsOn`; a goal with none uses stage order — `implicit`), critical chain (CPM, incl. `waitDays`), a serial list schedule for one person at `goal.hoursPerWeek` (default 5) prioritising the longest remaining chain, dates with a planning-fallacy margin (likely ×1.15, range ×0.9 … ×1.5), learned pace after 3 weeks, deadline status + hours needed, the bottleneck. `applySchedule` writes `plannedStart/End` and dates for open steps, marking them `todo.scheduled`; `autopilot` re-plans Day Zero goals after a slip or weekly (run by `engineActions.run`) and logs a `PlanRebuild` with an Undo snapshot. Exception to the "never change deadlines" rule: only scheduler-owned step dates (`scheduled: true`) move — never dates you set, never the goal deadline.
+- `src/lib/day-zero.ts` (tested): turns a `DayZeroPlan` (AI) into a goal (`architect`), stores 2–3 `Route` blueprints on `goal.architect`, `switchRoute` / redesigns keep finished work via `carryOver` (same-named tasks and practices keep their ids), `compareRoutes`, `goalStateText` for a rethink, `undoLastChange`.
+- AI: `research()` in `client.ts` (web search `web_search_20260209`, handles `pause_turn`, returns sources), then the architect call (`DayZeroPlan`, streamed, effort high). Prompts: `RESEARCH_SYSTEM`, `DAY_ZERO_*` in `prompts.ts`. Copy-paste fallback without a key.
+- UI: `DayZeroSheet` (`src/components/dayzero/`, lazy; from Goals, New goal, and the goal menu — replaces the old "Plan with the coach"), `PathCard` / `PathView` / `PathMap` (`src/components/path/`), "On the Path" section in `TaskSheet` (hours, waiting days, needs-first, milestone), `PlanNotices` on Today. Migration v7 cleans `dependsOn` / effort numbers.
+
 ### Other domain modules
 
 - `src/lib/goal-plan-parser.ts` — parses AI-written goal plans (tolerant of markdown, missing dates) and merges them into a goal without duplicating phases/tasks/to-dos.

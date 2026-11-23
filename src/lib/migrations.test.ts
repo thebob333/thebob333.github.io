@@ -57,6 +57,21 @@ describe('migrateData', () => {
     expect(migrateData(data, 5, ctx()).data).toEqual(data);
   });
 
+  it('v7 keeps only valid task dependencies and effort numbers', () => {
+    const { data } = migrateData({
+      [KEYS.GOALS]: [{ id: 'g', title: 'Film', shape: 'once', status: 'active', pushback: 'honest', phases: [{ id: 'p', title: 'P', tasks: [
+        { id: 'a', title: 'A', todos: [], habits: [], effortHours: 4 },
+        { id: 'b', title: 'B', todos: [], habits: [], dependsOn: ['a', 'a', 'b', 'ghost', 3], effortHours: -2, waitDays: 'x' },
+      ] }] }],
+    } as Any, 6, ctx());
+    const [a, b] = (data[KEYS.GOALS] as Any)[0].phases[0].tasks;
+    expect(a.effortHours).toBe(4);
+    expect(b.dependsOn).toEqual(['a']);
+    expect('effortHours' in b).toBe(false);
+    expect('waitDays' in b).toBe(false);
+    expect(migrateData(data, 6, ctx()).data).toEqual(data);
+  });
+
   it('sanitizes settings: null gold targets, zero bodyweight', () => {
     const { data } = migrateData({
       [KEYS.SETTINGS]: { goldTargets: null, bodyweight: 0, customQuotes: 'nope' },

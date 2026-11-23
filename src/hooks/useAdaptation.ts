@@ -4,6 +4,7 @@ import { stores } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { acceptAdjustment, runEngine, undoAdjustment } from '@/lib/adapt';
+import { autopilot } from '@/lib/path';
 import { dateKeyOf, type DateKey } from '@/lib/dates';
 import type { Adjustment } from '@/types/goals';
 
@@ -32,10 +33,16 @@ export const engineActions = {
       today,
       lastActivity: lastActivityDay(),
     });
-    if (!res.changed) return;
-    if (res.goals !== stores.GOALS.get()) stores.GOALS.set(res.goals);
-    if (res.added.length) stores.ADJUSTMENTS.update(prev => [...prev, ...res.added].slice(-300));
-    stores.ENGINE.set(res.state);
+    if (res.changed) {
+      if (res.goals !== stores.GOALS.get()) stores.GOALS.set(res.goals);
+      if (res.added.length) stores.ADJUSTMENTS.update(prev => [...prev, ...res.added].slice(-300));
+      stores.ENGINE.set(res.state);
+    }
+    // Day Zero goals: rebuild the schedule around slips (and weekly), with a note and Undo.
+    stores.GOALS.update(goals => {
+      const next = goals.map(g => autopilot(g, today));
+      return next.some((g, i) => g !== goals[i]) ? next : goals;
+    });
   },
 
   undo(id: string) {

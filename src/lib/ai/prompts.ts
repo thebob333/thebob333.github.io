@@ -135,3 +135,43 @@ export const CAPTURE_TASK = `The user dumped a quick note. Turn it into actions 
 Only include what they clearly said. Anything that fits no goal goes in "unmatched".`;
 
 export const ASK_TASK = `Answer the user's question about this goal. Be practical and specific to their situation and numbers. If the answer implies concrete changes, propose them ("step", "practice" with the practice id, "deadline", "ifThen"); otherwise leave proposals empty.`;
+
+// ─── Day Zero ───────────────────────────────────────────────────────────────
+
+export const RESEARCH_SYSTEM = `You research how ambitious goals are actually achieved, for a planning app. Use web search to find concrete, current facts. Be efficient: a handful of well-chosen searches.
+
+Report, don't plan. Write a dense brief (under 450 words, plain text, short bullet lines) covering:
+- The usual sequence of stages and what each involves.
+- Realistic time and effort for a person in the user's situation.
+- Gatekeepers and real dates in the next 12–18 months (applications, festivals, exams, seasons, submission windows) with the date and source name.
+- The most common reasons people fail, and what the successful ones do differently.
+- The 2–4 best resources (courses, books, communities, tools).
+Facts only, with numbers and dates. If something is uncertain, say so.`;
+
+export function dayZeroContext(brief: string, today: DateKey, opts: { hoursPerWeek: number; deadline?: string; qa?: string; existing?: string }): string {
+  return [
+    `Today is ${today}.`,
+    `What the user wants: "${brief.trim()}"`,
+    `Hours a week they can give it: about ${opts.hoursPerWeek}.`,
+    opts.deadline ? `Their target date: ${opts.deadline}.` : 'No target date given.',
+    opts.qa ? `Their answers:\n${opts.qa}` : '',
+    opts.existing ? `Current state of this goal (keep finished work; plan the rest):\n${opts.existing}` : '',
+  ].filter(Boolean).join('\n\n');
+}
+
+export const DAY_ZERO_QUESTIONS_TASK = `The user wants to start the goal above. Ask the 2–4 questions whose answers most change the plan: their current level and relevant experience, resources or people they have, constraints, and what "done" means to them. Don't ask about hours per week or the deadline (already known). Specific to this goal.`;
+
+export const DAY_ZERO_ARCHITECT_TASK = `Design this goal end to end, like a world-class strategist and project planner who has seen many people attempt it.
+
+- Give 2–3 genuinely different routes (e.g. scrappy and fast vs. thorough vs. with collaborators or a course). Recommend the one most likely to succeed for THIS person, and detail it fully; the others can be lighter.
+- Break each route into stages, and stages into tasks: chunks of 2–40 hands-on hours with honest effort for this person, including learning. Mark real dependencies between tasks with their keys, so independent work can happen in parallel. Include waiting time (replies, reviews, decisions) as waitDays.
+- Use real dates from the research where they matter (e.g. aim to finish before a submission deadline), and say so in the strategy.
+- Mark 3–6 milestones. Keep each route to at most ~16 tasks.
+- Practices only where repeated skill-building or upkeep matters, starting achievable, with an easy version.
+- Shape: once = a checklist; build = a project with stages (most big goals); better = a measurable skill; keep = a rhythm; become = stepping stones.
+- Never talk them out of it. Challenge the path, not the ambition. Plain language.`;
+
+export const DAY_ZERO_RETHINK_TASK = `Reality has intervened. Redesign the remaining path for this goal using the current state above and what the user says changed.
+- Keep finished work as it is (don't repeat it). Re-plan everything still open, including dependencies, effort and waiting time.
+- If the current route has stopped making sense, recommend a better one; otherwise refine it. Still give 2–3 routes for what's left.
+- Be honest about the new likely timeline.`;

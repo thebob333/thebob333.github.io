@@ -21,6 +21,7 @@ import { PageHeader } from '@/components/app/PageHeader';
 import { UpNext, type UpNextItem } from '@/components/today/UpNext';
 import { NowCard } from '@/components/today/NowCard';
 import { AdjustmentNotices } from '@/components/today/AdjustmentNotices';
+import { PlanNotices } from '@/components/today/PlanNotices';
 import { SmartNudges } from '@/components/today/SmartNudges';
 import { WeeklyReview, isReviewDue } from '@/components/today/WeeklyReview';
 import { QuickAdd } from '@/components/today/QuickAdd';
@@ -197,6 +198,7 @@ export default function Index() {
             />
           </div>
           <div {...enter(3)}><AdjustmentNotices /></div>
+          <div {...enter(3)}><PlanNotices /></div>
           <div {...enter(4)}><UpNext items={rest} later={later} /></div>
           <div {...enter(5)}><SmartNudges today={today} kinds={['backup']} /></div>
         </>

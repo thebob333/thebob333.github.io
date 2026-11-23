@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Bookmark, ChevronDown, Plus, Sparkles, Star } from 'lucide-react';
 import { useGoals } from '@/hooks/useGoals';
@@ -18,6 +18,8 @@ import { useStore } from '@/hooks/useStore';
 import { stores } from '@/lib/storage';
 import { useTodayKey } from '@/hooks/useToday';
 import type { Goal } from '@/types/goals';
+
+const DayZeroSheet = lazy(() => import('@/components/dayzero/DayZeroSheet').then(m => ({ default: m.DayZeroSheet })));
 
 /** A bold card for a focus goal: gradient, next step, progress. */
 function FocusCard({ goal, onOpen, progress }: { goal: Goal; onOpen: () => void; progress: number }) {
@@ -52,6 +54,7 @@ export default function GoalsPage() {
   const today = useTodayKey();
   const navigate = useNavigate();
   const [newOpen, setNewOpen] = useState(false);
+  const [dayZero, setDayZero] = useState(false);
   const [blueprintsOpen, setBlueprintsOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
@@ -60,6 +63,9 @@ export default function GoalsPage() {
   useEffect(() => {
     if (params.get('new') === '1') {
       setNewOpen(true);
+      setParams({}, { replace: true });
+    } else if (params.get('dayzero') === '1') {
+      setDayZero(true);
       setParams({}, { replace: true });
     }
   }, [params, setParams]);
@@ -107,10 +113,11 @@ export default function GoalsPage() {
       {active.length === 0 && (
         <div className="relative overflow-hidden rounded-[28px] p-6 text-white" style={{ background: domainStyle().gradient }}>
           <Sparkles className="h-8 w-8" />
-          <h2 className="mt-3 text-[26px] font-bold leading-tight tracking-tight">Turn something big into a plan.</h2>
-          <p className="mt-1 text-body text-white/85">Any goal, from tying a tie to starting a company. TELOS plans it the right way for its kind, and adapts when life gets in the way.</p>
+          <h2 className="mt-3 text-[26px] font-bold leading-tight tracking-tight">Tell it something enormous.</h2>
+          <p className="mt-1 text-body text-white/85">Day Zero researches how it's really done, maps every step and what depends on what, schedules it around your week — and re-plans when life happens.</p>
           <div className="mt-5 flex gap-2">
-            <button type="button" onClick={() => setNewOpen(true)} className="pressable h-12 flex-1 rounded-2xl bg-white text-headline text-neutral-900">Create a goal</button>
+            <button type="button" onClick={() => setDayZero(true)} className="pressable flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-white text-headline text-neutral-900"><Sparkles className="h-4 w-4" /> Day Zero</button>
+            <button type="button" onClick={() => setNewOpen(true)} className="pressable h-12 rounded-2xl bg-white/20 px-4 text-body font-semibold">Just a goal</button>
             {templates.length > 0 && (
               <button type="button" onClick={() => setBlueprintsOpen(true)} className="pressable h-12 rounded-2xl bg-white/20 px-4 text-body font-semibold">Blueprints</button>
             )}
@@ -148,12 +155,18 @@ export default function GoalsPage() {
       {active.length > 0 && <HabitHeatmap goals={goals} logs={logs} />}
 
       {active.length > 0 && (
-        <Button variant="secondary" className="h-12 w-full rounded-2xl text-body font-semibold" onClick={() => setNewOpen(true)}>
-          <Plus className="mr-1.5 h-4 w-4" /> New goal
-        </Button>
+        <div className="flex gap-2">
+          <Button className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setDayZero(true)}>
+            <Sparkles className="mr-1.5 h-4 w-4" /> Day Zero
+          </Button>
+          <Button variant="secondary" className="h-12 flex-1 rounded-2xl text-body font-semibold" onClick={() => setNewOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" /> New goal
+          </Button>
+        </div>
       )}
 
-      <NewGoalSheet open={newOpen} onClose={() => setNewOpen(false)} />
+      <NewGoalSheet open={newOpen} onClose={() => setNewOpen(false)} onDayZero={() => { setNewOpen(false); setDayZero(true); }} />
+      {dayZero && <Suspense fallback={null}><DayZeroSheet open onClose={() => setDayZero(false)} /></Suspense>}
       <BlueprintsSheet open={blueprintsOpen} onClose={() => setBlueprintsOpen(false)} />
     </div>
   );

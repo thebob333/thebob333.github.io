@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Sparkles } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +12,7 @@ import { SHAPES } from '@/lib/goal-shapes';
 import { cn } from '@/lib/utils';
 
 /** Create a goal with just a title; everything else is optional. Opens the goal when done. */
-export function NewGoalSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function NewGoalSheet({ open, onClose, onDayZero }: { open: boolean; onClose: () => void; onDayZero?: () => void }) {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [why, setWhy] = useState('');
@@ -37,6 +38,15 @@ export function NewGoalSheet({ open, onClose }: { open: boolean; onClose: () => 
           <DialogTitle className="text-title">New goal</DialogTitle>
           <DialogDescription>Start with the outcome. You'll break it down next.</DialogDescription>
         </DialogHeader>
+        {onDayZero && (
+          <button type="button" onClick={onDayZero} className="pressable flex w-full items-center gap-3 rounded-2xl bg-primary/10 p-3 text-left">
+            <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-body font-semibold">Let Day Zero design it</span>
+              <span className="block text-footnote text-muted-foreground">Research, routes, dependencies and a schedule — from one sentence.</span>
+            </span>
+          </button>
+        )}
         <form className="space-y-4" onSubmit={e => { e.preventDefault(); create(); }}>
           <Input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Run a half marathon" className="h-12 rounded-xl text-[17px] font-medium" />
           <Textarea value={why} onChange={e => setWhy(e.target.value)} placeholder="Why does it matter to you? (optional)" rows={2} className="rounded-xl" />

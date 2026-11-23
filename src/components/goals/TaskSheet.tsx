@@ -14,6 +14,8 @@ import { addDays } from '@/lib/dates';
 import { dueText } from '@/lib/goal-meta';
 import { calculateTaskProgress } from '@/types/goals';
 import type { EditTarget } from './EditItemDialog';
+import { buildPath, effortOf, isPathTask, pathDate } from '@/lib/path';
+import { cn } from '@/lib/utils';
 
 export interface TaskRef { goalId: string; phaseId: string; taskId: string }
 
@@ -183,6 +185,73 @@ export function TaskSheet({ target, onClose, onEdit }: { target: TaskRef | null;
                 )}
               </form>
             </div>
+
+            {/* On the Path */}
+            {goal && isPathTask(task) && (() => {
+              const others = goal.phases.flatMap(p => p.tasks.filter(t => t.id !== task.id && isPathTask(t)));
+              const plan = buildPath(goal, today);
+              const node = plan.nodes.find(n => n.id === task.id);
+              const deps = node?.deps ?? [];
+              const toggleDep = (id: string) => {
+                // First time links are set by hand: write down the stage-order links so nothing else changes.
+                if (plan.implicit) {
+                  const phases = goal.phases.map(p => ({ ...p, tasks: p.tasks.map(t => {
+                    const n = plan.nodes.find(x => x.id === t.id);
+                    return n ? { ...t, dependsOn: n.deps } : t;
+                  }) }));
+                  goalActions.updateGoal(goal.id, { phases });
+                }
+                const next = deps.includes(id) ? deps.filter(d => d !== id) : [...deps, id];
+                goalActions.updateTask(goalId, phaseId, taskId, { dependsOn: next });
+              };
+              const num = (v: string) => (v.trim() === '' ? undefined : Math.max(0, Number(v) || 0));
+              return (
+                <div className="mb-5">
+                  <h3 className="mb-1.5 text-headline">On the Path</h3>
+                  <div className="surface space-y-3 p-3">
+                    {node && node.state !== 'done' && (
+                      <p className="text-footnote text-muted-foreground">
+                        Planned {node.start === node.end ? pathDate(node.end, today) : `${pathDate(node.start, today)} – ${pathDate(node.end, today)}`}
+                        {node.critical && <span className="font-semibold text-warning"> · sets your finish date</span>}
+                        {node.downstream > 0 && <> · {node.downstream} step{node.downstream === 1 ? '' : 's'} wait on this</>}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="mb-1 block text-footnote font-semibold text-muted-foreground">Hands-on hours</span>
+                        <Input type="number" inputMode="decimal" min={0} step={0.5} defaultValue={task.effortHours ?? ''} placeholder={`≈ ${Math.round(effortOf(task) * 10) / 10}`}
+                          onBlur={e => goalActions.updateTask(goalId, phaseId, taskId, { effortHours: num(e.target.value) })} className="h-11 rounded-xl" />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-footnote font-semibold text-muted-foreground">Then wait (days)</span>
+                        <Input type="number" inputMode="numeric" min={0} defaultValue={task.waitDays ?? ''} placeholder="0"
+                          onBlur={e => goalActions.updateTask(goalId, phaseId, taskId, { waitDays: num(e.target.value) })} className="h-11 rounded-xl" />
+                      </label>
+                    </div>
+                    {others.length > 0 && (
+                      <div>
+                        <p className="mb-1.5 text-footnote font-semibold text-muted-foreground">Needs first</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {others.map(t => {
+                            const on = deps.includes(t.id);
+                            return (
+                              <button key={t.id} type="button" aria-pressed={on} onClick={() => toggleDep(t.id)}
+                                className={cn('pressable max-w-full truncate rounded-full px-3 py-1.5 text-footnote font-semibold', on ? 'bg-primary text-primary-foreground' : 'bg-secondary')}>
+                                {t.title}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    <button type="button" aria-pressed={!!task.milestone} onClick={() => goalActions.updateTask(goalId, phaseId, taskId, { milestone: !task.milestone })}
+                      className={cn('pressable flex h-9 items-center gap-1.5 rounded-full px-3 text-footnote font-semibold', task.milestone ? 'bg-warning/15 text-warning' : 'bg-secondary')}>
+                      <Trophy className="h-3.5 w-3.5" /> {task.milestone ? 'Milestone' : 'Mark as milestone'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Notes */}
             <h3 className="mb-1.5 text-headline">Notes</h3>

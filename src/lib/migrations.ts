@@ -275,6 +275,34 @@ export const MIGRATIONS: Migration[] = [
       });
     },
   },
+  {
+    version: 7,
+    name: 'path-dependencies',
+    // The Path: tasks can depend on other tasks. Keep only links to tasks in the
+    // same goal (no self-links, no duplicates) and drop broken effort numbers.
+    up(d) {
+      if (!Array.isArray(d[KEYS.GOALS])) return;
+      d[KEYS.GOALS] = (d[KEYS.GOALS] as unknown[]).filter(isObj).map(g => {
+        const ids = new Set(arr(g.phases).filter(isObj).flatMap(p => arr(p.tasks).filter(isObj).map(t => t.id)));
+        return {
+          ...g,
+          phases: arr(g.phases).filter(isObj).map(p => ({
+            ...p,
+            tasks: arr(p.tasks).filter(isObj).map(t => {
+              const next: Record<string, unknown> = { ...t };
+              if (t.dependsOn !== undefined) {
+                next.dependsOn = [...new Set(arr(t.dependsOn).filter(x => typeof x === 'string' && x !== t.id && ids.has(x)))];
+              }
+              for (const k of ['effortHours', 'waitDays'] as const) {
+                if (t[k] !== undefined && !(typeof t[k] === 'number' && Number.isFinite(t[k]) && (t[k] as number) >= 0)) delete next[k];
+              }
+              return next;
+            }),
+          })),
+        };
+      });
+    },
+  },
 ];
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

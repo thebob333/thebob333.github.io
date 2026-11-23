@@ -82,6 +82,11 @@ export interface ToDo {
   isBenchmark?: boolean;
   /** Rough minutes it takes (from the coach or you). */
   estimateMin?: number;
+  /**
+   * The deadline was set by the Path scheduler (not by you), so a plan rebuild
+   * may move it. Deadlines you set yourself are never moved.
+   */
+  scheduled?: boolean;
 }
 
 /**
@@ -130,6 +135,17 @@ export interface Task {
   notes?: TaskNote[];
   order: number;
   deadline?: string;
+  /** Ids of tasks that must be finished before this one can start (The Path). */
+  dependsOn?: string[];
+  /** Hands-on hours the whole task takes. Estimated from its steps when missing. */
+  effortHours?: number;
+  /** Calendar days of waiting after it's done before what depends on it can start (e.g. replies, shipping). */
+  waitDays?: number;
+  /** A milestone on the Path. */
+  milestone?: boolean;
+  /** Where the Path scheduler placed it (local YYYY-MM-DD). */
+  plannedStart?: string;
+  plannedEnd?: string;
 }
 
 export interface Phase {
@@ -166,6 +182,69 @@ export interface Goal {
   metric?: GoalMetric;
   /** If-then plans for likely obstacles ("If I miss a morning run, I'll go after work"). */
   ifThen?: string[];
+  /** Hours a week you can give this goal; the Path schedules with it. */
+  hoursPerWeek?: number;
+  /** Set when Day Zero designed the goal: strategy, research, alternative routes, rebuild log. */
+  architect?: Architecture;
+}
+
+/** A step in a route blueprint (kept for routes you haven't switched to). */
+export interface BlueprintTask {
+  key: string;
+  title: string;
+  description: string;
+  effortHours: number;
+  waitDays: number;
+  dependsOn: string[]; // keys
+  milestone: boolean;
+  steps: { title: string; minutes: number | null }[];
+  practices: {
+    title: string; perWeek: number; buildToPerWeek: number; amount: number | null; unit: string | null;
+    step: number | null; maxAmount: number | null; easyVersion: string; details: string | null;
+  }[];
+}
+
+export interface BlueprintStage { title: string; description: string; tasks: BlueprintTask[] }
+
+/** One way to get there. Day Zero designs 2–3 and you pick. */
+export interface Route {
+  id: string;
+  name: string;
+  summary: string;
+  /** What you gain and give up compared with the others. */
+  tradeoff: string;
+  stages: BlueprintStage[];
+}
+
+export interface PlanRebuild {
+  id: string;
+  at: string; // ISO
+  /** Plain sentence for the user. */
+  note: string;
+  /** Likely finish after the rebuild (YYYY-MM-DD). */
+  finish?: string;
+  seen: boolean;
+  /** "auto" = the scheduler moved its own dates; "coach" = Day Zero redesigned the plan; "route" = you switched routes. */
+  kind: 'auto' | 'coach' | 'route';
+}
+
+export interface Architecture {
+  /** What you told Day Zero, in your words. */
+  brief: string;
+  strategy: string;
+  /** What the research found, in a few sentences. */
+  research?: string;
+  sources?: { title: string; url: string }[];
+  assumptions: string[];
+  risks: { risk: string; mitigation: string }[];
+  routes: Route[];
+  activeRouteId: string;
+  createdAt: string;
+  /** Keep the schedule up to date automatically when you slip or get ahead. */
+  autopilot: boolean;
+  history: PlanRebuild[];
+  /** Phases before the last automatic change, for Undo. */
+  undo?: { at: string; phases: Phase[]; activeRouteId?: string };
 }
 
 export function calculateTaskProgress(task: Task): number {

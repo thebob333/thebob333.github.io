@@ -43,12 +43,17 @@ export interface AskOptions<S extends z.ZodType> {
   schema: S;
   effort?: 'low' | 'medium' | 'high';
   maxTokens?: number;
+  /** Stream the reply (needed for long replies; avoids request timeouts). */
+  stream?: boolean;
 }
+
+type Usage = { input_tokens: number; output_tokens: number; cache_read_input_tokens?: number | null; cache_creation_input_tokens?: number | null };
+const track = (u: Usage) => addUsage(u.input_tokens + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0), u.output_tokens);
 
 /** One structured request. Throws AiError with a message you can show as-is. */
 export async function askJSON<S extends z.ZodType>(opts: AskOptions<S>): Promise<z.infer<S>> {
   try {
-    const res = await client().beta.messages.parse({
+    const params = {
       model: MODEL,
       max_tokens: opts.maxTokens ?? 16000,
       system: opts.system,
@@ -56,13 +61,65 @@ export async function askJSON<S extends z.ZodType>(opts: AskOptions<S>): Promise
       output_config: { format: betaZodOutputFormat(opts.schema), effort: opts.effort ?? 'medium' },
       // If a safety check declines, let Anthropic retry on a fallback model automatically.
       betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-    });
-    addUsage(res.usage.input_tokens + (res.usage.cache_read_input_tokens ?? 0) + (res.usage.cache_creation_input_tokens ?? 0), res.usage.output_tokens);
+      fallbacks: 'default' as const,
+    };
+    const res = opts.stream
+      ? await client().beta.messages.stream(params).finalMessage()
+      : await client().beta.messages.parse(params);
+    track(res.usage);
     if (res.stop_reason === 'refusal') throw new AiError("Claude couldn't help with that one. Try rewording it.", 'refusal');
     if (res.stop_reason === 'max_tokens') throw new AiError('The reply was too long and got cut off. Try again.', 'bad-reply');
     if (!res.parsed_output) throw new AiError("Claude's reply didn't come through properly. Try again.", 'bad-reply');
     return res.parsed_output as z.infer<S>;
+  } catch (err) {
+    throw friendly(err);
+  }
+}
+
+export interface Research { text: string; sources: { title: string; url: string }[] }
+
+/**
+ * Research with live web search (Anthropic runs the searches). Returns a plain
+ * brief plus the pages it used. `onSearch` is called with each search query as it happens.
+ */
+export async function research(system: string, prompt: string, onSearch?: (query: string) => void): Promise<Research> {
+  try {
+    const c = client();
+    const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: 'user', content: prompt }];
+    let final: Anthropic.Beta.BetaMessage | null = null;
+    // Long searches can pause; send the turn back so the server continues it.
+    for (let i = 0; i < 4; i++) {
+      const stream = c.beta.messages.stream({
+        model: MODEL,
+        max_tokens: 12000,
+        system,
+        messages,
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }],
+        output_config: { effort: 'medium' },
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+      });
+      stream.on('contentBlock', block => {
+        if (block.type === 'server_tool_use' && block.name === 'web_search') {
+          const q = (block.input as { query?: unknown })?.query;
+          if (typeof q === 'string') onSearch?.(q);
+        }
+      });
+      final = await stream.finalMessage();
+      track(final.usage);
+      if (final.stop_reason !== 'pause_turn') break;
+      messages.push({ role: 'assistant', content: final.content });
+    }
+    if (!final || final.stop_reason === 'refusal') throw new AiError("Claude couldn't research that one. Try rewording it.", 'refusal');
+    // Text from every turn of the conversation (a paused turn may hold part of it).
+    const all = [...messages.filter(m => m.role === 'assistant').flatMap(m => (Array.isArray(m.content) ? m.content : [])), ...final.content];
+    const text = all.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map(b => b.text).join('').trim();
+    const sources: Research['sources'] = [];
+    for (const b of all) {
+      if (b.type !== 'web_search_tool_result' || !Array.isArray(b.content)) continue; // an error result is an object, not a list
+      for (const r of b.content) if (r.type === 'web_search_result' && !sources.some(x => x.url === r.url)) sources.push({ title: r.title, url: r.url });
+    }
+    return { text, sources: sources.slice(0, 8) };
   } catch (err) {
     throw friendly(err);
   }
