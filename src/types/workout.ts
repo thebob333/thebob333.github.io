@@ -106,6 +106,10 @@ export interface ExerciseConfig {
   deloadPercent?: number;
   /** Tough sessions (missed the rep minimum) out of the last 3 before a lighter week. Default 2. */
   stallSessions?: number;
+  /** "straight": every set at the same weight. "topset": one heavy top set, then back-off sets a bit lighter. */
+  scheme?: 'straight' | 'topset';
+  /** How much lighter the back-off sets are, in percent (top-set scheme). Default 10. */
+  backoffPercent?: number;
   /** Set when the app (or you) changed the plan after a session, so the next suggestion knows. */
   lastAdjustment?: { type: 'increase_weight' | 'increase_reps' | 'deload'; at: string; from: number };
 }

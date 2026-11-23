@@ -3,13 +3,16 @@ import {
   isBodyweightExercise, sanitizeConfig, defaultConfigFor, rpeFromRir,
 } from '@/types/workout';
 import { stores, generateId, type ActiveWorkout } from '@/lib/storage';
-import { getExerciseHistory, getProgressionSuggestion, planNextSession, applyDeload, settingsOf } from '@/lib/progressive-overload';
+import { getExerciseHistory, getProgressionSuggestion, planNextSession, applyDeload, settingsOf, plannedWeights, progressionOptions } from '@/lib/progressive-overload';
 import { useStore } from '@/hooks/useStore';
 import { toast } from 'sonner';
 import { checkAchievements } from '@/lib/achievements';
 import { newRecordsIn } from '@/lib/insights';
 
 const S = stores.SESSIONS;
+/** Progression options for an exercise, with your bodyweight from Settings. */
+export const optsFor = (exercise: string, custom: CustomExercise[] = stores.CUSTOM_EXERCISES.get()) =>
+  progressionOptions(exercise, custom, stores.SETTINGS.get().bodyweight);
 const CFG = stores.EXERCISE_CONFIGS;
 const AW = stores.ACTIVE_WORKOUT;
 
@@ -44,13 +47,12 @@ export const workoutActions = {
       let changed = false;
       const next = configs.map(config => {
         if (!newSession.exercises.some(e => e.exercise === config.exercise)) return config;
-        const bodyweight = isBodyweightExercise(config.exercise, customExercises);
-        const plan = planNextSession(config, getExerciseHistory(allSessions, config.exercise), { bodyweight });
+        const plan = planNextSession(config, getExerciseHistory(allSessions, config.exercise), optsFor(config.exercise, customExercises));
         if (!plan) return config;
         changed = true;
         const name = getExerciseLabel(config.exercise, customExercises);
         changes.push(plan.change === 'increase_weight'
-          ? `${name} → ${plan.config.currentWeight} lbs`
+          ? `${name} → ${isBodyweightExercise(config.exercise, customExercises) ? '+' : ''}${plan.config.currentWeight} lbs`
           : `${name} → ${plan.config.repRangeMin}–${plan.config.repRangeMax} reps`);
         return plan.config;
       });
@@ -64,8 +66,7 @@ export const workoutActions = {
       let changed = false;
       const next = configs.map(config => {
         if (!newSession.exercises.some(e => e.exercise === config.exercise)) return config;
-        const bodyweight = isBodyweightExercise(config.exercise, customExercises);
-        const s = getProgressionSuggestion(config, getExerciseHistory(allSessions, config.exercise), { bodyweight });
+        const s = getProgressionSuggestion(config, getExerciseHistory(allSessions, config.exercise), optsFor(config.exercise, customExercises));
         if (s.type !== 'deload' || s.suggestedWeight === undefined || s.suggestedWeight >= config.currentWeight) return config;
         changed = true;
         return applyDeload(config, s.suggestedWeight);
@@ -155,13 +156,14 @@ export const activeWorkoutActions = {
   addExercise(exercise: string, customExercises: CustomExercise[] = stores.CUSTOM_EXERCISES.get()) {
     const config = workoutActions.ensureConfig(exercise, customExercises);
     const last = getExerciseHistory(S.get(), exercise).find(l => l.sets.length > 0);
-    const bodyweight = isBodyweightExercise(exercise, customExercises);
-    const suggestion = getProgressionSuggestion(config, getExerciseHistory(S.get(), exercise), { bodyweight });
+    const suggestion = getProgressionSuggestion(config, getExerciseHistory(S.get(), exercise), optsFor(exercise, customExercises));
     const tr = settingsOf(config).targetRir;
-    // Prefill with exactly what the coach suggests: the current planned weight and target reps.
-    const sets: SetLog[] = last
-      ? last.sets.map(s => ({ reps: suggestion.suggestedReps ?? s.reps, weight: config.currentWeight, rir: tr, rpe: rpeFromRir(tr) }))
-      : Array.from({ length: config.targetSets }, () => ({ reps: config.repRangeMin, weight: config.currentWeight, rir: tr, rpe: rpeFromRir(tr) }));
+    // Prefill with exactly what the coach suggests: the planned weights (top set + back-offs if
+    // chosen, a lighter comeback after time off) and target reps.
+    const n = last ? Math.max(last.sets.length, config.targetSets) : config.targetSets;
+    const comeback = suggestion.type === 'comeback' && suggestion.suggestedWeight !== undefined ? suggestion.suggestedWeight / Math.max(1, config.currentWeight) : 1;
+    const weights = plannedWeights(config, n).map(w => (comeback < 1 ? Math.round((w * comeback) / (config.weightIncrement || 5)) * (config.weightIncrement || 5) : w));
+    const sets: SetLog[] = weights.map((weight, i) => ({ reps: suggestion.suggestedReps ?? last?.sets[i]?.reps ?? config.repRangeMin, weight, rir: tr, rpe: rpeFromRir(tr) }));
     updateActive(w => ({ ...w, exercises: [...w.exercises, { id: generateId(), exercise, sets }] }));
   },
 

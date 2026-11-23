@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { applyDeload, effortE1RM, estimateE1RM, getPersonalRecords, getProgressionSuggestion, planNextSession, platesPerSide, prescribeWeight } from './progressive-overload';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { applyDeload, effortE1RM, estimateE1RM, getPersonalRecords, getProgressionSuggestion, planNextSession, plannedWeights, platesPerSide, prescribeWeight, progressionOptions, volumeAdvice } from './progressive-overload';
+import { calibrate, jumpSize, pctOfMax, sessionMax, strengthTrend } from './strength-model';
 import { rirOf, rpeFromRir } from '@/types/workout';
 import type { ExerciseConfig, ExerciseLog, WorkoutSession } from '@/types/workout';
 
@@ -10,6 +11,10 @@ const log = (date: string, sets: [number, number, number][]): ExerciseLog => ({
   exercise: 'bench_press', date, sets: sets.map(([weight, reps, rpe]) => ({ weight, reps, rpe })),
 });
 
+// Pin "now" so the time-off rule doesn't kick in as the fixtures age.
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-21T12:00:00Z') }); });
+afterEach(() => { vi.useRealTimers(); });
+
 describe('getProgressionSuggestion', () => {
   it('increases weight when every set hits the top of the range with effort to spare', () => {
     const s = getProgressionSuggestion(cfg(), [log('2026-11-20T10:00:00Z', [[135, 8, 3], [135, 8, 3], [135, 8, 4]])]);
@@ -19,8 +24,8 @@ describe('getProgressionSuggestion', () => {
 
   it('a stall suggests a ~10% deload (not 45% off)', () => {
     const s = getProgressionSuggestion(cfg(), [
-      log('2026-11-20T10:00:00Z', [[135, 5, 4]]),
-      log('2026-11-18T10:00:00Z', [[135, 4, 4]]),
+      log('2026-11-20T10:00:00Z', [[135, 4, 4]]),
+      log('2026-11-18T10:00:00Z', [[135, 5, 4]]),
     ]);
     expect(s.type).toBe('deload');
     expect(s.suggestedWeight).toBe(120); // 135 × 0.9 = 121.5 → nearest 5
@@ -113,14 +118,15 @@ describe('reps-in-reserve progression', () => {
   it('jumps two steps when it was far too easy, capped by your estimated max', () => {
     const easy = getProgressionSuggestion(cfg(), [rlog('2026-11-20T10:00:00Z', [[135, 8, 4], [135, 8, 4]])]);
     expect(easy.suggestedWeight).toBe(145);
-    // Same reps-in-reserve but a tiny increment and modest max: still capped sensibly.
-    const capped = getProgressionSuggestion(cfg({ currentWeight: 135, weightIncrement: 25 }), [rlog('2026-11-20T10:00:00Z', [[135, 8, 4]])]);
-    expect(capped.suggestedWeight).toBe(160);
+    // A double step that would pass what your estimated max allows is cut to one.
+    const capped = getProgressionSuggestion(cfg({ currentWeight: 135, weightIncrement: 12.5 }), [rlog('2026-11-20T10:00:00Z', [[135, 8, 4]])]);
+    expect(capped.suggestedWeight).toBe(147.5);
   });
 
   it('linear style adds weight once every set hits the rep minimum', () => {
     const s = getProgressionSuggestion(cfg({ style: 'linear', repRangeMin: 5, repRangeMax: 5, currentWeight: 185 }), [rlog('2026-11-20T10:00:00Z', [[185, 5, 2], [185, 5, 1]])]);
-    expect(s).toMatchObject({ type: 'increase_weight', suggestedWeight: 190 });
+    // New to the lift → jumps are ~5% of the load (9 lb → rounded to 10).
+    expect(s).toMatchObject({ type: 'increase_weight', suggestedWeight: 195 });
   });
 
   it('lighter-week size and stall sensitivity are adjustable', () => {
@@ -135,5 +141,110 @@ describe('reps-in-reserve progression', () => {
     expect(platesPerSide(137.5)).toBeNull(); // needs 1.25s, which the default set doesn't have
     expect(platesPerSide(140)).toEqual([45, 2.5]);
     expect(platesPerSide(30)).toBeNull();
+  });
+});
+
+describe('strength model', () => {
+  const rlog = (date: string, sets: [number, number, number][], exercise = 'bench_press'): ExerciseLog => ({
+    exercise, date, sets: sets.map(([weight, reps, rir]) => ({ weight, reps, rir, rpe: rpeFromRir(rir) })),
+  });
+
+  it('uses the reps-to-%-of-max chart, not one formula', () => {
+    expect(pctOfMax(1)).toBe(1);
+    expect(pctOfMax(5)).toBeCloseTo(0.863);
+    expect(pctOfMax(10)).toBeCloseTo(0.739);
+    expect(pctOfMax(15)).toBeLessThan(pctOfMax(12));
+    expect(estimateE1RM(200, 5)).toBe(232);
+    // A personal factor below 1 (more reps than average) means each rep counts for less.
+    expect(pctOfMax(10, 0.8)).toBeGreaterThan(pctOfMax(10));
+  });
+
+  it('learns a personal factor from your own sets', () => {
+    // True max 200, but this lifter gets more reps than the chart predicts at lighter loads.
+    const history = [
+      rlog('2026-11-20T10:00:00Z', [[175, 3, 0], [175, 3, 0], [150, 12, 0], [150, 12, 0]]),
+      rlog('2026-11-17T10:00:00Z', [[175, 3, 0], [150, 12, 0], [150, 12, 0]]),
+    ];
+    const { factor } = calibrate(history);
+    expect(factor).toBeLessThan(0.95);
+    // Without both kinds of sets, it stays at average.
+    expect(calibrate([rlog('2026-11-20T10:00:00Z', [[150, 10, 1]])]).factor).toBe(1);
+  });
+
+  it('ignores very high-rep sets for the max when better sets exist', () => {
+    const s = rlog('2026-11-20T10:00:00Z', [[200, 5, 0], [60, 40, 0]]);
+    expect(Math.round(sessionMax(s))).toBe(232);
+  });
+
+  it('smooths the trend and spots a plateau', () => {
+    const flat = [0, 4, 8, 12, 16, 20, 24].map(d => rlog(new Date(Date.UTC(2026, 10, 20 - d, 10)).toISOString(), [[135, 7, 1], [135, 7, 1]]));
+    const t = strengthTrend(flat);
+    expect(t.plateau).toBe(true);
+    expect(Math.abs(t.perWeek!)).toBeLessThan(0.005);
+    const s = getProgressionSuggestion(cfg(), flat);
+    expect(s.type).toBe('plateau');
+  });
+
+  it('one bad session after progress does not trigger a lighter week if the trend is rising', () => {
+    const history = [
+      rlog('2026-11-20T10:00:00Z', [[140, 6, 1], [140, 5, 0]]),
+      rlog('2026-11-17T10:00:00Z', [[140, 5, 1], [140, 4, 0]]),
+      rlog('2026-11-14T10:00:00Z', [[135, 5, 1], [135, 4, 0]]),
+    ];
+    const s = getProgressionSuggestion(cfg({ currentWeight: 140 }), history);
+    expect(s.type).toBe('hold');
+    expect(s.message).toMatch(/still climbing/);
+  });
+
+  it('jumps shrink as you get stronger', () => {
+    expect(jumpSize({ load: 300, step: 5, exercise: 'squat', sessions: 3 }).jump).toBe(15);
+    expect(jumpSize({ load: 300, step: 5, exercise: 'squat', max: 380, bodyweightLb: 180 }).jump).toBe(10); // advanced-ish → smaller
+    expect(jumpSize({ load: 100, step: 5, exercise: 'custom_x', sessions: 60 }).jump).toBe(5); // never below your smallest jump
+  });
+
+  it('light dumbbells: earn a big jump with extra reps first', () => {
+    const c = cfg({ exercise: 'custom_curl', currentWeight: 25, weightIncrement: 5, repRangeMin: 10, repRangeMax: 12 });
+    const s = getProgressionSuggestion(c, [rlog('2026-11-20T10:00:00Z', [[25, 12, 2], [25, 12, 2]], 'custom_curl')]);
+    expect(s.type).toBe('increase_reps');
+    expect(s.message).toMatch(/14/);
+    const later = getProgressionSuggestion(c, [rlog('2026-11-20T10:00:00Z', [[25, 14, 2], [25, 14, 2]], 'custom_curl')]);
+    expect(later).toMatchObject({ type: 'increase_weight', suggestedWeight: 30 });
+  });
+
+  it('bodyweight lifts count your bodyweight', () => {
+    const custom = [{ id: 'custom_dip', name: 'Dips', equipment: 'bodyweight' as const, muscleGroups: [] }];
+    const o = progressionOptions('custom_dip', custom, 180);
+    expect(o).toMatchObject({ bodyweight: true, bodyFraction: 0.95 });
+    const s = rlog('2026-11-20T10:00:00Z', [[0, 10, 0]], 'custom_dip');
+    expect(Math.round(sessionMax(s, 1, o))).toBe(Math.round(171 / 0.739));
+    // 12+ reps at bodyweight → prescribe added weight.
+    const pull = cfg({ exercise: 'pull_up', currentWeight: 0, repRangeMin: 8, repRangeMax: 12 });
+    const sug = getProgressionSuggestion(pull, [rlog('2026-11-20T10:00:00Z', [[0, 12, 1], [0, 12, 1]], 'pull_up')], progressionOptions('pull_up', [], 180));
+    expect(sug.type).toBe('increase_weight');
+    expect(sug.suggestedWeight).toBeGreaterThan(0);
+  });
+
+  it('coming back after time off starts lighter', () => {
+    const s = getProgressionSuggestion(cfg(), [rlog('2026-11-01T10:00:00Z', [[135, 8, 2]])]);
+    expect(s).toMatchObject({ type: 'comeback', suggestedWeight: 120 }); // 20 days → 90%
+    const long = getProgressionSuggestion(cfg(), [rlog('2026-09-01T10:00:00Z', [[135, 8, 2]])]);
+    expect(long.suggestedWeight).toBe(110); // 11+ weeks → 80%
+  });
+
+  it('top set + back-offs: judged on the top set only', () => {
+    const c = cfg({ scheme: 'topset', backoffPercent: 10 });
+    expect(plannedWeights(c, 3)).toEqual([135, 120, 120]);
+    // Back-offs short of the range don't block progress; the top set hit 8.
+    const s = getProgressionSuggestion(c, [rlog('2026-11-20T10:00:00Z', [[135, 8, 1], [120, 6, 1], [120, 5, 1]])]);
+    expect(s.type).toBe('increase_weight');
+    expect(plannedWeights(cfg(), 3)).toEqual([135, 135, 135]);
+  });
+
+  it('weekly sets: add one when below 10 and recovering, drop one above 20 when slipping', () => {
+    const good = [rlog('2026-11-20T10:00:00Z', [[135, 7, 2], [135, 7, 2]]), rlog('2026-11-17T10:00:00Z', [[135, 6, 2], [135, 6, 2]])];
+    expect(volumeAdvice(cfg(), good, 6, 'chest')).toMatchObject({ type: 'add_set', targetSets: 4 });
+    expect(volumeAdvice(cfg(), good, 14, 'chest')).toBeNull();
+    const bad = [rlog('2026-11-20T10:00:00Z', [[135, 4, 0]]), rlog('2026-11-17T10:00:00Z', [[135, 5, 0]])];
+    expect(volumeAdvice(cfg({ targetSets: 5 }), bad, 24, 'chest')).toMatchObject({ type: 'drop_set', targetSets: 4 });
   });
 });

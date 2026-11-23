@@ -9,7 +9,7 @@ import { addDays, dateKeyOf, type DateKey } from '@/lib/dates';
 import { getAllActiveHabits, isHabitDueToday } from '@/lib/habits';
 import { doneBetween, perWeekOf } from '@/lib/practice';
 import { calculateGoalProgress } from '@/types/goals';
-import { getExerciseHistory, getPersonalRecords, getProgressionSuggestion, calculateVolumeLoad } from '@/lib/progressive-overload';
+import { getExerciseHistory, getPersonalRecords, getProgressionSuggestion, calculateVolumeLoad, progressionOptions } from '@/lib/progressive-overload';
 
 export const STREAK_MILESTONES = [7, 14, 30, 50, 100, 200, 365];
 
@@ -116,13 +116,13 @@ export interface Nudge {
 }
 
 /** Lifts that have stalled or show building fatigue. */
-export function trainingNudges(sessions: WorkoutSession[], configs: ExerciseConfig[], customExercises: CustomExercise[] = []): Nudge[] {
+export function trainingNudges(sessions: WorkoutSession[], configs: ExerciseConfig[], customExercises: CustomExercise[] = [], bodyweightLb?: number): Nudge[] {
   const out: Nudge[] = [];
   for (const c of configs) {
     if (customExercises.find(e => e.id === c.exercise)?.archived) continue;
     const history = getExerciseHistory(sessions, c.exercise);
     if (history.length < 2) continue;
-    const s = getProgressionSuggestion(c, history, { bodyweight: isBodyweightExercise(c.exercise, customExercises) });
+    const s = getProgressionSuggestion(c, history, progressionOptions(c.exercise, customExercises, bodyweightLb));
     if (s.type === 'deload' || s.type === 'fatigue_warning') {
       out.push({
         id: `${s.type}:${c.exercise}`,

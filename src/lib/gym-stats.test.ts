@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildSummary, e1rmSeries, muscleSets, musclesFor } from './gym-stats';
+import { buildSummary, e1rmSeries, primaryMuscle, muscleSets, musclesFor } from './gym-stats';
 import type { ExerciseConfig, WorkoutSession } from '@/types/workout';
 
 const s = (id: string, date: string, exercise: string, sets: [number, number][], splitDay = 'push'): WorkoutSession => ({
@@ -19,7 +19,16 @@ describe('gym stats', () => {
   });
 
   it('estimated max per session', () => {
-    expect(e1rmSeries([s('a', '2026-11-20', 'bench_press', [[135, 8], [145, 3]])], 'bench_press', false)).toEqual([{ date: '2026-11-20', value: 171 }]);
+    expect(e1rmSeries([s('a', '2026-11-20', 'bench_press', [[135, 8], [145, 3]])], 'bench_press', false)).toEqual([{ date: '2026-11-20', value: 183 }]); // 8 reps + 2 left ≈ a 10-rep max
+    // Bodyweight moves: reps without a bodyweight; total load with one.
+    expect(e1rmSeries([s('b', '2026-11-20', 'pull_up', [[0, 10]])], 'pull_up', true)).toEqual([{ date: '2026-11-20', value: 10 }]);
+    expect(e1rmSeries([s('b', '2026-11-20', 'pull_up', [[0, 10]])], 'pull_up', true, { bodyFraction: 0.95, bodyweightLb: 180 })[0].value).toBe(Math.round(171 / 0.68));
+  });
+
+  it('primary muscle', () => {
+    expect(primaryMuscle('bench_press')).toBe('chest');
+    expect(primaryMuscle('squat')).toBe('quads');
+    expect(primaryMuscle('x', [{ id: 'x', name: 'Curl', equipment: 'dumbbell', muscleGroups: ['biceps'] }])).toBe('biceps');
   });
 
   it('summary: volume vs last same split, records, and what changes next time', () => {

@@ -5,7 +5,8 @@ import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { stores } from '@/lib/storage';
 import { dateKeyOf, parseDateKey, startOfWeekKey } from '@/lib/dates';
-import { calculateVolumeLoad, estimateE1RM, getExerciseHistory, getPersonalRecords, getWeeklyVolume } from '@/lib/progressive-overload';
+import { calculateVolumeLoad, getExerciseHistory, getPersonalRecords, getWeeklyVolume, progressionOptions } from '@/lib/progressive-overload';
+import { bodyLoad, strengthTrend } from '@/lib/strength-model';
 import { muscleSets } from '@/lib/gym-stats';
 import { weekStart as monWeekStart } from '@/lib/practice';
 import { CARDIO_LABELS, durationText, getExerciseLabel, isBodyweightExercise, paceText, type CustomExercise, type WorkoutSession } from '@/types/workout';
@@ -56,16 +57,23 @@ export function ProgressView({ customExercises, sessions, onStartLogging }: {
   const chartExercise = picked && logged.includes(picked) ? picked : logged[0];
   const chartBw = chartExercise ? isBw(chartExercise) : false;
   const [mode, setMode] = useState<'top' | 'max'>('top');
-  const showMax = mode === 'max' && !chartBw;
-  const chartData = useMemo(() => (chartExercise ? getExerciseHistory(sessions, chartExercise) : [])
-    .filter(h => h.sets.length > 0).slice().reverse()
-    .map(h => ({
+  const chartOpts = useMemo(() => (chartExercise ? progressionOptions(chartExercise, customExercises, settings.bodyweight) : {}), [chartExercise, customExercises, settings.bodyweight]);
+  // Bodyweight moves get an estimated max only when we know the share of bodyweight they lift.
+  const canMax = !chartBw || bodyLoad(chartOpts) > 0;
+  const showMax = mode === 'max' && canMax;
+  const chartData = useMemo(() => {
+    const history = chartExercise ? getExerciseHistory(sessions, chartExercise) : [];
+    if (showMax) {
+      // Personal estimate per session, plus the smoothed trend progression decisions use.
+      return strengthTrend(history, chartOpts).points.map(p => ({ date: shortDate(p.date), value: Math.round(p.value), trend: Math.round(p.smooth) }));
+    }
+    return history.filter(h => h.sets.length > 0).slice().reverse().map(h => ({
       date: shortDate(h.date),
-      value: chartBw ? Math.max(...h.sets.map(s => s.reps))
-        : showMax ? Math.max(...h.sets.map(s => estimateE1RM(s.weight, s.reps))) : Math.max(...h.sets.map(s => s.weight)),
+      value: chartBw ? Math.max(...h.sets.map(s => s.reps)) : Math.max(...h.sets.map(s => s.weight)),
       volume: calculateVolumeLoad(h.sets),
-    })),
-  [sessions, chartExercise, chartBw, showMax]);
+    }));
+  }, [sessions, chartExercise, chartBw, showMax, chartOpts]);
+  const perWeek = useMemo(() => (showMax && chartExercise ? strengthTrend(getExerciseHistory(sessions, chartExercise), chartOpts).perWeek : null), [showMax, chartExercise, sessions, chartOpts]);
   const cardio = useStore(stores.CARDIO);
   const muscles = useMemo(() => Object.entries(muscleSets(sessions, customExercises, monWeekStart(today))).sort((a, b) => b[1] - a[1]), [sessions, customExercises, today]);
   const weekly = useMemo(() => getWeeklyVolume(sessions).slice(-8).map(w => ({ ...w, label: parseDateKey(w.week).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })), [sessions]);
@@ -109,8 +117,8 @@ export function ProgressView({ customExercises, sessions, onStartLogging }: {
         </div>
         <div className="surface p-4">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-footnote font-semibold text-muted-foreground">{chartBw ? 'Best reps per session' : showMax ? 'Estimated one-rep max (lb)' : 'Top weight per session (lb)'}</p>
-            {!chartBw && (
+            <p className="text-footnote font-semibold text-muted-foreground">{showMax ? `Estimated one-rep max (lb${chartBw ? ', with bodyweight' : ''})` : chartBw ? 'Best reps per session' : 'Top weight per session (lb)'}</p>
+            {canMax && (
               <div className="flex rounded-full bg-secondary p-0.5 text-footnote font-semibold">
                 {([['top', 'Top set'], ['max', 'Est. max']] as const).map(([v, l]) => (
                   <button key={v} type="button" onClick={() => setMode(v)} className={cn('h-7 rounded-full px-2.5', mode === v ? 'bg-card shadow-sm' : 'text-muted-foreground')}>{l}</button>
@@ -124,12 +132,19 @@ export function ProgressView({ customExercises, sessions, onStartLogging }: {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
                 <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} domain={[(min: number) => Math.max(0, Math.floor((min - 5) / 5) * 5), (max: number) => Math.ceil((max + 5) / 5) * 5]} tickCount={4} allowDecimals={false} />
-                <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [chartBw ? `${v} reps` : `${v} lb`, chartBw ? 'Best' : showMax ? 'Est. max' : 'Top set']} />
-                <Line type="monotone" dataKey="value" stroke="hsl(var(--move))" strokeWidth={3} dot={{ fill: 'hsl(var(--move))', r: 4 }} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v: number, key: string) => [showMax ? `${v} lb` : chartBw ? `${v} reps` : `${v} lb`, key === 'trend' ? 'Trend' : showMax ? 'Est. max' : chartBw ? 'Best' : 'Top set']} />
+                <Line type="monotone" dataKey="value" stroke="hsl(var(--move))" strokeWidth={showMax ? 2 : 3} strokeOpacity={showMax ? 0.45 : 1} dot={{ fill: 'hsl(var(--move))', r: showMax ? 3 : 4 }} />
+                {showMax && <Line type="monotone" dataKey="trend" stroke="hsl(var(--move))" strokeWidth={3} dot={false} />}
               </LineChart>
             </ResponsiveContainer>
           ) : (
             <p className="py-8 text-center text-footnote text-muted-foreground">Log this lift one more time to see a trend.</p>
+          )}
+          {showMax && chartData.length > 1 && (
+            <p className="mt-1 text-footnote text-muted-foreground">
+              Dots are each session's estimate (counting reps left in the tank, tuned to you); the solid line is the smoothed trend TELOS uses to decide.
+              {perWeek !== null && <> Lately: <b className={cn('tabular-nums', perWeek > 0.002 ? 'text-success' : perWeek < -0.005 ? 'text-warning' : 'text-foreground')}>{perWeek >= 0 ? '+' : '−'}{Math.abs(perWeek * 100).toFixed(1)}% a week</b>.</>}
+            </p>
           )}
         </div>
       </section>

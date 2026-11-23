@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ArrowDown, ArrowUp, Bookmark, Check, ChevronRight, Dumbbell, Minus, MoreHorizontal, Pencil, Play, Plus, Trash2, TrendingUp, X, Footprints } from 'lucide-react';
 import { toast } from 'sonner';
-import { useActiveWorkout, activeWorkoutActions, workoutActions } from '@/hooks/useWorkouts';
+import { useActiveWorkout, activeWorkoutActions, workoutActions, optsFor } from '@/hooks/useWorkouts';
 import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
 import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { stores, generateId, type WorkoutTemplate } from '@/lib/storage';
 import { dateKeyOf, dayOfWeek } from '@/lib/dates';
-import { getExerciseHistory, getProgressionSuggestion, platesPerSide, settingsOf } from '@/lib/progressive-overload';
+import { getExerciseHistory, getProgressionSuggestion, plannedWeights, platesPerSide, settingsOf } from '@/lib/progressive-overload';
 import { getExerciseLabel, isBodyweightExercise, rirOf, rpeFromRir, usesBarbell, type CustomExercise, type ExerciseConfig, type WorkoutSession } from '@/types/workout';
 import { RowMenu } from '@/components/app/RowMenu';
 import { ListRow } from '@/components/app/ListRow';
@@ -91,7 +91,8 @@ function WorkoutHome({ customExercises, sessions, configs, onGoToProgram }: {
     activeWorkoutActions.load(t.splitDay, t.exercises.map(e => {
       const c = configs.find(x => x.exercise === e.exercise);
       const tr = c ? settingsOf(c).targetRir : 2;
-      return { exercise: e.exercise, sets: Array.from({ length: e.sets }, () => ({ reps: e.reps || c?.repRangeMin || 8, weight: c?.currentWeight ?? e.weight, rir: tr, rpe: rpeFromRir(tr) })) };
+      const weights = c ? plannedWeights(c, e.sets) : Array.from({ length: e.sets }, () => e.weight);
+      return { exercise: e.exercise, sets: weights.map(weight => ({ reps: e.reps || c?.repRangeMin || 8, weight, rir: tr, rpe: rpeFromRir(tr) })) };
     }));
   };
   const deleteTemplate = (t: WorkoutTemplate) => {
@@ -224,7 +225,7 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
     const configsBefore = stores.EXERCISE_CONFIGS.get();
     const session = activeWorkoutActions.finish(customExercises, { quiet: true });
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    if (session) onFinished(buildSummary(session, before, configsBefore, stores.EXERCISE_CONFIGS.get(), customExercises, w.startedAt));
+    if (session) onFinished(buildSummary(session, before, configsBefore, stores.EXERCISE_CONFIGS.get(), customExercises, w.startedAt, id => optsFor(id, customExercises)));
   };
   const discard = () => {
     const draft = w;
@@ -275,13 +276,16 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
         const bw = isBodyweightExercise(ex.exercise, customExercises);
         const config = configs.find(c => c.exercise === ex.exercise);
         const plates = config && usesBarbell(ex.exercise, customExercises) ? platesPerSide(config.currentWeight) : null;
-        const suggestion = config ? getProgressionSuggestion(config, getExerciseHistory(sessions, ex.exercise), { bodyweight: bw }) : null;
+        const suggestion = config ? getProgressionSuggestion(config, getExerciseHistory(sessions, ex.exercise), optsFor(ex.exercise, customExercises)) : null;
+        const st = config ? settingsOf(config) : null;
+        const backoff = config && st?.scheme === 'topset' && config.currentWeight > 0 ? plannedWeights(config, 2)[1] : null;
         const canDeload = !!suggestion && (suggestion.type === 'deload' || suggestion.type === 'fatigue_warning')
           && suggestion.suggestedWeight !== undefined && !!config && suggestion.suggestedWeight < config.currentWeight;
         const tone = suggestion?.type === 'increase_weight' || suggestion?.type === 'increase_reps' ? 'text-move'
-          : suggestion?.type === 'deload' ? 'text-destructive' : suggestion?.type === 'fatigue_warning' ? 'text-warning' : 'text-muted-foreground';
+          : suggestion?.type === 'deload' ? 'text-destructive' : suggestion?.type === 'fatigue_warning' || suggestion?.type === 'plateau' ? 'text-warning'
+          : suggestion?.type === 'comeback' ? 'text-info' : 'text-muted-foreground';
         const Icon = suggestion?.type === 'increase_weight' || suggestion?.type === 'increase_reps' ? ArrowUp
-          : suggestion?.type === 'deload' ? ArrowDown : suggestion?.type === 'fatigue_warning' ? TrendingUp : Minus;
+          : suggestion?.type === 'deload' || suggestion?.type === 'comeback' ? ArrowDown : suggestion?.type === 'fatigue_warning' ? TrendingUp : Minus;
 
         return (
           <section key={ex.id} className="surface overflow-hidden">
@@ -292,7 +296,8 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
                   <p className="mt-0.5 text-footnote font-semibold tabular-nums">
                     Target: {config.targetSets} × {config.repRangeMin === config.repRangeMax ? config.repRangeMin : `${config.repRangeMin}–${config.repRangeMax}`}
                     {bw ? (config.currentWeight ? ` · +${config.currentWeight} lb` : '') : ` @ ${config.currentWeight} lb`}
-                    <span className="font-normal text-muted-foreground"> · leave ~{settingsOf(config).targetRir} in the tank</span>
+                    {backoff !== null && <span className="font-normal"> top set, then {backoff} lb</span>}
+                    <span className="font-normal text-muted-foreground"> · leave ~{st!.targetRir} in the tank</span>
                   </p>
                 )}
                 {plates && plates.length > 0 && (

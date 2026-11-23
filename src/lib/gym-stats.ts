@@ -1,7 +1,8 @@
 /** Training stats: sets per muscle, estimated max trends, and the post-workout summary. */
 import type { CompoundExercise, CustomExercise, ExerciseConfig, WorkoutSession } from '@/types/workout';
 import { getExerciseLabel, isBuiltInExercise } from '@/types/workout';
-import { calculateVolumeLoad, estimateE1RM } from '@/lib/progressive-overload';
+import { calculateVolumeLoad, getExerciseHistory, volumeAdvice, type ProgressionOptions, type VolumeAdvice } from '@/lib/progressive-overload';
+import { bodyLoad, calibrate, sessionMax, type LoadOptions } from '@/lib/strength-model';
 import { newRecordsIn } from '@/lib/insights';
 import { addDays, dateKeyOf, type DateKey } from '@/lib/dates';
 
@@ -41,14 +42,28 @@ export function muscleSets(sessions: WorkoutSession[], custom: CustomExercise[],
   return out;
 }
 
-/** Best estimated one-rep max per session for a lift (bodyweight lifts: best reps). */
-export function e1rmSeries(sessions: WorkoutSession[], exercise: string, bodyweight: boolean): { date: string; value: number }[] {
+/**
+ * Estimated one-rep max per session for a lift (personally calibrated, counting
+ * reps left in the tank and, for bodyweight moves, your bodyweight). Bodyweight
+ * moves without a known bodyweight share fall back to best reps.
+ */
+export function e1rmSeries(sessions: WorkoutSession[], exercise: string, bodyweight: boolean, o: LoadOptions = {}): { date: string; value: number }[] {
+  const repsOnly = bodyweight && bodyLoad(o) === 0;
+  const calib = repsOnly ? 1 : calibrate(getExerciseHistory(sessions, exercise), o).factor;
   return [...sessions].sort((a, b) => a.date.localeCompare(b.date)).flatMap(s => {
     const sets = s.exercises.filter(e => e.exercise === exercise).flatMap(e => e.sets);
     if (!sets.length) return [];
-    const value = bodyweight ? Math.max(...sets.map(x => x.reps)) : Math.max(...sets.map(x => estimateE1RM(x.weight, x.reps)));
-    return [{ date: s.date, value }];
+    const value = repsOnly ? Math.max(...sets.map(x => x.reps)) : Math.round(sessionMax({ exercise, date: s.date, sets }, calib, o));
+    return value > 0 ? [{ date: s.date, value }] : [];
   });
+}
+
+/** Primary muscle an exercise trains (for weekly-set advice). */
+export function primaryMuscle(exercise: string, custom: CustomExercise[] = []): string | null {
+  if (isBuiltInExercise(exercise)) {
+    return Object.entries(APP_MUSCLE_EXERCISES).find(([, list]) => list.some(x => x.exercise === exercise && x.weight >= 1))?.[0] ?? null;
+  }
+  return custom.find(c => c.id === exercise)?.muscleGroups[0] ?? null;
 }
 
 export interface SessionSummary {
@@ -61,9 +76,11 @@ export interface SessionSummary {
   records: { label: string; value: string }[];
   /** Planned for next time: increases earned and lighter weeks applied. */
   next: { exercise: string; label: string; from: number; to: number; kind: 'up' | 'reps' | 'lighter'; unit: string }[];
+  /** Offered (not applied): add or drop a set, based on weekly sets for the muscle. */
+  advice: (VolumeAdvice & { exercise: string; label: string; from: number })[];
 }
 
-export function buildSummary(session: WorkoutSession, before: WorkoutSession[], configsBefore: ExerciseConfig[], configsAfter: ExerciseConfig[], custom: CustomExercise[], startedAt?: string): SessionSummary {
+export function buildSummary(session: WorkoutSession, before: WorkoutSession[], configsBefore: ExerciseConfig[], configsAfter: ExerciseConfig[], custom: CustomExercise[], startedAt?: string, optsOf: (exercise: string) => ProgressionOptions = () => ({})): SessionSummary {
   const volume = session.exercises.reduce((n, e) => n + calculateVolumeLoad(e.sets), 0);
   const last = [...before].filter(s => s.splitDay === session.splitDay).sort((a, b) => b.date.localeCompare(a.date))[0];
   const lastVolume = last ? last.exercises.reduce((n, e) => n + calculateVolumeLoad(e.sets), 0) : 0;
@@ -77,6 +94,16 @@ export function buildSummary(session: WorkoutSession, before: WorkoutSession[], 
     else if (b.currentWeight < a.currentWeight) next.push({ exercise: e.exercise, label, from: a.currentWeight, to: b.currentWeight, kind: 'lighter', unit: 'lb' });
     else if (b.repRangeMax > a.repRangeMax) next.push({ exercise: e.exercise, label, from: a.repRangeMax, to: b.repRangeMax, kind: 'reps', unit: 'reps' });
   }
+  const all = [...before, session];
+  const weekSets = muscleSets(all, custom, addDays(dateKeyOf(session.date), -6));
+  const advice: SessionSummary['advice'] = [];
+  for (const e of session.exercises) {
+    const c = configsAfter.find(x => x.exercise === e.exercise);
+    const muscle = primaryMuscle(e.exercise, custom);
+    if (!c || !muscle) continue;
+    const a = volumeAdvice(c, getExerciseHistory(all, e.exercise), weekSets[muscle] ?? 0, muscle, { ...optsOf(e.exercise), now: new Date(session.date) });
+    if (a && !advice.some(x => x.message === a.message)) advice.push({ ...a, exercise: e.exercise, label: getExerciseLabel(e.exercise, custom), from: c.targetSets });
+  }
   const minutes = startedAt ? Math.max(1, Math.round((new Date(session.date).getTime() - new Date(startedAt).getTime()) / 60000)) : null;
   return {
     sessionId: session.id,
@@ -86,6 +113,7 @@ export function buildSummary(session: WorkoutSession, before: WorkoutSession[], 
     vsLast: last && lastVolume > 0 ? Math.round(((volume - lastVolume) / lastVolume) * 100) : null,
     records: newRecordsIn(session, before, custom),
     next,
+    advice,
   };
 }
 

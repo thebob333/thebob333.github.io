@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowDown, ArrowUp, Trophy } from 'lucide-react';
+import { ArrowDown, ArrowUp, Layers, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import type { SessionSummary } from '@/lib/gym-stats';
 /** What you just did, what you beat, and what's planned for next time (with Undo on lighter weeks). */
 export function SessionSummarySheet({ summary, onClose }: { summary: SessionSummary | null; onClose: () => void }) {
   const [undone, setUndone] = useState<string[]>([]);
+  const [applied, setApplied] = useState<string[]>([]);
   if (!summary) return null;
 
   const stat = (value: string, label: string) => (
@@ -73,6 +74,33 @@ export function SessionSummarySheet({ summary, onClose }: { summary: SessionSumm
               </div>
             )}
           </div>
+
+          {summary.advice.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-headline">Weekly sets</p>
+              <div className="list-group">
+                {summary.advice.map(a => {
+                  const done = applied.includes(a.exercise);
+                  return (
+                    <div key={a.exercise} className="flex items-center gap-3 px-4 py-3">
+                      <Layers className={`h-4 w-4 shrink-0 ${a.type === 'add_set' ? 'text-move' : 'text-warning'}`} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-body font-medium">{a.label}: {a.from} → {a.targetSets} sets</p>
+                        <p className="text-footnote text-muted-foreground">{done ? 'Done — starting next session' : a.message}</p>
+                      </div>
+                      {!done && (
+                        <button type="button" className="h-9 shrink-0 rounded-full bg-secondary px-3 text-footnote font-semibold" onClick={() => {
+                          workoutActions.updateConfig(a.exercise, { targetSets: a.targetSets });
+                          setApplied(x => [...x, a.exercise]);
+                          toast.success(`${a.label}: ${a.targetSets} sets`, { action: { label: 'Undo', onClick: () => { workoutActions.updateConfig(a.exercise, { targetSets: a.from }); setApplied(x => x.filter(e => e !== a.exercise)); } } });
+                        }}>{a.type === 'add_set' ? 'Add set' : 'Drop set'}</button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         <Button className="h-12 w-full rounded-xl text-body font-semibold" onClick={onClose}>Done</Button>
       </DialogContent>

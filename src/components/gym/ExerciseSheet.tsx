@@ -10,7 +10,9 @@ import { workoutActions } from '@/hooks/useWorkouts';
 import { useStore } from '@/hooks/useStore';
 import { stores } from '@/lib/storage';
 import { suggestedCustomTarget } from '@/lib/strength-standards';
-import { DEFAULTS, bestRecentE1RM, getExerciseHistory, prescribeWeight, settingsOf } from '@/lib/progressive-overload';
+import { DEFAULTS, getExerciseHistory, liftInsight, prescribeWeight, progressionOptions, roundTo, settingsOf, volumeAdvice } from '@/lib/progressive-overload';
+import { muscleSets, primaryMuscle } from '@/lib/gym-stats';
+import { addDays, todayKey } from '@/lib/dates';
 import { ALL_MUSCLE_GROUPS, getExerciseLabel, isBodyweightExercise, isBuiltInExercise, type CustomExercise, type EquipmentType, type MuscleGroup } from '@/types/workout';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +25,7 @@ interface Form {
   name: string; equipment: EquipmentType; muscles: MuscleGroup[];
   sets: string; repMin: string; repMax: string; weight: string; increment: string; target: string;
   style: 'double' | 'linear'; targetRir: number; deloadPercent: number; stallSessions: number;
+  scheme: 'straight' | 'topset'; backoffPercent: number;
 }
 
 function NumberField({ label, value, onChange, suffix, step }: { label: string; value: string; onChange: (v: string) => void; suffix?: string; step?: number }) {
@@ -93,13 +96,19 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
   }, [open, exerciseId]);
 
   if (!f) return null;
-  const e1rm = exerciseId && !isBodyweightExercise(exerciseId, customExercises) ? bestRecentE1RM(getExerciseHistory(sessions, exerciseId), 5) : 0;
   const step = Number(f.increment) > 0 ? Number(f.increment) : 5;
-  const numbers = e1rm > 0 ? {
-    e1rm,
-    high: prescribeWeight(e1rm, Number(f.repMax) || 12, f.targetRir, step),
-    low: prescribeWeight(e1rm, Number(f.repMin) || 8, f.targetRir, step),
-  } : null;
+  const opts = exerciseId ? progressionOptions(exerciseId, customExercises, settings.bodyweight) : {};
+  const history = exerciseId ? getExerciseHistory(sessions, exerciseId) : [];
+  const insight = exerciseId ? liftInsight(history.slice(0, 12), opts) : null;
+  const e1rm = insight && (!opts.bodyweight || insight.bodyLoad > 0) ? Math.round(insight.current) : 0;
+  const body = insight?.bodyLoad ?? 0;
+  // For bodyweight moves the range is the weight to add on top of you.
+  const range = (reps: number) => Math.max(0, prescribeWeight(e1rm, reps, f.targetRir, step, insight?.calib ?? 1) - roundTo(body, step));
+  const numbers = e1rm > 0 ? { e1rm, high: range(Number(f.repMax) || 12), low: range(Number(f.repMin) || 8) } : null;
+  const cfgNow = exerciseId ? configs.find(c => c.exercise === exerciseId) : undefined;
+  const muscle = exerciseId ? primaryMuscle(exerciseId, customExercises) : null;
+  const weekly = muscle ? muscleSets(sessions, customExercises, addDays(todayKey(), -6))[muscle] ?? 0 : null;
+  const advice = cfgNow && muscle ? volumeAdvice({ ...cfgNow, targetSets: Number(f.sets) || cfgNow.targetSets }, history, weekly, muscle, opts) : null;
   const set = (patch: Partial<Form>) => setF(prev => ({ ...prev!, ...patch }));
   const suggested = suggestedCustomTarget(f.equipment, settings.bodyweight);
   const bodyweightLift = f.equipment === 'bodyweight';
@@ -130,6 +139,7 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
       currentWeight: Math.max(0, n(f.weight, 0)),
       weightIncrement: Math.max(0, n(f.increment, 5)),
       style: f.style, targetRir: f.targetRir, deloadPercent: f.deloadPercent, stallSessions: f.stallSessions,
+      scheme: f.scheme, backoffPercent: f.backoffPercent,
     };
     if (fields.repRangeMax < fields.repRangeMin) fields.repRangeMax = fields.repRangeMin;
 
@@ -203,21 +213,46 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
             </div>
             <div className="mt-2 grid grid-cols-2 gap-2">
               <NumberField label={bodyweightLift ? 'Added weight' : 'Working weight'} value={f.weight} onChange={weight => set({ weight })} suffix="lb" />
-              <NumberField label="Add each time" value={f.increment} onChange={increment => set({ increment })} suffix="lb" step={2.5} />
+              <NumberField label="Smallest jump" value={f.increment} onChange={increment => set({ increment })} suffix="lb" step={2.5} />
             </div>
-            <p className="mt-2 text-footnote text-muted-foreground">"Add each time" is also your smallest jump — e.g. 5 lb with 2.5 lb plates, 2.5 lb with microplates.</p>
+            <p className="mt-2 text-footnote text-muted-foreground">Your smallest jump — e.g. 5 lb with 2.5 lb plates, 2.5 lb with microplates. TELOS may jump more when you're new to a lift.</p>
           </div>
 
-          {numbers && (
-            <div className="rounded-2xl bg-secondary/60 p-3">
+          {numbers && insight && (
+            <div className="space-y-1.5 rounded-2xl bg-secondary/60 p-3">
               <p className="text-footnote font-semibold text-muted-foreground">Your numbers</p>
-              <p className="mt-1 text-body">Estimated max: <b className="tabular-nums">{numbers.e1rm} lb</b></p>
+              <p className="text-body">Estimated max: <b className="tabular-nums">{numbers.e1rm} lb</b>{body > 0 && <span className="text-footnote text-muted-foreground"> (incl. ~{Math.round(body)} lb of you)</span>}</p>
               <p className="text-footnote text-muted-foreground">
-                From your best recent set, counting the reps you had left. For {f.repMin}–{f.repMax} reps leaving ~{f.targetRir} in the tank, that's about <b className="text-foreground tabular-nums">{numbers.high}–{numbers.low} lb</b>.
+                For {f.repMin}–{f.repMax} reps leaving ~{f.targetRir} in the tank: <b className="text-foreground tabular-nums">{body > 0 ? (numbers.low > 0 ? `+${numbers.high}–${numbers.low} lb` : 'bodyweight') : `${numbers.high}–${numbers.low} lb`}</b>.
               </p>
-              {Number(f.weight) > 0 && Number(f.weight) > numbers.low + 2 * (Number(f.increment) || 5) && (
-                <p className="mt-1 text-footnote font-medium text-warning">Your working weight looks heavy for this rep range.</p>
+              {insight.perWeek !== null && (
+                <p className="text-footnote text-muted-foreground">
+                  Trend: <b className={cn('tabular-nums', insight.plateau ? 'text-warning' : insight.perWeek > 0.002 ? 'text-success' : 'text-foreground')}>
+                    {insight.plateau ? 'flat for 3+ weeks' : `${insight.perWeek >= 0 ? '+' : '−'}${Math.abs(insight.perWeek * 100).toFixed(1)}% a week`}
+                  </b>{insight.plateau ? ' — time to change something (rep range, a set, or a lighter week).' : ' over the last month.'}
+                </p>
               )}
+              {Math.abs(insight.calib - 1) >= 0.05 && (
+                <p className="text-footnote text-muted-foreground">
+                  Tuned to you: you get {insight.calib < 1 ? 'more' : 'fewer'} reps than average at a given weight, so estimates are adjusted.
+                </p>
+              )}
+              {Number(f.weight) > 0 && Number(f.weight) > numbers.low + 2 * step && (
+                <p className="text-footnote font-medium text-warning">Your working weight looks heavy for this rep range.</p>
+              )}
+              <p className="text-[11px] leading-4 text-muted-foreground">Counts reps left in the tank, uses the coaches' reps-to-%-of-max chart, and learns from your own sets over time.</p>
+            </div>
+          )}
+
+          {advice && muscle && (
+            <div className="flex items-start gap-3 rounded-2xl bg-secondary/60 p-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-footnote font-semibold text-muted-foreground">Weekly sets · <span className="capitalize">{muscle}</span>: {weekly} this week</p>
+                <p className="text-footnote">{advice.message}</p>
+              </div>
+              <button type="button" className="h-9 shrink-0 rounded-full bg-card px-3 text-footnote font-semibold" onClick={() => set({ sets: String(advice.targetSets) })}>
+                {advice.type === 'add_set' ? 'Add set' : 'Drop set'}
+              </button>
             </div>
           )}
 
@@ -227,10 +262,30 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
               options={[{ value: 'double', label: 'Reps, then weight' }, { value: 'linear', label: 'Weight every session' }]} />
             <p className="mt-1.5 text-footnote text-muted-foreground">
               {f.style === 'double'
-                ? `Add reps until every set hits ${f.repMax}, then add ${f.increment || 5} lb and start again at ${f.repMin}. Steady and sustainable — best for most people.`
-                : `Every time all sets hit ${f.repMin}, add ${f.increment || 5} lb. Fastest while you're new to a lift; switch to "Reps, then weight" when it stalls.`}
+                ? `Add reps until every set hits ${f.repMax}, then add weight and start again at ${f.repMin}. Steady and sustainable — best for most people.`
+                : `Every time all sets hit ${f.repMin}, add weight. Fastest while you're new to a lift; switch to "Reps, then weight" when it stalls.`}
+              {' '}Jumps are about 5% of the weight while you're new, shrinking to 2.5% and then 1.5% as you get stronger — never less than your smallest jump. If that's over 10% (light dumbbells), you earn it with 2 extra reps first.
             </p>
           </div>
+
+          {!bodyweightLift && (
+            <div>
+              <FieldLabel>Sets</FieldLabel>
+              <Chips<'straight' | 'topset'> label="Set scheme" value={f.scheme} onChange={scheme => set({ scheme })}
+                options={[{ value: 'straight', label: 'All the same weight' }, { value: 'topset', label: 'Top set + back-offs' }]} />
+              {f.scheme === 'topset' && (
+                <div className="mt-2">
+                  <Chips<number> label="Back-off size" value={f.backoffPercent} onChange={backoffPercent => set({ backoffPercent })}
+                    options={[5, 10, 15, 20].map(v => ({ value: v, label: `${v}% lighter` }))} />
+                </div>
+              )}
+              <p className="mt-1.5 text-footnote text-muted-foreground">
+                {f.scheme === 'topset'
+                  ? `One heavy set at ${Number(f.weight) || 0} lb, then the rest at ${roundTo((Number(f.weight) || 0) * (1 - f.backoffPercent / 100), step)} lb. Progress is judged on the top set — strength from the heavy set, extra practice with less fatigue.`
+                  : 'Every set at your working weight. Simple and effective.'}
+              </p>
+            </div>
+          )}
 
           <div>
             <FieldLabel>How hard to push</FieldLabel>

@@ -21,11 +21,12 @@ export function SmartNudges({ today, kinds }: { today: DateKey; kinds?: Nudge['k
   const configs = useStore(stores.EXERCISE_CONFIGS);
   const custom = useStore(stores.CUSTOM_EXERCISES);
   const goals = useStore(stores.GOALS);
+  const bodyweight = useStore(stores.SETTINGS).bodyweight;
   const [dismissed, setDismissed] = useState(readDismissed);
   const [lastExport, setLastExport] = useState(getLastExportAt);
 
   const nudges = useMemo(() => {
-    const list: Nudge[] = trainingNudges(sessions, configs, custom).slice(0, 2);
+    const list: Nudge[] = trainingNudges(sessions, configs, custom, bodyweight).slice(0, 2);
     // Don't nag on day one: only once you've been using TELOS for a few days.
     const firstUse = [...goals.map(g => g.createdAt), ...sessions.map(x => x.date)].filter(Boolean).map(d => dateKeyOf(d)).sort()[0];
     const daysUsing = firstUse ? daysBetween(firstUse, today) : 0;
@@ -40,7 +41,7 @@ export function SmartNudges({ today, kinds }: { today: DateKey; kinds?: Nudge['k
     }
     return list.filter(n => dismissed[n.id] !== today && (!kinds || kinds.includes(n.kind)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, configs, custom, goals, lastExport, dismissed, today, kinds?.join()]);
+  }, [sessions, configs, custom, bodyweight, goals, lastExport, dismissed, today, kinds?.join()]);
 
   if (nudges.length === 0) return null;
 
