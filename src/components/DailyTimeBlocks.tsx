@@ -5,6 +5,8 @@ import { autofillDay, dismissBlock, undismissBlock } from '@/lib/plan-autofill';
 import { DAY_END_MIN, DAY_START_MIN, formatClock, plannerDayKey, plannerNowMinutes } from '@/lib/plan-time';
 import { todayKey } from '@/lib/dates';
 import { shouldShowOnDay } from '@/lib/routines';
+import { isDoneOn } from '@/lib/practice';
+import { habitActions } from '@/hooks/useHabits';
 import { Check, Repeat } from 'lucide-react';
 import { toast } from 'sonner';
 import { BlockSheet, type BacklogTodo } from '@/components/plan/BlockSheet';
@@ -140,6 +142,7 @@ interface DailyTimeBlocksProps {
 
 export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = NO_TODOS, deadlineTodos = NO_TODOS, todoStates }: DailyTimeBlocksProps) {
   const blocks = useStore(TB);
+  const habitLogs = useStore(stores.HABIT_LOGS);
   const categories = useStore(CATS);
   const repeatableBlocks = useStore(stores.REPEATABLE_BLOCKS);
   const [editingBlock, setEditingBlock] = useState<string | null>(null);
@@ -377,10 +380,14 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
   }, [dayName, isToday]);
 
   const editing = editingBlock ? dayBlocks.find(b => b.id === editingBlock) ?? null : null;
-  const isDone = (b: TimeBlock) => (b.todoId && todoStates ? (todoStates[b.todoId] ?? false) : (b.done ?? false));
+  // A block for a practice is done when the practice is checked off that day (and vice versa).
+  const isDone = (b: TimeBlock) => (b.todoId && todoStates ? (todoStates[b.todoId] ?? false)
+    : b.habitId ? isDoneOn(b.habitId, habitLogs, dayName) : (b.done ?? false));
   const toggleDone = (b: TimeBlock) => {
-    updateBlock(b.id, { done: !isDone(b) });
+    const done = isDone(b);
+    updateBlock(b.id, { done: !done });
     if (b.todoId) onToggleTodo?.(b.todoId);
+    else if (b.habitId) { if (done) habitActions.undo(b.habitId, dayName); else habitActions.checkIn(b.habitId, undefined, dayName); }
   };
 
   return (
@@ -457,10 +464,10 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                 onClick={(e) => { e.stopPropagation(); if (!dragging) setEditingBlock(block.id); }}
               >
                 <div className={cn('flex h-full gap-2 px-2', compact ? 'items-center py-0' : 'items-start py-1.5')}>
-                  {block.todoId && onToggleTodo && (
+                  {((block.todoId && onToggleTodo) || block.habitId) && (
                     <button type="button" role="checkbox" aria-checked={done} aria-label={`Done: ${block.title}`}
                       onClick={(e) => { e.stopPropagation(); toggleDone(block); }}
-                      className="-m-1.5 flex h-8 w-8 shrink-0 items-center justify-center">
+                      className="relative z-20 -m-1.5 flex h-8 w-8 shrink-0 items-center justify-center">
                       <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full border-2"
                         style={done ? { backgroundColor: `hsl(${cat.color})`, borderColor: `hsl(${cat.color})` } : { borderColor: `hsl(${cat.color})` }}>
                         {done && <Check className="h-3 w-3 text-white" strokeWidth={3.5} />}
@@ -483,7 +490,7 @@ export default function DailyTimeBlocks({ dayName, onToggleTodo, backlogTodos = 
                 {/* Drag the bottom edge to change the length */}
                 <div
                   data-resize-handle
-                  className="group absolute -bottom-1 left-0 right-0 flex h-5 cursor-ns-resize items-end justify-center pb-1.5"
+                  className="group absolute -bottom-1 left-1/2 z-10 flex h-4 w-14 -translate-x-1/2 cursor-ns-resize items-end justify-center pb-1"
                   style={{ touchAction: 'none' }}
                   onPointerDown={(e) => handleResizePointerDown(e, block.id)}
                   onClick={(e) => e.stopPropagation()}

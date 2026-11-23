@@ -54,12 +54,7 @@ export function autofillDay(
   const gone = new Set(dismissed[dayName] ?? []);
   let all = blocks;
   let changed = false;
-
-  // Habits live in the checklist now, not the planner.
-  if (all.some(b => b.dayName === dayName && b.habitId)) {
-    all = all.filter(b => !(b.dayName === dayName && b.habitId));
-    changed = true;
-  }
+  // (Blocks for practices are kept — you place them from Plan's suggestions.)
 
   const day = () => all.filter(b => b.dayName === dayName);
   const added: TimeBlock[] = [];

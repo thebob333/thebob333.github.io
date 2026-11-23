@@ -48,9 +48,10 @@ describe('autofillDay', () => {
     expect([b.startHour, b.startMinute]).toEqual([10, 30]);
   });
 
-  it('removes leftover habit blocks', () => {
+  it('keeps blocks you placed for practices', () => {
     const habitBlock: TimeBlock = { id: 'h', dayName: DAY, categoryId: 'goals', title: 'x', startHour: 6, startMinute: 0, durationMinutes: 15, habitId: 'h1' };
-    expect(autofillDay([habitBlock], DAY, [], [], {}, id)).toEqual([]);
+    const blocks = [habitBlock];
+    expect(autofillDay(blocks, DAY, [], [], {}, id)).toBe(blocks);
   });
 });
 

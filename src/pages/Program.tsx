@@ -16,6 +16,7 @@ import { splitLabel } from '@/lib/gym-format';
 import { PageHeader, HeaderButton } from '@/components/app/PageHeader';
 import DailyTimeBlocks, { type BacklogTodo } from '@/components/DailyTimeBlocks';
 import { RoutinesSheet } from '@/components/plan/RoutinesSheet';
+import { PlanSuggestions } from '@/components/plan/PlanSuggestions';
 import { cn } from '@/lib/utils';
 
 const LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -128,6 +129,8 @@ export default function PlanPage() {
           <Dumbbell className="h-4 w-4" /> {dayPlan ? 'Rest day' : 'No training planned'} · <span className="font-semibold text-primary">{dayPlan ? 'Edit week' : 'Plan your week'}</span>
         </Link>
       )}
+
+      <PlanSuggestions day={selected} />
 
       {/* Timeline */}
       <div className="surface min-h-0 flex-1 overflow-hidden">
