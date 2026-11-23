@@ -133,3 +133,36 @@ export const DEFAULT_CONFIGS: ExerciseConfig[] = [
   { exercise: 'barbell_row', targetSets: 3, repRangeMin: 6, repRangeMax: 8, currentWeight: 115, weightIncrement: 5 },
   { exercise: 'pull_up', targetSets: 3, repRangeMin: 5, repRangeMax: 8, currentWeight: 0, weightIncrement: 5 },
 ];
+
+// ─── Cardio ─────────────────────────────────────────────────────────────────
+
+export type CardioKind = 'run' | 'walk' | 'bike' | 'swim' | 'row' | 'other';
+export type DistanceUnit = 'mi' | 'km';
+
+export interface CardioEntry {
+  id: string;
+  date: string; // ISO
+  kind: CardioKind;
+  /** Distance in `unit`; optional for e.g. a timed bike class. */
+  distance?: number;
+  unit: DistanceUnit;
+  /** Total time in seconds. */
+  seconds: number;
+  note?: string;
+}
+
+export const CARDIO_LABELS: Record<CardioKind, string> = { run: 'Run', walk: 'Walk', bike: 'Bike', swim: 'Swim', row: 'Row', other: 'Other' };
+
+/** "8:42 /mi" for runs and walks; null without a distance. */
+export function paceText(e: Pick<CardioEntry, 'distance' | 'seconds' | 'unit'>): string | null {
+  if (!e.distance || e.distance <= 0 || !e.seconds) return null;
+  const per = Math.round(e.seconds / e.distance);
+  return `${Math.floor(per / 60)}:${String(per % 60).padStart(2, '0')} /${e.unit}`;
+}
+
+export function durationText(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}

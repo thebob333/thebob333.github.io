@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowDown, ArrowUp, Bookmark, Check, ChevronRight, Dumbbell, Minus, MoreHorizontal, Pencil, Play, Plus, Trash2, TrendingUp, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Bookmark, Check, ChevronRight, Dumbbell, Minus, MoreHorizontal, Pencil, Play, Plus, Trash2, TrendingUp, X, Footprints } from 'lucide-react';
 import { toast } from 'sonner';
 import { useActiveWorkout, activeWorkoutActions, workoutActions } from '@/hooks/useWorkouts';
 import { useWeeklyPlan } from '@/hooks/useWeeklyPlan';
@@ -20,6 +20,9 @@ import { SmartNudges } from '@/components/today/SmartNudges';
 import { ExercisePicker } from './ExercisePicker';
 import { ExerciseSheet } from './ExerciseSheet';
 import { RestTimer } from './RestTimer';
+import { SessionSummarySheet } from './SessionSummarySheet';
+import { CardioSheet } from './CardioSheet';
+import { buildSummary, type SessionSummary } from '@/lib/gym-stats';
 import { SessionSheet } from './SessionSheet';
 import { count, fmtLb, sessionVolume, splitLabel } from '@/lib/gym-format';
 
@@ -49,9 +52,15 @@ export function WorkoutView({ customExercises, sessions, configs, onGoToProgram 
   onGoToProgram: () => void;
 }) {
   const active = useActiveWorkout();
-  return active
-    ? <ActiveWorkout customExercises={customExercises} sessions={sessions} configs={configs} />
-    : <WorkoutHome customExercises={customExercises} sessions={sessions} configs={configs} onGoToProgram={onGoToProgram} />;
+  const [summary, setSummary] = useState<SessionSummary | null>(null);
+  return (
+    <>
+      {active
+        ? <ActiveWorkout customExercises={customExercises} sessions={sessions} configs={configs} onFinished={setSummary} />
+        : <WorkoutHome customExercises={customExercises} sessions={sessions} configs={configs} onGoToProgram={onGoToProgram} />}
+      <SessionSummarySheet summary={summary} onClose={() => setSummary(null)} />
+    </>
+  );
 }
 
 // ─── Not training yet: today's workout, saved workouts, recent ───
@@ -64,6 +73,7 @@ function WorkoutHome({ customExercises, sessions, configs, onGoToProgram }: {
   const hasPlan = useStore(stores.WEEKLY_PLAN) !== null;
   const templates = useStore(stores.TEMPLATES);
   const [openSession, setOpenSession] = useState<WorkoutSession | null>(null);
+  const [cardioOpen, setCardioOpen] = useState(false);
   const todayIdx = (dayOfWeek(today) + 6) % 7;
   const plan = hasPlan ? days[todayIdx] : null;
   const sorted = useMemo(() => [...sessions].sort((a, b) => b.date.localeCompare(a.date)), [sessions]);
@@ -170,6 +180,7 @@ function WorkoutHome({ customExercises, sessions, configs, onGoToProgram }: {
             />
           ))}
           <ListRow onClick={startEmpty} leading={<span className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary"><Plus className="h-4 w-4" /></span>} title="Empty workout" subtitle={templates.length ? undefined : 'Tip: save a workout while logging to reuse it here'} />
+          <ListRow onClick={() => setCardioOpen(true)} leading={<span className="flex h-8 w-8 items-center justify-center rounded-full bg-move/10 text-move"><Footprints className="h-4 w-4" /></span>} title="Log a run or cardio" subtitle="Distance, time and pace" />
         </div>
       </section>
 
@@ -187,14 +198,15 @@ function WorkoutHome({ customExercises, sessions, configs, onGoToProgram }: {
       )}
 
       <SessionSheet session={openSession} customExercises={customExercises} onClose={() => setOpenSession(null)} />
+      <CardioSheet open={cardioOpen} onClose={() => setCardioOpen(false)} />
     </div>
   );
 }
 
 // ─── Logging ───
 
-function ActiveWorkout({ customExercises, sessions, configs }: {
-  customExercises: CustomExercise[]; sessions: WorkoutSession[]; configs: ExerciseConfig[];
+function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
+  customExercises: CustomExercise[]; sessions: WorkoutSession[]; configs: ExerciseConfig[]; onFinished: (s: SessionSummary) => void;
 }) {
   const w = useActiveWorkout()!;
   const elapsed = useElapsed(w.startedAt);
@@ -207,9 +219,11 @@ function ActiveWorkout({ customExercises, sessions, configs }: {
 
   const finish = () => {
     if (w.exercises.length === 0 || setCount === 0) { toast.error('Add at least one set first'); return; }
-    activeWorkoutActions.finish(customExercises);
+    const before = stores.SESSIONS.get();
+    const configsBefore = stores.EXERCISE_CONFIGS.get();
+    const session = activeWorkoutActions.finish(customExercises, { quiet: true });
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    toast.success('Workout logged 🔥', { description: 'Next session is planned for you.' });
+    if (session) onFinished(buildSummary(session, before, configsBefore, stores.EXERCISE_CONFIGS.get(), customExercises, w.startedAt));
   };
   const discard = () => {
     const draft = w;

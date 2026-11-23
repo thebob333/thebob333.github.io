@@ -1,5 +1,5 @@
 import { Goal, HabitLog, type Adjustment, type EngineState, type MetricEntry } from '@/types/goals';
-import { WorkoutSession, ExerciseConfig, WeeklyPlan, CustomExercise } from '@/types/workout';
+import { WorkoutSession, ExerciseConfig, WeeklyPlan, CustomExercise, type CardioEntry } from '@/types/workout';
 import { DEFAULT_CONFIGS } from '@/types/workout';
 import type { UnlockedAchievement } from '@/lib/achievements';
 import { createStore, type Store } from '@/lib/store';
@@ -30,6 +30,7 @@ export const KEYS = {
   ADJUSTMENTS: 'telos_adjustments',
   ENGINE: 'telos_engine',
   METRICS: 'telos_metrics',
+  CARDIO: 'telos_cardio',
 } as const;
 
 /** Keys from removed features (People). Cleaned out by migration v6. */
@@ -189,6 +190,7 @@ export const stores = {
   ADJUSTMENTS: arrayStore<Adjustment>(KEYS.ADJUSTMENTS, 'Plan adjustments'),
   ENGINE: createStore<EngineState>({ key: KEYS.ENGINE, label: 'Adaptation engine', kind: 'object', fallback: () => ({}) }),
   METRICS: arrayStore<MetricEntry>(KEYS.METRICS, 'Progress measurements'),
+  CARDIO: arrayStore<CardioEntry>(KEYS.CARDIO, 'Cardio'),
 } satisfies { [K in StoreName]: Store<unknown> };
 
 // ─── Legacy load/save helpers ───────────────────────────────────────────────

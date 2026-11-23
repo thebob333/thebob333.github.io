@@ -1,3 +1,4 @@
+import { APP_MUSCLE_EXERCISES } from '@/lib/gym-stats';
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Model, { IExerciseData, IMuscleStats, Muscle } from 'react-body-highlighter';
@@ -22,23 +23,6 @@ function getExerciseDisplay(exercise: CompoundExercise, pr: PersonalRecord | und
   }
   return { current: pr ? `Best ${pr.weight} lbs` : 'Not logged yet', gold: `goal ${threshold} lbs` };
 }
-
-// Our app muscle groups → which compound exercises work them, with weight (1.0 = primary, 0.3 = secondary)
-const APP_MUSCLE_EXERCISES: Record<string, { exercise: CompoundExercise; weight: number }[]> = {
-  chest: [{ exercise: 'bench_press', weight: 1.0 }],
-  back: [{ exercise: 'pull_up', weight: 1.0 }, { exercise: 'barbell_row', weight: 1.0 }, { exercise: 'deadlift', weight: 0.3 }],
-  shoulders: [{ exercise: 'overhead_press', weight: 1.0 }, { exercise: 'bench_press', weight: 0.3 }],
-  biceps: [{ exercise: 'barbell_row', weight: 0.5 }, { exercise: 'pull_up', weight: 0.5 }],
-  triceps: [{ exercise: 'bench_press', weight: 0.5 }, { exercise: 'overhead_press', weight: 0.5 }],
-  quads: [{ exercise: 'squat', weight: 1.0 }],
-  hamstrings: [{ exercise: 'deadlift', weight: 1.0 }, { exercise: 'squat', weight: 0.2 }],
-  glutes: [{ exercise: 'squat', weight: 0.7 }, { exercise: 'deadlift', weight: 0.7 }],
-  calves: [{ exercise: 'squat', weight: 0.2 }],
-  core: [{ exercise: 'squat', weight: 0.3 }, { exercise: 'deadlift', weight: 0.3 }, { exercise: 'overhead_press', weight: 0.3 }],
-  forearms: [{ exercise: 'deadlift', weight: 0.3 }, { exercise: 'barbell_row', weight: 0.3 }, { exercise: 'pull_up', weight: 0.3 }],
-  traps: [{ exercise: 'deadlift', weight: 0.5 }, { exercise: 'barbell_row', weight: 0.5 }],
-  neck: [], // Only shows progress from neck-specific custom exercises
-};
 
 // Map our app muscle groups → library's Muscle names (for the SVG)
 const APP_TO_LIB_MUSCLES: Record<string, Muscle[]> = {

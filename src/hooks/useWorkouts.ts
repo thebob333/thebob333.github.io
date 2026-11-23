@@ -15,7 +15,12 @@ const AW = stores.ACTIVE_WORKOUT;
 
 export const workoutActions = {
   /** Log a session, then apply any earned progression (one source of truth: progressive-overload.ts). */
-  addSession(session: Omit<WorkoutSession, 'id'>, customExercises: CustomExercise[] = stores.CUSTOM_EXERCISES.get()): WorkoutSession {
+  /**
+   * `quiet`: skip the toasts (the post-workout summary shows the same news).
+   * Stalled lifts get their lighter week applied automatically (autopilot rule:
+   * small, reversible, in-app) — the summary shows it with Undo.
+   */
+  addSession(session: Omit<WorkoutSession, 'id'>, customExercises: CustomExercise[] = stores.CUSTOM_EXERCISES.get(), opts: { quiet?: boolean } = {}): WorkoutSession {
     const newSession: WorkoutSession = {
       ...session,
       id: generateId(),
@@ -26,7 +31,7 @@ export const workoutActions = {
 
     // New personal records get their own moment.
     const records = newRecordsIn(newSession, previous, customExercises);
-    if (records.length > 0) {
+    if (records.length > 0 && !opts.quiet) {
       toast(`🎉 New personal record${records.length > 1 ? 's' : ''}!`, {
         description: records.map(r => `${r.label} ${r.value}`).join(' · '),
         duration: 7000,
@@ -52,7 +57,21 @@ export const workoutActions = {
       return changed ? next : configs;
     });
 
-    if (changes.length > 0) toast.success('Level up for next session 📈', { description: changes.join(' · ') });
+    if (changes.length > 0 && !opts.quiet) toast.success('Level up for next session 📈', { description: changes.join(' · ') });
+
+    // Automatic lighter week for lifts that have stalled.
+    CFG.update(configs => {
+      let changed = false;
+      const next = configs.map(config => {
+        if (!newSession.exercises.some(e => e.exercise === config.exercise)) return config;
+        const bodyweight = isBodyweightExercise(config.exercise, customExercises);
+        const s = getProgressionSuggestion(config, getExerciseHistory(allSessions, config.exercise), { bodyweight });
+        if (s.type !== 'deload' || s.suggestedWeight === undefined || s.suggestedWeight >= config.currentWeight) return config;
+        changed = true;
+        return applyDeload(config, s.suggestedWeight);
+      });
+      return changed ? next : configs;
+    });
 
     // Celebrate badges the moment they're earned (and save them with a real date).
     const { newlyUnlocked } = checkAchievements(S.get(), stores.ACHIEVEMENTS.get());
@@ -187,7 +206,7 @@ export const activeWorkoutActions = {
   },
 
   /** Log it as a session and clear the draft. */
-  finish(customExercises?: CustomExercise[]): WorkoutSession | null {
+  finish(customExercises?: CustomExercise[], opts: { quiet?: boolean } = {}): WorkoutSession | null {
     const w = AW.get();
     if (!w || w.exercises.length === 0) return null;
     const date = new Date().toISOString();
@@ -196,7 +215,7 @@ export const activeWorkoutActions = {
       splitDay: w.splitDay as SplitDay,
       exercises: w.exercises.map(e => ({ exercise: e.exercise, sets: e.sets, date, notes: w.notes || undefined })),
       notes: w.notes || undefined,
-    }, customExercises);
+    }, customExercises, opts);
     AW.set(null);
     return session;
   },
