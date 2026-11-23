@@ -7,8 +7,8 @@ import { useStore } from '@/hooks/useStore';
 import { useTodayKey } from '@/hooks/useToday';
 import { stores, generateId, type WorkoutTemplate } from '@/lib/storage';
 import { dateKeyOf, dayOfWeek } from '@/lib/dates';
-import { getExerciseHistory, getProgressionSuggestion } from '@/lib/progressive-overload';
-import { getExerciseLabel, isBodyweightExercise, type CustomExercise, type ExerciseConfig, type WorkoutSession } from '@/types/workout';
+import { getExerciseHistory, getProgressionSuggestion, platesPerSide, settingsOf } from '@/lib/progressive-overload';
+import { getExerciseLabel, isBodyweightExercise, rirOf, rpeFromRir, usesBarbell, type CustomExercise, type ExerciseConfig, type WorkoutSession } from '@/types/workout';
 import { RowMenu } from '@/components/app/RowMenu';
 import { ListRow } from '@/components/app/ListRow';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/app/ResponsiveDialog';
@@ -90,7 +90,8 @@ function WorkoutHome({ customExercises, sessions, configs, onGoToProgram }: {
   const startTemplate = (t: WorkoutTemplate) => {
     activeWorkoutActions.load(t.splitDay, t.exercises.map(e => {
       const c = configs.find(x => x.exercise === e.exercise);
-      return { exercise: e.exercise, sets: Array.from({ length: e.sets }, () => ({ reps: e.reps || c?.repRangeMin || 8, weight: c?.currentWeight ?? e.weight, rpe: 3 })) };
+      const tr = c ? settingsOf(c).targetRir : 2;
+      return { exercise: e.exercise, sets: Array.from({ length: e.sets }, () => ({ reps: e.reps || c?.repRangeMin || 8, weight: c?.currentWeight ?? e.weight, rir: tr, rpe: rpeFromRir(tr) })) };
     }));
   };
   const deleteTemplate = (t: WorkoutTemplate) => {
@@ -273,6 +274,7 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
       {w.exercises.map(ex => {
         const bw = isBodyweightExercise(ex.exercise, customExercises);
         const config = configs.find(c => c.exercise === ex.exercise);
+        const plates = config && usesBarbell(ex.exercise, customExercises) ? platesPerSide(config.currentWeight) : null;
         const suggestion = config ? getProgressionSuggestion(config, getExerciseHistory(sessions, ex.exercise), { bodyweight: bw }) : null;
         const canDeload = !!suggestion && (suggestion.type === 'deload' || suggestion.type === 'fatigue_warning')
           && suggestion.suggestedWeight !== undefined && !!config && suggestion.suggestedWeight < config.currentWeight;
@@ -286,6 +288,16 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
             <div className="flex items-start gap-2 px-4 pt-3.5">
               <div className="min-w-0 flex-1">
                 <h3 className="truncate text-headline">{label(ex.exercise)}</h3>
+                {config && (
+                  <p className="mt-0.5 text-footnote font-semibold tabular-nums">
+                    Target: {config.targetSets} × {config.repRangeMin === config.repRangeMax ? config.repRangeMin : `${config.repRangeMin}–${config.repRangeMax}`}
+                    {bw ? (config.currentWeight ? ` · +${config.currentWeight} lb` : '') : ` @ ${config.currentWeight} lb`}
+                    <span className="font-normal text-muted-foreground"> · leave ~{settingsOf(config).targetRir} in the tank</span>
+                  </p>
+                )}
+                {plates && plates.length > 0 && (
+                  <p className="text-footnote text-muted-foreground">Plates per side: {plates.join(' + ')}</p>
+                )}
                 {suggestion && (
                   <p className={`mt-0.5 text-footnote ${tone}`}>
                     <Icon className="mr-1 inline h-3.5 w-3.5 align-[-2px]" />{suggestion.message.replace(/\s*\(e1RM[^)]*\)/i, '')}
@@ -306,7 +318,7 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
             </div>
 
             <div className="mt-2 grid grid-cols-[28px_1fr_1fr_60px_32px] items-center gap-2 px-4 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <span>Set</span><span className="text-center">{bw ? '+ lb' : 'lb'}</span><span className="text-center">Reps</span><span className="text-center">Effort</span><span />
+              <span>Set</span><span className="text-center">{bw ? '+ lb' : 'lb'}</span><span className="text-center">Reps</span><span className="text-center">Left</span><span />
             </div>
             <div className="mt-1 space-y-1.5 px-4">
               {ex.sets.map((s, i) => (
@@ -318,12 +330,12 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
                   <input type="number" inputMode="numeric" aria-label={`Set ${i + 1} reps`} value={s.reps || ''} placeholder="0"
                     onChange={e => activeWorkoutActions.updateSet(ex.id, i, 'reps', e.target.value === '' ? 0 : Number(e.target.value))}
                     className="h-11 w-full rounded-xl bg-secondary text-center text-headline tabular-nums outline-none focus:ring-2 focus:ring-move/50" />
-                  {/* Shows just the number; the phone's picker shows what each level means. */}
+                  {/* Reps left in the tank. Shows the number; the phone's picker explains each level. */}
                   <label className="relative flex h-11 items-center justify-center rounded-xl bg-secondary text-headline tabular-nums focus-within:ring-2 focus-within:ring-move/50">
-                    {s.rpe || 3}
-                    <select aria-label={`Set ${i + 1} effort`} value={s.rpe || 3} onChange={e => activeWorkoutActions.updateSet(ex.id, i, 'rpe', Number(e.target.value))}
+                    {rirOf(s) >= 4 ? '4+' : rirOf(s)}
+                    <select aria-label={`Set ${i + 1} reps left in the tank`} value={Math.min(4, rirOf(s))} onChange={e => activeWorkoutActions.setEffort(ex.id, i, Number(e.target.value))}
                       className="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0">
-                      <option value={1}>1 — easy</option><option value={2}>2 — comfortable</option><option value={3}>3 — solid</option><option value={4}>4 — hard</option><option value={5}>5 — all-out</option>
+                      <option value={0}>0 — nothing left</option><option value={1}>1 left</option><option value={2}>2 left</option><option value={3}>3 left</option><option value={4}>4+ left — easy</option>
                     </select>
                   </label>
                   <button type="button" aria-label={`Remove set ${i + 1}`} onClick={() => activeWorkoutActions.removeSet(ex.id, i)} className="flex h-11 items-center justify-center text-muted-foreground/70">
@@ -346,7 +358,7 @@ function ActiveWorkout({ customExercises, sessions, configs, onFinished }: {
       {w.exercises.length > 0 && (
         <Textarea value={w.notes} onChange={e => activeWorkoutActions.setNotes(e.target.value)} placeholder="Notes — how did it feel?" className="min-h-[72px] rounded-2xl border-0 bg-card text-body shadow-[0_0_0_1px_hsl(var(--border)/0.7)]" />
       )}
-      {w.exercises.length > 0 && <p className="px-1 text-footnote text-muted-foreground">Effort: 1 = easy, 3 = solid, 5 = nothing left. Tap Finish and TELOS plans your next session.</p>}
+      {w.exercises.length > 0 && <p className="px-1 text-footnote text-muted-foreground"><b>Left</b> = how many more reps you could have done with good form (0 = none). It's how TELOS knows when to add weight. Tap Finish and it plans your next session.</p>}
 
       {/* Always-reachable rest timer + finish, just above the tab bar */}
       <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-1 flex gap-2 rounded-[22px] bg-background/85 p-1 backdrop-blur-xl md:bottom-4">

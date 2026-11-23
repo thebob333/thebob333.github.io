@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { activeWorkoutActions, workoutActions } from '@/hooks/useWorkouts';
 import { calculateVolumeLoad } from '@/lib/progressive-overload';
 import { fmtLb, sessionVolume, splitLabel } from '@/lib/gym-format';
-import { getExerciseLabel, type CustomExercise, type WorkoutSession } from '@/types/workout';
+import { getExerciseLabel, rirOf, type CustomExercise, type WorkoutSession } from '@/types/workout';
 
 
 /** One past session: every set, notes, repeat or delete. */
@@ -51,7 +51,7 @@ export function SessionSheet({ session, customExercises, onClose, onRepeat }: {
                 <div key={j} className="flex items-center gap-3 px-4 py-2 text-body tabular-nums">
                   <span className="w-12 text-footnote text-muted-foreground">Set {j + 1}</span>
                   <span className="flex-1 font-medium">{s.weight ? `${s.weight} lb × ${s.reps}` : `${s.reps} reps`}</span>
-                  <span className="text-footnote text-muted-foreground">effort {s.rpe}</span>
+                  <span className="text-footnote text-muted-foreground">{rirOf(s)} left</span>
                 </div>
               ))}
             </div>

@@ -61,8 +61,16 @@ export type SplitDay = 'push' | 'pull' | 'legs' | 'upper' | 'lower' | 'rest';
 export interface SetLog {
   reps: number;
   weight: number;
-  rpe: number; // 1-5
+  /** Old 1–5 effort scale (5 = all-out). Kept in step with `rir` for older code and data. */
+  rpe: number;
+  /** Reps in reserve: how many more reps you could have done (0 = none left). */
+  rir?: number;
 }
+
+/** Reps in reserve for a set — from `rir`, or converted from the old 1–5 effort (5 → 0 … 1 → 4). */
+export const rirOf = (s: Pick<SetLog, 'rir' | 'rpe'>): number => (typeof s.rir === 'number' ? s.rir : Math.max(0, Math.min(4, 5 - (s.rpe || 3))));
+/** The old 1–5 effort value for a reps-in-reserve number. */
+export const rpeFromRir = (rir: number): number => Math.max(1, Math.min(5, 5 - Math.round(rir)));
 
 export interface ExerciseLog {
   exercise: string;
@@ -85,7 +93,19 @@ export interface ExerciseConfig {
   repRangeMin: number;
   repRangeMax: number;
   currentWeight: number;
-  weightIncrement: number; // lbs/kg to jump
+  weightIncrement: number; // lbs/kg to jump (also the rounding step: your smallest plate pair / dumbbell jump)
+  /**
+   * How it progresses. "double": hit the top of the rep range on every set, then add weight
+   * (best for most lifters). "linear": hit the bottom of the range on every set, add weight
+   * every session (fast beginner gains).
+   */
+  style?: 'double' | 'linear';
+  /** Reps to leave in the tank on working sets (0–3). Default 2. */
+  targetRir?: number;
+  /** How much a lighter week takes off, in percent. Default 10. */
+  deloadPercent?: number;
+  /** Tough sessions (missed the rep minimum) out of the last 3 before a lighter week. Default 2. */
+  stallSessions?: number;
   /** Set when the app (or you) changed the plan after a session, so the next suggestion knows. */
   lastAdjustment?: { type: 'increase_weight' | 'increase_reps' | 'deload'; at: string; from: number };
 }
@@ -165,4 +185,10 @@ export function durationText(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   const s = seconds % 60;
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+}
+
+/** Barbell lifts get a plate calculator. */
+export function usesBarbell(id: string, custom: CustomExercise[] = []): boolean {
+  if (isBuiltInExercise(id)) return id !== 'pull_up';
+  return custom.find(c => c.id === id)?.equipment === 'barbell';
 }

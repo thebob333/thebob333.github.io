@@ -10,7 +10,8 @@ import { workoutActions } from '@/hooks/useWorkouts';
 import { useStore } from '@/hooks/useStore';
 import { stores } from '@/lib/storage';
 import { suggestedCustomTarget } from '@/lib/strength-standards';
-import { ALL_MUSCLE_GROUPS, getExerciseLabel, isBuiltInExercise, type CustomExercise, type EquipmentType, type MuscleGroup } from '@/types/workout';
+import { DEFAULTS, bestRecentE1RM, getExerciseHistory, prescribeWeight, settingsOf } from '@/lib/progressive-overload';
+import { ALL_MUSCLE_GROUPS, getExerciseLabel, isBodyweightExercise, isBuiltInExercise, type CustomExercise, type EquipmentType, type MuscleGroup } from '@/types/workout';
 import { cn } from '@/lib/utils';
 
 const EQUIPMENT: { value: EquipmentType; label: string }[] = [
@@ -21,6 +22,7 @@ const EQUIPMENT: { value: EquipmentType; label: string }[] = [
 interface Form {
   name: string; equipment: EquipmentType; muscles: MuscleGroup[];
   sets: string; repMin: string; repMax: string; weight: string; increment: string; target: string;
+  style: 'double' | 'linear'; targetRir: number; deloadPercent: number; stallSessions: number;
 }
 
 function NumberField({ label, value, onChange, suffix, step }: { label: string; value: string; onChange: (v: string) => void; suffix?: string; step?: number }) {
@@ -66,6 +68,7 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
   const customExercises = useStore(stores.CUSTOM_EXERCISES);
   const settings = useStore(stores.SETTINGS);
   const configs = useStore(stores.EXERCISE_CONFIGS);
+  const sessions = useStore(stores.SESSIONS);
   const creating = exerciseId === null;
   const isCustom = creating || !isBuiltInExercise(exerciseId);
   const [f, setF] = useState<Form | null>(null);
@@ -82,6 +85,7 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
       name: ce?.name ?? '', equipment: ce?.equipment ?? 'barbell', muscles: ce?.muscleGroups ?? [],
       sets: String(cfg?.targetSets ?? 3), repMin: String(cfg?.repRangeMin ?? 8), repMax: String(cfg?.repRangeMax ?? 12),
       weight: String(cfg?.currentWeight ?? 45), increment: String(cfg?.weightIncrement ?? 5), target: t ? String(t) : '',
+      ...(cfg ? settingsOf(cfg) : DEFAULTS),
     });
     setAiOpen(false); setAiReply('');
     // Only when it opens — not on every store change while editing.
@@ -89,6 +93,13 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
   }, [open, exerciseId]);
 
   if (!f) return null;
+  const e1rm = exerciseId && !isBodyweightExercise(exerciseId, customExercises) ? bestRecentE1RM(getExerciseHistory(sessions, exerciseId), 5) : 0;
+  const step = Number(f.increment) > 0 ? Number(f.increment) : 5;
+  const numbers = e1rm > 0 ? {
+    e1rm,
+    high: prescribeWeight(e1rm, Number(f.repMax) || 12, f.targetRir, step),
+    low: prescribeWeight(e1rm, Number(f.repMin) || 8, f.targetRir, step),
+  } : null;
   const set = (patch: Partial<Form>) => setF(prev => ({ ...prev!, ...patch }));
   const suggested = suggestedCustomTarget(f.equipment, settings.bodyweight);
   const bodyweightLift = f.equipment === 'bodyweight';
@@ -118,6 +129,7 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
       repRangeMax: Math.max(1, Math.round(n(f.repMax, 12))),
       currentWeight: Math.max(0, n(f.weight, 0)),
       weightIncrement: Math.max(0, n(f.increment, 5)),
+      style: f.style, targetRir: f.targetRir, deloadPercent: f.deloadPercent, stallSessions: f.stallSessions,
     };
     if (fields.repRangeMax < fields.repRangeMin) fields.repRangeMax = fields.repRangeMin;
 
@@ -193,7 +205,49 @@ export function ExerciseSheet({ open, exerciseId, onClose, onCreated }: {
               <NumberField label={bodyweightLift ? 'Added weight' : 'Working weight'} value={f.weight} onChange={weight => set({ weight })} suffix="lb" />
               <NumberField label="Add each time" value={f.increment} onChange={increment => set({ increment })} suffix="lb" step={2.5} />
             </div>
-            <p className="mt-2 text-footnote text-muted-foreground">When you hit the top of the rep range on every set, the next session goes up by this much.</p>
+            <p className="mt-2 text-footnote text-muted-foreground">"Add each time" is also your smallest jump — e.g. 5 lb with 2.5 lb plates, 2.5 lb with microplates.</p>
+          </div>
+
+          {numbers && (
+            <div className="rounded-2xl bg-secondary/60 p-3">
+              <p className="text-footnote font-semibold text-muted-foreground">Your numbers</p>
+              <p className="mt-1 text-body">Estimated max: <b className="tabular-nums">{numbers.e1rm} lb</b></p>
+              <p className="text-footnote text-muted-foreground">
+                From your best recent set, counting the reps you had left. For {f.repMin}–{f.repMax} reps leaving ~{f.targetRir} in the tank, that's about <b className="text-foreground tabular-nums">{numbers.high}–{numbers.low} lb</b>.
+              </p>
+              {Number(f.weight) > 0 && Number(f.weight) > numbers.low + 2 * (Number(f.increment) || 5) && (
+                <p className="mt-1 text-footnote font-medium text-warning">Your working weight looks heavy for this rep range.</p>
+              )}
+            </div>
+          )}
+
+          <div>
+            <FieldLabel>How it progresses</FieldLabel>
+            <Chips<'double' | 'linear'> label="Progression" value={f.style} onChange={style => set({ style })}
+              options={[{ value: 'double', label: 'Reps, then weight' }, { value: 'linear', label: 'Weight every session' }]} />
+            <p className="mt-1.5 text-footnote text-muted-foreground">
+              {f.style === 'double'
+                ? `Add reps until every set hits ${f.repMax}, then add ${f.increment || 5} lb and start again at ${f.repMin}. Steady and sustainable — best for most people.`
+                : `Every time all sets hit ${f.repMin}, add ${f.increment || 5} lb. Fastest while you're new to a lift; switch to "Reps, then weight" when it stalls.`}
+            </p>
+          </div>
+
+          <div>
+            <FieldLabel>How hard to push</FieldLabel>
+            <Chips<number> label="Reps left in the tank" value={f.targetRir} onChange={targetRir => set({ targetRir })}
+              options={[{ value: 0, label: 'To failure' }, { value: 1, label: '1 left' }, { value: 2, label: '2 left' }, { value: 3, label: '3 left' }]} />
+            <p className="mt-1.5 text-footnote text-muted-foreground">Reps you leave in the tank on each set. 1–2 builds strength and size with less fatigue; to failure is hardest to recover from.</p>
+          </div>
+
+          <div>
+            <FieldLabel>When it stalls</FieldLabel>
+            <div className="space-y-2">
+              <Chips<number> label="Lighter week size" value={f.deloadPercent} onChange={deloadPercent => set({ deloadPercent })}
+                options={[5, 10, 15].map(v => ({ value: v, label: `${v}% lighter` }))} />
+              <Chips<number> label="Stall sensitivity" value={f.stallSessions} onChange={stallSessions => set({ stallSessions })}
+                options={[{ value: 1, label: 'After 1 tough session' }, { value: 2, label: 'After 2 of 3' }, { value: 3, label: 'After 3 in a row' }]} />
+            </div>
+            <p className="mt-1.5 text-footnote text-muted-foreground">A "tough session" means missing {f.repMin} reps on a set. Then the weight drops for a week and builds back up — usually past where you stalled.</p>
           </div>
 
           {isCustom && (

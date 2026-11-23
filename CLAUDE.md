@@ -67,7 +67,7 @@ Types and utility functions for this hierarchy live in `src/types/goals.ts`. In 
 ### Workout Domain
 
 Workout types are in `src/types/workout.ts`. Core domain logic lives in:
-- `src/lib/progressive-overload.ts` — the single source of progression logic: `getProgressionSuggestion` (shown in the UI) and `planNextSession` (applied after logging; increases only, deloads are suggested). Bodyweight lifts progress by reps and their PRs are max reps.
+- `src/lib/progressive-overload.ts` — the single source of progression logic: `getProgressionSuggestion` (shown in the UI) and `planNextSession` (applied after logging). Method: double progression (reps, then weight) or linear, judged by **reps in reserve** (`SetLog.rir`; `rirOf()` converts the old 1–5 `rpe`, which is kept in step via `rpeFromRir`); jumps can double when far too easy, capped by the effort-adjusted estimated max (`effortE1RM` = Epley on reps + RIR, `prescribeWeight`); stalls trigger a lighter week. Per-exercise settings on `ExerciseConfig` (`style`, `targetRir`, `deloadPercent`, `stallSessions`; defaults in `DEFAULTS`/`settingsOf`). `platesPerSide` powers the plate calculator. Bodyweight lifts progress by reps and their PRs are max reps.
 - The workout being logged lives in `stores.ACTIVE_WORKOUT` (`activeWorkoutActions` in `src/hooks/useWorkouts.ts`), so it survives navigation and the app being closed.
 - `src/lib/achievements.ts` — badge/milestone evaluation
 - `src/lib/strength-standards.ts` — strength benchmarks by bodyweight

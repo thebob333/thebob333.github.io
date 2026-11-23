@@ -1,9 +1,9 @@
 import {
   WorkoutSession, ExerciseConfig, getExerciseLabel, CustomExercise, SetLog, SplitDay,
-  isBodyweightExercise, sanitizeConfig, defaultConfigFor,
+  isBodyweightExercise, sanitizeConfig, defaultConfigFor, rpeFromRir,
 } from '@/types/workout';
 import { stores, generateId, type ActiveWorkout } from '@/lib/storage';
-import { getExerciseHistory, getProgressionSuggestion, planNextSession, applyDeload } from '@/lib/progressive-overload';
+import { getExerciseHistory, getProgressionSuggestion, planNextSession, applyDeload, settingsOf } from '@/lib/progressive-overload';
 import { useStore } from '@/hooks/useStore';
 import { toast } from 'sonner';
 import { checkAchievements } from '@/lib/achievements';
@@ -157,10 +157,11 @@ export const activeWorkoutActions = {
     const last = getExerciseHistory(S.get(), exercise).find(l => l.sets.length > 0);
     const bodyweight = isBodyweightExercise(exercise, customExercises);
     const suggestion = getProgressionSuggestion(config, getExerciseHistory(S.get(), exercise), { bodyweight });
+    const tr = settingsOf(config).targetRir;
     // Prefill with exactly what the coach suggests: the current planned weight and target reps.
     const sets: SetLog[] = last
-      ? last.sets.map(s => ({ reps: suggestion.suggestedReps ?? s.reps, weight: config.currentWeight, rpe: 3 }))
-      : Array.from({ length: config.targetSets }, () => ({ reps: config.repRangeMin, weight: config.currentWeight, rpe: 3 }));
+      ? last.sets.map(s => ({ reps: suggestion.suggestedReps ?? s.reps, weight: config.currentWeight, rir: tr, rpe: rpeFromRir(tr) }))
+      : Array.from({ length: config.targetSets }, () => ({ reps: config.repRangeMin, weight: config.currentWeight, rir: tr, rpe: rpeFromRir(tr) }));
     updateActive(w => ({ ...w, exercises: [...w.exercises, { id: generateId(), exercise, sets }] }));
   },
 
@@ -179,12 +180,23 @@ export const activeWorkoutActions = {
     }));
   },
 
+  /** Reps left in the tank for a set (keeps the old 1–5 effort in step). */
+  setEffort(exerciseId: string, setIdx: number, rir: number) {
+    updateActive(w => ({
+      ...w,
+      exercises: w.exercises.map(e => e.id !== exerciseId ? e : {
+        ...e,
+        sets: e.sets.map((s, i) => (i === setIdx ? { ...s, rir, rpe: rpeFromRir(rir) } : s)),
+      }),
+    }));
+  },
+
   addSet(exerciseId: string) {
     updateActive(w => ({
       ...w,
       exercises: w.exercises.map(e => {
         if (e.id !== exerciseId) return e;
-        const last = e.sets[e.sets.length - 1] ?? { reps: 8, weight: 0, rpe: 3 };
+        const last = e.sets[e.sets.length - 1] ?? { reps: 8, weight: 0, rpe: 3, rir: 2 };
         return { ...e, sets: [...e.sets, { ...last }] };
       }),
     }));

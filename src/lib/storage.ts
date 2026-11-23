@@ -122,7 +122,7 @@ export type WeeklySchedule = Record<string, string[]>;
 /** The workout being logged right now — survives navigation and the app being closed. */
 export interface ActiveWorkout {
   splitDay: string;
-  exercises: { id: string; exercise: string; sets: { reps: number; weight: number; rpe: number }[] }[];
+  exercises: { id: string; exercise: string; sets: { reps: number; weight: number; rpe: number; rir?: number }[] }[];
   notes: string;
   startedAt: string;
 }

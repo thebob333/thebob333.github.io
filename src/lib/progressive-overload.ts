@@ -1,5 +1,5 @@
 import { dateKeyOf, startOfWeekKey } from '@/lib/dates';
-import { ExerciseConfig, ExerciseLog, SetLog, WorkoutSession, PersonalRecord } from '@/types/workout';
+import { ExerciseConfig, ExerciseLog, SetLog, WorkoutSession, PersonalRecord, rirOf } from '@/types/workout';
 
 export function calculateVolumeLoad(sets: SetLog[]): number {
   return sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
@@ -29,26 +29,65 @@ export interface ProgressionOptions {
   bodyweight?: boolean;
 }
 
-const DELOAD_FACTOR = 0.9; // a normal deload takes ~10% off, not 40%+
+/** Defaults for the adjustable settings (see ExerciseConfig). */
+export const DEFAULTS = { style: 'double' as const, targetRir: 2, deloadPercent: 10, stallSessions: 2 };
 
-function avgRpe(session: ExerciseLog): number {
-  return session.sets.reduce((s, set) => s + (set.rpe || 0), 0) / session.sets.length;
+export function settingsOf(c: ExerciseConfig) {
+  return {
+    style: c.style ?? DEFAULTS.style,
+    targetRir: Math.max(0, Math.min(3, c.targetRir ?? DEFAULTS.targetRir)),
+    deloadPercent: Math.max(5, Math.min(25, c.deloadPercent ?? DEFAULTS.deloadPercent)),
+    stallSessions: Math.max(1, Math.min(3, c.stallSessions ?? DEFAULTS.stallSessions)),
+  };
+}
+
+/** Average reps in reserve across a session's sets. */
+function avgRir(session: ExerciseLog): number {
+  return session.sets.reduce((s, set) => s + rirOf(set), 0) / session.sets.length;
 }
 
 function bestSetE1RM(session: ExerciseLog): number {
   return Math.max(...session.sets.map(s => estimateE1RM(s.weight, s.reps)));
 }
 
-function roundTo(weight: number, step: number): number {
+/**
+ * Estimated max that accounts for effort: a set of 8 with 2 left in the tank
+ * is like a 10-rep max (reps + reps in reserve), which is what Epley expects.
+ */
+export function effortE1RM(weight: number, reps: number, rir = 0): number {
+  return estimateE1RM(weight, reps + Math.max(0, rir));
+}
+
+/** Best effort-adjusted estimated max over the last few sessions. */
+export function bestRecentE1RM(history: ExerciseLog[], sessions = 3): number {
+  const recent = withSets(history).slice(0, sessions);
+  let best = 0;
+  for (const l of recent) for (const st of l.sets) best = Math.max(best, effortE1RM(st.weight, st.reps, rirOf(st)));
+  return best;
+}
+
+/** The weight for `reps` reps leaving `rir` in the tank, from an estimated max (rounded to your step). */
+export function prescribeWeight(e1rm: number, reps: number, rir: number, step: number): number {
+  if (e1rm <= 0) return 0;
+  const total = Math.max(1, reps + rir);
+  return roundTo(total === 1 ? e1rm : e1rm / (1 + total / 30), step);
+}
+
+export function roundTo(weight: number, step: number): number {
   const s = step > 0 ? step : 5;
   return Math.max(0, Math.round(weight / s) * s);
 }
 
 const withSets = (logs: ExerciseLog[]) => logs.filter(l => Array.isArray(l.sets) && l.sets.length > 0);
+const tank = (r: number) => (r < 0.5 ? 'nothing left' : `~${Math.round(r)} left in the tank`);
 
 /**
  * What to do next session for one exercise. This is the single source of
  * truth: the UI shows it, and `planNextSession` applies it after logging.
+ *
+ * The method: double progression (reps first, then weight) or linear
+ * progression, judged by reps in reserve; weight jumps are capped by your
+ * effort-adjusted estimated max; stalls trigger a lighter week.
  */
 export function getProgressionSuggestion(
   config: ExerciseConfig,
@@ -59,16 +98,18 @@ export function getProgressionSuggestion(
   if (recentSessions.length === 0) {
     return { type: 'hold', message: 'No data yet. Complete your first session!' };
   }
+  const st = settingsOf(config);
+  const step = config.weightIncrement > 0 ? config.weightIncrement : 5;
 
   const latest = recentSessions[0];
-  const unit = opts.bodyweight && config.currentWeight === 0 ? '' : ' lbs';
+  const unit = opts.bodyweight && config.currentWeight === 0 ? '' : ' lb';
   const latestMaxWeight = Math.max(...latest.sets.map(s => s.weight));
   const allSetsHitMax = latest.sets.every(s => s.reps >= config.repRangeMax);
   const allSetsHitMin = latest.sets.every(s => s.reps >= config.repRangeMin);
-  const rpe = avgRpe(latest);
-  const e1rm = opts.bodyweight ? 0 : bestSetE1RM(latest);
-  const e1rmStr = e1rm > 0 ? ` (e1RM: ${e1rm} lbs)` : '';
+  const rir = avgRir(latest);
+  const e1rm = opts.bodyweight ? 0 : bestRecentE1RM(recentSessions);
   const weightStr = (w: number) => (opts.bodyweight && w === 0 ? 'bodyweight' : `${w}${unit}`);
+  const deload = (w: number) => roundTo(w * (1 - st.deloadPercent / 100), step);
 
   // ─── The plan was already adjusted after the last session ───
   const adj = config.lastAdjustment;
@@ -76,40 +117,40 @@ export function getProgressionSuggestion(
     const verb = adj.type === 'deload' ? 'Deloaded' : adj.type === 'increase_reps' ? 'Rep target raised' : 'Weight increased';
     return {
       type: 'hold',
-      message: `${verb} — aim for ${config.repRangeMin}–${config.repRangeMax} reps at ${weightStr(config.currentWeight)}.${e1rmStr}`,
+      message: `${verb} — aim for ${config.repRangeMin}–${config.repRangeMax} reps at ${weightStr(config.currentWeight)}, leaving ~${st.targetRir} in the tank.`,
       suggestedWeight: config.currentWeight,
       suggestedReps: config.repRangeMin,
       e1rm,
     };
   }
 
-  // ─── Fatigue (RPE climbing across 3 sessions at the same weight) ───
+  // ─── Fatigue: same weight, effort climbing (reps in reserve falling) for 3 sessions ───
   if (recentSessions.length >= 3) {
     const sameWeight = recentSessions.slice(0, 4).filter(s => Math.max(...s.sets.map(x => x.weight)) === latestMaxWeight);
     if (sameWeight.length >= 3) {
-      const rpes = sameWeight.map(avgRpe);
-      const climbing = rpes[0] > rpes[1] && rpes[1] > rpes[2];
-      if (climbing && rpe >= 4.5) {
-        const deloadWeight = roundTo(config.currentWeight * DELOAD_FACTOR, config.weightIncrement);
+      const rirs = sameWeight.map(avgRir);
+      const climbing = rirs[0] < rirs[1] && rirs[1] < rirs[2];
+      if (climbing && rir <= 0.5) {
+        const w = deload(config.currentWeight);
         return {
           type: 'fatigue_warning',
-          message: `Fatigue building — effort climbing across sessions (${rpes.slice(0, 3).map(r => r.toFixed(1)).join(' → ')}). Take a rest day${config.currentWeight > 0 ? ` or drop to ${deloadWeight} lbs for a session` : ''}.${e1rmStr}`,
-          suggestedWeight: config.currentWeight > 0 ? deloadWeight : undefined,
+          message: `Fatigue building — each session at this weight has felt harder. Take a rest day${config.currentWeight > 0 ? ` or drop to ${w} lb for a session` : ''}.`,
+          suggestedWeight: config.currentWeight > 0 ? w : undefined,
           e1rm,
         };
       }
     }
   }
 
-  // ─── Stalling (2 of the last 3 sessions missed the minimum reps) ───
+  // ─── Stalling: missed the rep minimum in N of the last 3 sessions ───
   const stalled = recentSessions.slice(0, 3).filter(session => session.sets.some(s => s.reps < config.repRangeMin));
-  if (stalled.length >= 2) {
+  if (stalled.length >= st.stallSessions) {
     if (config.currentWeight > 0) {
-      const deloadWeight = roundTo(config.currentWeight * DELOAD_FACTOR, config.weightIncrement);
+      const w = deload(config.currentWeight);
       return {
         type: 'deload',
-        message: `Stalled for a couple of sessions. Drop to ${deloadWeight} lbs (about 10% lighter), then build back up.${e1rmStr}`,
-        suggestedWeight: deloadWeight,
+        message: `Stalled — missed ${config.repRangeMin} reps in ${stalled.length} of your last ${Math.min(3, recentSessions.length)} sessions. Drop to ${w} lb (${st.deloadPercent}% lighter), then build back up.`,
+        suggestedWeight: w,
         e1rm,
       };
     }
@@ -119,39 +160,46 @@ export function getProgressionSuggestion(
     };
   }
 
-  // ─── Every set hit the top of the range with effort to spare ───
-  if (allSetsHitMax && rpe <= 4) {
+  // ─── Earned progress (judged by effort, not just reps) ───
+  const earned = (st.style === 'linear' ? allSetsHitMin : allSetsHitMax) && rir >= st.targetRir - 1;
+  if (earned) {
     if (opts.bodyweight && config.currentWeight === 0) {
       return {
         type: 'increase_reps',
-        message: `All sets at ${config.repRangeMax}+ reps (effort ${rpe.toFixed(1)})! Raise your target to ${config.repRangeMin + 1}–${config.repRangeMax + 1} reps, or add weight.`,
+        message: `All sets at ${config.repRangeMax}+ reps with ${tank(rir)}! Raise your target to ${config.repRangeMin + 1}–${config.repRangeMax + 1} reps, or add weight.`,
         suggestedReps: config.repRangeMin + 1,
       };
     }
-    const newWeight = config.currentWeight + config.weightIncrement;
+    // Way too easy (2+ more reps in reserve than your target)? Jump two steps —
+    // but never past what your estimated max says you can do for your reps.
+    const cap = prescribeWeight(e1rm, config.repRangeMin, st.targetRir, step);
+    const jump = rir >= st.targetRir + 2 && cap >= config.currentWeight + 2 * step ? 2 : 1;
+    const newWeight = config.currentWeight + jump * step;
     return {
       type: 'increase_weight',
-      message: `All sets at ${config.repRangeMax} reps (effort ${rpe.toFixed(1)})! Increase to ${newWeight} lbs and reset to ${config.repRangeMin} reps.${e1rmStr}`,
+      message: st.style === 'linear'
+        ? `Every set hit ${config.repRangeMin}+ reps with ${tank(rir)}. Add ${jump * step} lb: ${newWeight} lb next time.`
+        : `All sets at ${config.repRangeMax} reps with ${tank(rir)}. Go to ${newWeight} lb${jump > 1 ? ' (that was easy — a double step)' : ''} and aim for ${config.repRangeMin}–${config.repRangeMax} reps.`,
       suggestedWeight: newWeight,
       suggestedReps: config.repRangeMin,
       e1rm,
     };
   }
 
-  if (allSetsHitMax) {
+  if (st.style === 'linear' ? allSetsHitMin : allSetsHitMax) {
     return {
       type: 'hold',
-      message: `Hit max reps but effort was high (${rpe.toFixed(1)}). Repeat at ${weightStr(config.currentWeight)} — when it feels easier, you'll progress.${e1rmStr}`,
+      message: `Hit the reps, but with ${tank(rir)} — harder than your target of ~${st.targetRir}. Repeat ${weightStr(config.currentWeight)}; when it feels easier, you'll move up.`,
       suggestedWeight: config.currentWeight,
       e1rm,
     };
   }
 
-  if (allSetsHitMin) {
+  if (st.style === 'double' && allSetsHitMin) {
     const targetReps = Math.min(Math.min(...latest.sets.map(s => s.reps)) + 1, config.repRangeMax);
     return {
       type: 'increase_reps',
-      message: `Good work at effort ${rpe.toFixed(1)}! Add 1 rep per set next time. Target: ${targetReps} reps at ${weightStr(config.currentWeight)}.${e1rmStr}`,
+      message: `Good session. Add a rep per set next time: ${targetReps} reps at ${weightStr(config.currentWeight)}.`,
       suggestedReps: targetReps,
       e1rm,
     };
@@ -159,9 +207,18 @@ export function getProgressionSuggestion(
 
   return {
     type: 'hold',
-    message: `Stay at ${weightStr(config.currentWeight)}. Focus on hitting ${config.repRangeMin} reps on every set (effort ${rpe.toFixed(1)}).${e1rmStr}`,
+    message: `Stay at ${weightStr(config.currentWeight)}. Focus on hitting ${config.repRangeMin} reps on every set, leaving ~${st.targetRir} in the tank.`,
     e1rm,
   };
+}
+
+/** Plates per side for a barbell (45 lb bar), largest first. Null if it can't be made exactly. */
+export function platesPerSide(total: number, bar = 45, plates = [45, 35, 25, 10, 5, 2.5]): number[] | null {
+  let side = (total - bar) / 2;
+  if (side < 0) return null;
+  const out: number[] = [];
+  for (const p of plates) while (side >= p - 1e-9) { out.push(p); side -= p; }
+  return Math.abs(side) < 1e-9 ? out : null;
 }
 
 /**
