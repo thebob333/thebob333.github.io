@@ -23,6 +23,8 @@ export interface AreteNode {
   /** Ladder it belongs to (e.g. mile times) and the result that reaches this rung. */
   ladder?: string;
   value?: number;
+  /** Short station name on the map for ladder rungs, e.g. "7:30". */
+  short?: string;
   source: 'core' | 'ai' | 'custom';
 }
 

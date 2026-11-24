@@ -5,7 +5,7 @@ import {
   addGrown, ancestorsOf, buildGraph, claimLadder, claimNode, customNode, discoveredToNodes, ladderHits, levelFor, placement,
   rarityOf, removeGrown, statusOf, summarize, togglePin, unclaimNode, visibilityMap, xpFor, MAX_PINS,
 } from './engine';
-import { layoutSky } from './layout';
+import { labelLines, layoutMetro, SLIM } from './layout';
 import { EMPTY_ARETE, type AreteState } from '@/types/arete';
 
 const g = buildGraph();
@@ -224,28 +224,65 @@ describe('growing the tree', () => {
   });
 });
 
-describe('the sky layout', () => {
-  it('places every node, further out than what it needs', () => {
-    const sky = layoutSky(g);
-    expect(sky.pos.size).toBe(CORE_NODES.length);
-    const dist = (p: { x: number; y: number }) => Math.hypot(p.x, p.y);
+describe('the metro layout', () => {
+  const m = layoutMetro(g);
+
+  it('places every node on a line that runs away from the main line', () => {
+    expect(m.pos.size).toBe(CORE_NODES.length);
     for (const n of CORE_NODES) {
-      const p = sky.pos.get(n.id)!;
+      const p = m.pos.get(n.id)!;
       expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
-      const parent = sky.parent.get(n.id)!;
-      const pp = sky.pos.get(parent) ?? sky.hubPos.get(parent)!;
-      expect(dist(p)).toBeGreaterThan(dist(pp));
+      const parent = m.parent.get(n.id)!;
+      const pp = m.pos.get(parent) ?? m.hubPos.get(parent)!;
+      expect(Math.abs(p.y), n.id).toBeGreaterThan(Math.abs(pp.y));
+      expect(m.seg.get(n.id), n.id).toMatch(/^M/);
+      expect(m.side.has(n.id) && m.color.has(n.id)).toBe(true);
     }
-    expect(sky.hubs.filter(h => h.kind === 'area')).toHaveLength(6);
-    expect(layoutSky(g)).toBe(sky);
+    expect(m.hubs.filter(h => h.kind === 'area')).toHaveLength(6);
+    expect(layoutMetro(g)).toBe(m);
+    // The slim shape (for phones) is narrower, and both stay cached.
+    const slim = layoutMetro(g, SLIM);
+    expect(slim.bounds.x1 - slim.bounds.x0).toBeLessThan(m.bounds.x1 - m.bounds.x0);
+    expect(slim.pos.size).toBe(CORE_NODES.length);
+    expect(layoutMetro(g)).toBe(m);
     expect(EMPTY_ARETE.pinned).toEqual([]);
   });
 
-  it('keeps neighbours apart', () => {
-    const sky = layoutSky(g);
-    const pts = CORE_NODES.map(n => sky.pos.get(n.id)!);
+  it('only uses horizontal, vertical and 45° track', () => {
+    for (const d of [...m.seg.values(), ...m.rails.map(r => r.d)]) {
+      let x = 0; let y = 0;
+      for (const [, cmd, args] of d.matchAll(/([MHVL])([^MHVL]*)/g)) {
+        const v = args.trim().split(/[ ,]+/).map(Number);
+        if (cmd === 'M') { [x, y] = v; } else if (cmd === 'H') { x = v[0]; } else if (cmd === 'V') { y = v[0]; } else {
+          expect(Math.abs(Math.abs(v[0] - x) - Math.abs(v[1] - y)), d).toBeLessThan(0.01);
+          [x, y] = v;
+        }
+      }
+    }
+  });
+
+  it('keeps stations and their names apart', () => {
+    const pts = CORE_NODES.map(n => ({ n, p: m.pos.get(n.id)!, w: Math.max(...labelLines(n).lines.map(l => l.length)) * 6.3, s: m.side.get(n.id)! }));
     let min = Infinity;
-    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) min = Math.min(min, Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y));
-    expect(min).toBeGreaterThan(28);
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const a = pts[i]; const b = pts[j];
+      min = Math.min(min, Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y));
+      // Names on the same row must not run into each other or into another station.
+      if (a.p.y !== b.p.y) continue;
+      const span = (q: typeof a) => (q.s < 0 ? [q.p.x - 13 - q.w, q.p.x + 6] : [q.p.x - 6, q.p.x + 13 + q.w]);
+      const [a0, a1] = span(a); const [b0, b1] = span(b);
+      expect(a1 < b0 || b1 < a0, `${a.n.id} overlaps ${b.n.id}`).toBe(true);
+    }
+    expect(min).toBeGreaterThan(34);
+  });
+
+  it('labels: short values on ladders, the line name on the first rung, long titles wrapped', () => {
+    expect(labelLines(g.byId.get(`${MILE}@12-00`)!)).toEqual({ lines: ['Mile', '12:00'], tagged: true });
+    expect(labelLines(g.byId.get(`${MILE}@7-30`)!).tagged).toBe(true); // sixth rung: the name repeats every fifth
+    expect(labelLines(g.byId.get(`${MILE}@8-00`)!)).toEqual({ lines: ['8:00'], tagged: false });
+    const long = labelLines(g.byId.get(id('film.release'))!);
+    expect(long.lines.length).toBeLessThanOrEqual(3);
+    expect(long.lines.every(l => l.length <= 24)).toBe(true);
+    expect(LADDERS.every(l => l.name && l.name !== l.branch || l.name)).toBe(true);
   });
 });

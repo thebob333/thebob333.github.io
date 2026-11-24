@@ -7,7 +7,8 @@ import {
   addGrown, buildGraph, claimLadder, claimNode, placement, removeGrown, summarize, togglePin, unclaimNode, visibilityMap, xpFor,
   type ClaimResult, type Graph,
 } from '@/lib/arete/engine';
-import { layoutSky } from '@/lib/arete/layout';
+import { layoutMetro, SLIM, WIDE } from '@/lib/arete/layout';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { AreteNode, AreteState } from '@/types/arete';
 
 const A = stores.ARETE;
@@ -100,13 +101,14 @@ export const areteActions = {
   },
 };
 
-/** Everything a screen needs: the tree, where it sits, what you can see, and your totals. */
+/** Everything a screen needs: the tree, where it sits (shaped for this screen), what you can see, and your totals. */
 export function useArete() {
   const state = useStore(A);
+  const slim = useIsMobile();
   return useMemo(() => {
     const g = buildGraph(state.grown);
-    return { state, graph: g, sky: layoutSky(g), vis: visibilityMap(g, state), summary: summarize(g, state) };
-  }, [state]);
+    return { state, graph: g, map: layoutMetro(g, slim ? SLIM : WIDE), vis: visibilityMap(g, state), summary: summarize(g, state) };
+  }, [state, slim]);
 }
 
 export { bodyweight as areteBodyweight };

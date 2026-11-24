@@ -25,6 +25,8 @@ export const AREAS: { id: AreaId; name: string; blurb: string; hue: string }[] =
 
 export interface LadderInfo {
   id: string;
+  /** The line's name on the map, e.g. "Mile". */
+  name: string;
   area: AreaId;
   branch: string;
   kind: MetricKind;
@@ -35,6 +37,23 @@ export interface LadderInfo {
   hint?: string;
   rungs: string[];
 }
+
+/** What each ladder's line is called on the map. */
+const LINE_NAMES: Record<string, string> = {
+  'body.running.mile-time': 'Mile', 'body.running.5k-time': '5K', 'body.running.10k-time': '10K', 'body.running.half-time': 'Half marathon',
+  'body.running.marathon-time': 'Marathon', 'body.running.lifetime-miles': 'Lifetime miles',
+  'body.strength.pushups': 'Push-ups', 'body.strength.pullups': 'Pull-ups', 'body.strength.squat': 'Squat', 'body.strength.bench': 'Bench press',
+  'body.strength.deadlift': 'Deadlift', 'body.strength.press': 'Overhead press', 'body.strength.total': 'Big three total',
+  'body.swimming.distance': 'Nonstop swim', 'body.cycling.ride': 'Longest ride', 'body.health.steps': 'Steps in a day', 'body.sport.boulder': 'Bouldering',
+  'mind.reading.books': 'Books read', 'mind.learning.wpm': 'Typing speed', 'mind.science.papers': 'Papers', 'mind.mental-games.chess': 'Chess rating',
+  'mind.mental-games.cube-time': 'Cube solve',
+  'craft.writing.copies': 'Copies sold', 'craft.music.streams': 'Plays', 'craft.building.users': 'Users', 'craft.cooking.recipes': 'Dishes',
+  'wealth.money.cushion': 'Savings cushion', 'wealth.money.net-worth': 'Net worth', 'wealth.career.income': 'Yearly income',
+  'wealth.business.revenue': 'Monthly revenue', 'wealth.business.team': 'Team size',
+  'bonds.love-and-family.years': 'Partnership', 'bonds.leadership.led': 'People led', 'bonds.service.hours': 'Volunteer hours',
+  'bonds.service.given': 'Money given', 'bonds.service.blood-times': 'Blood donations', 'bonds.service.helped': 'People helped', 'bonds.voice.audience': 'Audience',
+  'spirit.discipline.streak': 'Daily streak', 'spirit.stillness.sit': 'Longest sit', 'spirit.stillness.days': 'Days meditated', 'spirit.travel.countries': 'Countries',
+};
 
 const nodes: AreteNode[] = [];
 const ladders: LadderInfo[] = [];
@@ -66,11 +85,11 @@ function branch(area: AreaId, name: string) {
       nodes.push({
         id: full, area, branch: name, title: title(label), detail: opts.detail, tier,
         requires: i === 0 ? (after ? [after] : []) : [ids[i - 1]],
-        ladder: lid, value: value ?? undefined, source: 'core',
+        ladder: lid, value: value ?? undefined, short: label, source: 'core',
       });
       ids.push(full);
     });
-    ladders.push({ id: lid, area, branch: name, kind, lowerIsBetter: kind === 'time', ask: opts.ask, hint: opts.hint, rungs: ids });
+    ladders.push({ id: lid, name: LINE_NAMES[lid] ?? name, area, branch: name, kind, lowerIsBetter: kind === 'time', ask: opts.ask, hint: opts.hint, rungs: ids });
     return { first: ids[0], last: ids[ids.length - 1], at: label => `${lid}@${slug(label)}` };
   };
   return { feat, ladder };
