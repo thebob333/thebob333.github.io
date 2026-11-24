@@ -78,7 +78,7 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 - Calls go straight from the phone to Anthropic with the user's own key (`@anthropic-ai/sdk` with `dangerouslyAllowBrowser`; the API allows browser origins). Model `claude-opus-5-5`, structured outputs via `betaZodOutputFormat` (schemas use `zod/v4`), server-side refusal fallbacks on. All in `src/lib/ai/`.
 - `device.ts`: the key and monthly usage live in device-only localStorage (`telos_ai_key`, `telos_ai_usage`) — never in `KEYS`, so never backed up. Never put a key in code.
 - `schemas.ts` (reply shapes, plus `parsePasted` for the copy-paste fallback), `prompts.ts` (coach system prompt + `weekFacts`/`goalFacts` built by code), `apply.ts` (plan → goal, accepted suggestions → goals; ids from the coach are validated; tested), `client.ts` (`askJSON`, plain-language `AiError`s).
-- UI: `CoachPlanSheet` (2–5 questions → plan preview → import), `AskCoachSheet` (questions about one goal, "Add to plan"), `CaptureSheet` (brain dump → confirm actions; `captureEffect` validates them), `CheckInSheet` (review → your answer → suggestions to Accept/Skip, focus goals, next step; lazy-loaded from Today), `AiCoachCard` in Settings, `PasteFallback` when there's no key.
+- UI: `AskCoachSheet` (questions about one goal, "Add to plan"), `CaptureSheet` (brain dump → confirm actions; `captureEffect` validates them), `CheckInSheet` (review → your answer → suggestions to Accept/Skip, focus goals, next step; lazy-loaded from Today), `AiCoachCard` in Settings, `PasteFallback` when there's no key.
 
 ### Forecasts, Gym extras, Plan suggestions (Phase C)
 
@@ -94,6 +94,16 @@ Workout types are in `src/types/workout.ts`. Core domain logic lives in:
 - AI: `research()` in `client.ts` (web search `web_search_20260209`, handles `pause_turn`, returns sources), then the architect call (`DayZeroPlan`, streamed, effort high). Prompts: `RESEARCH_SYSTEM`, `DAY_ZERO_*` in `prompts.ts`. Copy-paste fallback without a key.
 - UI: `DayZeroSheet` (`src/components/dayzero/`, lazy; from Goals, New goal, and the goal menu — replaces the old "Plan with the coach"), `PathCard` / `PathView` / `PathMap` (`src/components/path/`), "On the Path" section in `TaskSheet` (hours, waiting days, needs-first, milestone), `PlanNotices` on Today. Migration v7 cleans `dependsOn` / effort numbers.
 
+### Arete (the life skill tree)
+
+A universal skill tree, **separate from goals**, on its own tab (`/arete`, `src/pages/Arete.tsx`). Founder decisions are in memory (`project_arete_decisions.md`).
+
+- `src/lib/arete/tree.ts`: the hand-designed core (~750 nodes, six areas: body, mind, craft, wealth, bonds, spirit), built with a small DSL: `feat()` for one-off achievements and `ladder()` for series (mile times, lifts as bodyweight multiples, counts, money). Tiers 0–10 set rarity, XP and distance from the centre. **Node ids are permanent** (claims are stored by id): never rename or reuse one; a node must not be easier than what it requires (tested).
+- `src/lib/arete/engine.ts` (tested in `arete.test.ts`): `buildGraph` (core + grown nodes), claiming (**manual only**; claiming unlocks everything before it as `implied`), `ladderHits`/`claimLadder` (a typed result like "7:12" unlocks every rung it reaches; `metric.ts` parses times, amounts, lb → bodyweight multiples), fog of war (`visibilityMap`: lit / open / near / legend / fog), pins, XP, levels, rarity, `placement`, and growing the tree (`discoveredToNodes` for AI, `customNode`, `removeGrown`).
+- `src/lib/arete/layout.ts`: the constellation. Radius by tier, each node guaranteed sideways room, the sky scales up to fit; deterministic.
+- State: `stores.ARETE` (`AreteState` in `src/types/arete.ts`: claims, pinned, grown, goalLinks); migration v8 keeps it well-formed. Actions and toasts in `src/hooks/useArete.ts`.
+- UI (`src/components/arete/`): `SkyMap` (SVG; pan/zoom via refs, re-draws only per zoom step, greedy label culling, far-zoom mode), `NodeSheet` (claim, chase, "Go for this" → Day Zero with `initialBrief`, Discover via `AreteDiscovery`, add your own), `PlacementSheet` (one answer per ladder).
+
 ### Other domain modules
 
 - `src/lib/goal-plan-parser.ts` — parses AI-written goal plans (tolerant of markdown, missing dates) and merges them into a goal without duplicating phases/tasks/to-dos.
@@ -106,11 +116,11 @@ Device-only keys (not backed up, not in `KEYS`): `telos-theme`, `telos_onboarded
 
 ### Storage Keys
 
-All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/storage.ts` (goals, sessions, exercise configs, weekly plan, settings, achievements, templates, weekly schedule/focus, time blocks, block categories, repeatable blocks, custom exercises, habit logs, goal templates, active workout, plan dismissals, adjustments, engine state, metrics). Meta keys (`telos_schema_version`, `telos_last_export_at`) are excluded from backups.
+All `localStorage` keys are prefixed `telos_` and listed in `KEYS` in `src/lib/storage.ts` (goals, sessions, exercise configs, weekly plan, settings, achievements, templates, weekly schedule/focus, time blocks, block categories, repeatable blocks, custom exercises, habit logs, goal templates, active workout, plan dismissals, adjustments, engine state, metrics, cardio, arete). Meta keys (`telos_schema_version`, `telos_last_export_at`) are excluded from backups.
 
 ### Routing & Layout
 
-`src/App.tsx` defines routes: Today `/` (`Index.tsx`), Plan `/plan` (`Program.tsx`), Goals `/goals` and `/goals/:goalId` (`GoalDetail.tsx`), Gym `/gym` (`Workouts.tsx`; sections via `?s=progress` / `?s=program`), Settings `/settings`. Old `/program`, `/workouts` and `/people/*` redirect (People was removed; migration v6 deletes its keys, listed in `RETIRED_KEYS`). Tab/sidebar labels come from `src/components/layout/nav.ts`. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile) plus a per-route error boundary. Every page starts with `PageHeader` (`src/components/app/PageHeader.tsx`), which carries the Settings gear on phones.
+`src/App.tsx` defines routes: Today `/` (`Index.tsx`), Plan `/plan` (`Program.tsx`), Goals `/goals` and `/goals/:goalId` (`GoalDetail.tsx`), Gym `/gym` (`Workouts.tsx`; sections via `?s=progress` / `?s=program`), Arete `/arete` (`Arete.tsx`), Settings `/settings`. Old `/program`, `/workouts` and `/people/*` redirect (People was removed; migration v6 deletes its keys, listed in `RETIRED_KEYS`). Tab/sidebar labels come from `src/components/layout/nav.ts`. `src/components/layout/AppLayout.tsx` wraps all pages with `AppSidebar` (desktop) and `MobileTabBar` (mobile) plus a per-route error boundary. Every page starts with `PageHeader` (`src/components/app/PageHeader.tsx`), which carries the Settings gear on phones.
 
 Naming: goal templates are **Blueprints**, repeatable Plan blocks are **Routines**, workout templates are **Saved workouts**. Habits are always shown with their goal/task, and live on Today (not duplicated on Plan).
 

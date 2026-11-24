@@ -34,7 +34,15 @@ const DESIGN_STAGES = ['Mapping the stages…', 'Estimating honest effort…', '
  *
  * `goal` = redesign that goal (finished work is kept); otherwise a new goal.
  */
-export function DayZeroSheet({ open, goal, onClose }: { open: boolean; goal?: Goal | null; onClose: () => void }) {
+export function DayZeroSheet({ open, goal, onClose, initialBrief, onCreated }: {
+  open: boolean;
+  goal?: Goal | null;
+  onClose: () => void;
+  /** Start a new goal with this already typed in (e.g. from an Arete node). */
+  initialBrief?: string;
+  /** Called with the new goal once it's created. */
+  onCreated?: (goal: Goal) => void;
+}) {
   const navigate = useNavigate();
   const hasKey = !!useAiKey();
   const rethink = !!goal?.architect;
@@ -58,9 +66,11 @@ export function DayZeroSheet({ open, goal, onClose }: { open: boolean; goal?: Go
   useEffect(() => {
     if (!open) return;
     setStep('brief'); setQuestions([]); setAnswers([]); setSearches([]); setFound(null); setResearchNote(null); setPlan(null); setError(null); setChanged('');
-    setBrief(goal ? (goal.architect?.brief || [goal.title, goal.why].filter(Boolean).join(' — ')) : '');
+    setBrief(goal ? (goal.architect?.brief || [goal.title, goal.why].filter(Boolean).join(' — ')) : initialBrief ?? '');
     setHours(goal?.hoursPerWeek ?? 5);
     setDeadline(goal?.deadline ? dateKeyOf(goal.deadline) : '');
+    // Only when it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, goal]);
 
   // Rotating progress messages while designing.
@@ -149,6 +159,7 @@ export function DayZeroSheet({ open, goal, onClose }: { open: boolean; goal?: Go
       onClose();
     } else {
       stores.GOALS.update(goals => [...goals, g]);
+      onCreated?.(g);
       toast.success('Day Zero complete', { description: `${g.title} — your path is ready.` });
       onClose();
       navigate(`/goals/${g.id}`);

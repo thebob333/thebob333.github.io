@@ -3,6 +3,7 @@ import { WorkoutSession, ExerciseConfig, WeeklyPlan, CustomExercise, type Cardio
 import { DEFAULT_CONFIGS } from '@/types/workout';
 import type { UnlockedAchievement } from '@/lib/achievements';
 import { createStore, type Store } from '@/lib/store';
+import type { AreteState } from '@/types/arete';
 
 /**
  * Every user-data key. Backups, migrations and the recovery screen iterate this
@@ -31,6 +32,7 @@ export const KEYS = {
   ENGINE: 'telos_engine',
   METRICS: 'telos_metrics',
   CARDIO: 'telos_cardio',
+  ARETE: 'telos_arete',
 } as const;
 
 /** Keys from removed features (People). Cleaned out by migration v6. */
@@ -165,6 +167,18 @@ function normalizeSettings(s: AppSettings): AppSettings {
   return merged;
 }
 
+/** Keep the Arete state whole even if a field is missing or mangled. */
+export function normalizeArete(v: Partial<AreteState>): AreteState {
+  const obj = (x: unknown) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+  return {
+    ...v,
+    claims: obj(v.claims) as AreteState['claims'],
+    pinned: Array.isArray(v.pinned) ? v.pinned.filter(x => typeof x === 'string') : [],
+    grown: Array.isArray(v.grown) ? v.grown.filter(n => n && typeof n.id === 'string' && typeof n.title === 'string' && Array.isArray(n.requires)) : [],
+    goalLinks: obj(v.goalLinks) as AreteState['goalLinks'],
+  };
+}
+
 export const stores = {
   GOALS: arrayStore<Goal>(KEYS.GOALS, 'Goals'),
   SESSIONS: arrayStore<WorkoutSession>(KEYS.SESSIONS, 'Workout sessions'),
@@ -191,6 +205,7 @@ export const stores = {
   ENGINE: createStore<EngineState>({ key: KEYS.ENGINE, label: 'Adaptation engine', kind: 'object', fallback: () => ({}) }),
   METRICS: arrayStore<MetricEntry>(KEYS.METRICS, 'Progress measurements'),
   CARDIO: arrayStore<CardioEntry>(KEYS.CARDIO, 'Cardio'),
+  ARETE: createStore<AreteState>({ key: KEYS.ARETE, label: 'Arete skill tree', kind: 'object', fallback: () => normalizeArete({}), normalize: normalizeArete }),
 } satisfies { [K in StoreName]: Store<unknown> };
 
 // ─── Legacy load/save helpers ───────────────────────────────────────────────

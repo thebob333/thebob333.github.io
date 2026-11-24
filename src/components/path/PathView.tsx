@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, Clock, ExternalLink, Flag, History, Lock, Route as RouteIcon, Sparkles, Target, Undo2, Zap } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Clock, ExternalLink, Flag, History, Lock, Route as RouteIcon, Sparkles, Target, Undo2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Switch } from '@/components/ui/switch';
 import { goalActions } from '@/hooks/useGoals';
@@ -125,18 +125,40 @@ export function PathView({ goal, today, onOpenTask, onRethink }: {
       )}
 
       {/* Holding you back */}
-      {b && (
-        <button type="button" onClick={() => onOpenTask(b)} className="pressable surface flex w-full items-start gap-3 p-3 text-left">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning/15 text-warning"><Zap className="h-4 w-4" /></span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-footnote font-semibold text-muted-foreground">What matters most right now</span>
-            <span className="block text-body font-semibold">{b.title}</span>
-            <span className="block text-footnote text-muted-foreground">
-              {[b.critical && 'sets your finish date', b.downstream > 0 && `${b.downstream} step${b.downstream === 1 ? '' : 's'} wait on it`, b.waitDays > 0 && `then ${b.waitDays} days of waiting — start early`, `${b.remaining}h left`].filter(Boolean).join(' · ')}
-            </span>
-          </span>
-        </button>
-      )}
+      {b && (() => {
+        const phase = goal.phases.find(p => p.id === b.phaseId);
+        const task = phase?.tasks.find(t => t.id === b.id);
+        const next = [...(task?.todos ?? [])].filter(td => !td.done).sort((x, y) => x.order - y.order)[0];
+        return (
+          <div className="surface overflow-hidden">
+            <button type="button" onClick={() => onOpenTask(b)} className="pressable flex w-full items-start gap-3 p-3 text-left">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning/15 text-warning"><Zap className="h-4 w-4" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-footnote font-semibold text-muted-foreground">What matters most right now</span>
+                <span className="block text-body font-semibold">{b.title}</span>
+                <span className="block text-footnote text-muted-foreground">
+                  {[b.critical && 'sets your finish date', b.downstream > 0 && `${b.downstream} step${b.downstream === 1 ? '' : 's'} wait on it`, b.waitDays > 0 && `then ${b.waitDays} days of waiting — start early`, `${b.remaining}h left`].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+            </button>
+            {next && phase && task && (
+              <div className="flex items-center gap-3 border-t border-border/70 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-footnote font-semibold text-muted-foreground">Next step</p>
+                  <p className="truncate text-body">{next.title}</p>
+                </div>
+                <button type="button" aria-label={`Mark ${next.title} done`} className="pressable flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                  onClick={() => {
+                    goalActions.toggleToDo(goal.id, phase.id, task.id, next.id);
+                    toast.success(`Done: ${next.title}`, { action: { label: 'Undo', onClick: () => goalActions.toggleToDo(goal.id, phase.id, task.id, next.id) } });
+                  }}>
+                  <Check className="h-5 w-5" strokeWidth={3} />
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* The map */}
       <div className="surface overflow-hidden py-2">

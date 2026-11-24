@@ -100,8 +100,8 @@ export const CHECKIN_PLAN_TASK = `Using the facts and the user's answers, reply 
 Use ids exactly as given. Pick up to 3 focus goals. End with the single next step.`;
 
 /** The full prompt for the copy-paste fallback (one shot, reply must be JSON). */
-export function pastePrompt(task: string, context: string, schema: string): string {
-  return `${COACH_SYSTEM}
+export function pastePrompt(task: string, context: string, schema: string, system: string = COACH_SYSTEM): string {
+  return `${system}
 
 ---
 ${context}
@@ -175,3 +175,16 @@ export const DAY_ZERO_RETHINK_TASK = `Reality has intervened. Redesign the remai
 - Keep finished work as it is (don't repeat it). Re-plan everything still open, including dependencies, effort and waiting time.
 - If the current route has stopped making sense, recommend a better one; otherwise refine it. Still give 2–3 routes for what's left.
 - Be honest about the new likely timeline.`;
+
+// ─── Arete ──────────────────────────────────────────────────────────────────
+
+export const ARETE_SYSTEM = `You extend Arete, a universal skill tree of human achievement inside the TELOS app. The tree starts from bare basics and branches outward to the legendary. It must apply to anyone, anywhere.
+
+Rules for new nodes:
+- Each is a concrete achievement a person either has or hasn't done: verb first, checkable, with a number, distance, time, count or named milestone where possible. No vague states ("be better at…").
+- They must genuinely lie beyond or branch off the given node: harder next steps, a sideways specialism, or the legendary far end. Never easier than the node they follow.
+- Universal, not personal: no named employers, cities or people. Real, well-known events or standards are fine.
+- No duplicates of what already exists. Nothing reckless or harmful to health.
+- Plain words. Titles under 60 characters.`;
+
+export const ARETE_DISCOVER_TASK = `Discover 3–6 new nodes beyond this one. Mix one or two natural next steps with at least one surprising branch and, if the node is advanced, something legendary far out. Chain them with "after" where one must come before another.`;

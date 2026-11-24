@@ -179,3 +179,15 @@ export const DayZeroPlan = z.object({
 });
 export type DayZeroPlan = z.infer<typeof DayZeroPlan>;
 export type ArchRoute = z.infer<typeof ArchRoute>;
+
+// ─── Arete: discovering what lies beyond a node ─────────────────────────────
+
+export const AreteDiscovery = z.object({
+  nodes: z.array(z.object({
+    title: z.string().describe('The achievement: starts with a verb, objectively checkable, with a number where possible. Under 60 characters.'),
+    detail: z.string().describe('One short sentence on what counts. Empty string if obvious.'),
+    tier: z.number().int().describe('Difficulty 0-10: 0-1 anyone soon, 2-3 real effort, 4-5 years of work, 6-7 exceptional, 8-9 legendary, 10 once in a generation.'),
+    after: z.number().int().describe('-1 if it follows directly from the given node; otherwise the 0-based index of an EARLIER node in this list that must come first.'),
+  })).describe('3 to 6 new nodes.'),
+});
+export type AreteDiscovery = z.infer<typeof AreteDiscovery>;

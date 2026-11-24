@@ -15,6 +15,7 @@ const GoalDetail = lazy(() => import("./pages/GoalDetail"));
 const Workouts = lazy(() => import("./pages/Workouts"));
 const Program = lazy(() => import("./pages/Program"));
 const Settings = lazy(() => import("./pages/Settings"));
+const Arete = lazy(() => import("./pages/Arete"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 /** Keeps every plan adapted, whichever screen you open first. */
@@ -34,6 +35,7 @@ function AnimatedRoutes() {
           <Route path="/goals/:goalId" element={<GoalDetail />} />
           <Route path="/gym" element={<Workouts />} />
           <Route path="/plan" element={<Program />} />
+          <Route path="/arete" element={<Arete />} />
           {/* Old addresses keep working (bookmarks, home-screen shortcuts). */}
           <Route path="/workouts" element={<Navigate to="/gym" replace />} />
           <Route path="/program" element={<Navigate to="/plan" replace />} />

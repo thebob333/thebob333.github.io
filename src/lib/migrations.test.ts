@@ -72,6 +72,23 @@ describe('migrateData', () => {
     expect(migrateData(data, 6, ctx()).data).toEqual(data);
   });
 
+  it('v8 keeps the Arete skill tree state well-formed', () => {
+    const good = { id: 'my.1', area: 'body', branch: 'Running', title: 'Mine', tier: 3, requires: ['body.running.start'], source: 'custom' };
+    const { data } = migrateData({
+      [KEYS.ARETE]: {
+        claims: { a: { at: '2026-11-24', result: '7:42' }, b: 'yes', c: { result: 'no date' } },
+        pinned: ['a', 'a', 4],
+        grown: [good, { id: 'bad' }, 'junk'],
+        goalLinks: { a: 'g1', b: 2 },
+        started: true,
+      },
+    } as Any, 7, ctx());
+    expect(data[KEYS.ARETE]).toEqual({ claims: { a: { at: '2026-11-24', result: '7:42' } }, pinned: ['a'], grown: [good], goalLinks: { a: 'g1' }, started: true });
+    expect(migrateData(data, 7, ctx()).data).toEqual(data);
+    // The wrong shape entirely is dropped so the default applies.
+    expect(KEYS.ARETE in migrateData({ [KEYS.ARETE]: 'nope' } as Any, 0, ctx()).data).toBe(false);
+  });
+
   it('sanitizes settings: null gold targets, zero bodyweight', () => {
     const { data } = migrateData({
       [KEYS.SETTINGS]: { goldTargets: null, bodyweight: 0, customQuotes: 'nope' },

@@ -303,6 +303,30 @@ export const MIGRATIONS: Migration[] = [
       });
     },
   },
+  {
+    version: 8,
+    name: 'arete-state',
+    // Arete (the life skill tree): keep claims, pins, grown nodes and goal links well-formed.
+    up(d) {
+      const a = d[KEYS.ARETE];
+      if (a === undefined) return;
+      if (!isObj(a)) { delete d[KEYS.ARETE]; return; }
+      const claims: Record<string, unknown> = {};
+      for (const [id, c] of Object.entries(isObj(a.claims) ? a.claims : {})) {
+        if (isObj(c) && typeof c.at === 'string') claims[id] = c;
+      }
+      const links: Record<string, unknown> = {};
+      for (const [id, g] of Object.entries(isObj(a.goalLinks) ? a.goalLinks : {})) if (typeof g === 'string') links[id] = g;
+      d[KEYS.ARETE] = {
+        ...a,
+        claims,
+        pinned: [...new Set(arr(a.pinned).filter((x): x is string => typeof x === 'string'))],
+        grown: arr(a.grown).filter(isObj).filter(n => typeof n.id === 'string' && typeof n.title === 'string' && typeof n.area === 'string'
+          && Array.isArray(n.requires) && n.requires.every(r => typeof r === 'string') && typeof n.tier === 'number'),
+        goalLinks: links,
+      };
+    },
+  },
 ];
 
 export const CURRENT_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
