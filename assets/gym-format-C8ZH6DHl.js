@@ -1,0 +1,1 @@
+import{av as t}from"./index-BU5TSFoR.js";const c=e=>e?e.charAt(0).toUpperCase()+e.slice(1):"Workout",r=e=>e.exercises.reduce((s,o)=>s+t(o.sets),0),l=e=>e>=1e4?`${(e/1e3).toFixed(e>=1e5?0:1)}k`:e.toLocaleString(),i=(e,s)=>`${e} ${s}${e===1?"":"s"}`;export{r as a,i as c,l as f,c as s};
