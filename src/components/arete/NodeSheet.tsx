@@ -11,6 +11,7 @@ import { stores } from '@/lib/storage';
 import { todayKey, parseDateKey } from '@/lib/dates';
 import { calculateGoalProgress } from '@/types/goals';
 import { AREAS, LADDER_BY_ID } from '@/lib/arete/tree';
+import { stationFacts } from '@/lib/arete/progress';
 import { ancestorsOf, customNode, discoveredToNodes, ladderHits, rarityOf, statusOf, xpFor, RARITY } from '@/lib/arete/engine';
 import { useAiKey } from '@/lib/ai/device';
 import { askJSON, AiError } from '@/lib/ai/client';
@@ -64,6 +65,7 @@ export function NodeSheet({ nodeId, onClose, onSelect, onGoFor, onUnlocked }: {
   }, [nodeId]);
 
   const info = node?.ladder ? LADDER_BY_ID.get(node.ladder) : undefined;
+  const facts = useMemo(() => (node ? stationFacts(graph, state, node) : null), [graph, state, node]);
   const hits = useMemo(() => (node && result.trim() ? ladderHits(graph, node, result, areteBodyweight()) : null), [graph, node, result]);
   if (!node) return null;
 
@@ -199,6 +201,58 @@ export function NodeSheet({ nodeId, onClose, onSelect, onGoFor, onUnlocked }: {
                 </div>
               )}
 
+              {/* About this station */}
+              <div className="space-y-2.5 rounded-2xl bg-secondary/50 p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">How rare</p><p className="text-footnote font-medium">{facts.rarity}</p></div>
+                  <div><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">From scratch</p><p className="text-footnote font-medium">{facts.time}</p></div>
+                </div>
+                {facts.line && (
+                  <p className="text-footnote">
+                    <span className="text-muted-foreground">{facts.line.name} line:</span> stop {facts.line.index} of {facts.line.length}
+                    {facts.line.best ? <> · <span className="text-muted-foreground">your best</span> <b>{facts.line.best.result ?? facts.line.best.title}</b></> : ''}
+                  </p>
+                )}
+                {facts.interchange.length > 0 && (
+                  <div>
+                    <p className="text-footnote"><b>Interchange.</b> <span className="text-muted-foreground">It also needs progress on other lines:</span></p>
+                    {facts.interchange.map(r => (
+                      <button key={r.id} type="button" onClick={() => onSelect(r.id)} className="mt-1 flex w-full items-center gap-2 text-left text-footnote">
+                        <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded-full', state.claims[r.id] ? 'bg-success text-white' : 'border border-muted-foreground/50')}>{state.claims[r.id] && <Check className="h-3 w-3" strokeWidth={3} />}</span>
+                        <span className="min-w-0 flex-1 truncate">{r.title}</span>
+                        <span className="shrink-0 text-[11px] text-muted-foreground">{AREAS.find(a => a.id === r.area)!.name} · {r.branch}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {facts.guide && (
+                  <div className="space-y-1 text-footnote">
+                    <p><span className="font-semibold">How people get there:</span> {facts.guide.how}</p>
+                    <p><span className="font-semibold">What usually stops them:</span> {facts.guide.stops}</p>
+                  </div>
+                )}
+                {facts.feeds.length > 0 && (
+                  <div>
+                    <p className="text-footnote text-muted-foreground">Counts toward {facts.feeds.length === 1 ? 'an interchange' : `${facts.feeds.length} interchanges`}:</p>
+                    {facts.feeds.slice(0, 4).map(f => (
+                      <button key={f.id} type="button" onClick={() => onSelect(f.id)} className="mt-1 flex w-full items-center gap-2 text-left text-footnote font-medium">
+                        <span className="h-2.5 w-4 shrink-0 rounded-full border-2 border-foreground/60" />
+                        <span className="min-w-0 flex-1 truncate">{f.title}</span><ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {facts.neighbours.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Nearby</span>
+                    {facts.neighbours.map(x => (
+                      <button key={x.id} type="button" onClick={() => onSelect(x.id)} className="max-w-full truncate rounded-full bg-card px-2.5 py-1 text-[12px] font-medium">{x.title}</button>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] text-muted-foreground">Rarity and time are rough estimates for the general population.</p>
+              </div>
+
               {/* What lies beyond */}
               <div>
                 <p className="mb-1.5 text-footnote font-semibold text-muted-foreground">Beyond this</p>
@@ -213,7 +267,7 @@ export function NodeSheet({ nodeId, onClose, onSelect, onGoFor, onUnlocked }: {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-footnote text-muted-foreground">{beyond.length ? `${beyond.length} more ${beyond.length === 1 ? 'node waits' : 'nodes wait'} in the fog. Unlock this to reveal ${beyond.length === 1 ? 'it' : 'them'}.` : 'The edge of the map. Nothing has been charted past here yet.'}</p>
+                  <p className="text-footnote text-muted-foreground">{beyond.length ? `${beyond.length} more ${beyond.length === 1 ? 'node waits' : 'nodes wait'} in the fog. Unlock this to reveal ${beyond.length === 1 ? 'it' : 'them'}.` : (info?.extend ? 'This line never ends: reach this stop and the next one appears.' : 'The edge of the map. Nothing has been charted past here yet.')}</p>
                 )}
                 {beyond.length > beyondSeen.length && beyondSeen.length > 0 && <p className="mt-1 text-footnote text-muted-foreground">+ {beyond.length - beyondSeen.length} more in the fog</p>}
                 <div className="mt-2 grid grid-cols-2 gap-2">

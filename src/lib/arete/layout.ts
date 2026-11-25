@@ -44,6 +44,8 @@ export interface MetroLayout {
   /** Each area's line out of the central station and up its trunk, plus the discipline feeders. */
   rails: { area: AreaId; d: string; trunk: boolean }[];
   bounds: { x0: number; y0: number; x1: number; y1: number };
+  /** A soft region behind each discipline's stations and names. */
+  districts: { key: string; area: AreaId; name: string; x0: number; y0: number; x1: number; y1: number }[];
 }
 
 export const LINE_COLORS = 8;
@@ -298,7 +300,33 @@ export function layoutMetro(g: Graph, cap: number = WIDE): MetroLayout {
   const ys = [...pos.values()].map(p => p.y).concat(0);
   const bounds = { x0: Math.min(...xs) - 180, y0: Math.min(...ys) - 80, x1: Math.max(...xs) + 180, y1: Math.max(...ys) + 80 };
 
-  const layout: MetroLayout = { pos, parent, seg, side, color, hubs, hubPos, rails, bounds };
+  // Districts: each discipline's own stations (not ones hanging off another discipline's line), with their names.
+  const boxes = new Map<string, MetroLayout['districts'][number]>();
+  for (const n of g.nodes) {
+    const p = pos.get(n.id);
+    const par = parent.get(n.id)!;
+    const home = par.startsWith('hub:') || g.byId.get(par)?.branch === n.branch;
+    if (!p || !home) continue;
+    const key = branchHubId(n.area, n.branch);
+    const w = labelWidth(n) + LABEL_GAP;
+    const s = side.get(n.id)!;
+    const x0 = p.x - (s < 0 ? w : 14) - 16;
+    const x1 = p.x + (s > 0 ? w : 14) + 16;
+    const b = boxes.get(key) ?? { key, area: n.area, name: n.branch, x0, y0: p.y - 26, x1, y1: p.y + 26 };
+    b.x0 = Math.min(b.x0, x0); b.x1 = Math.max(b.x1, x1); b.y0 = Math.min(b.y0, p.y - 26); b.y1 = Math.max(b.y1, p.y + 26);
+    boxes.set(key, b);
+  }
+  for (const h of hubs) {
+    if (h.kind !== 'branch' || !h.name) continue;
+    const b = boxes.get(h.id);
+    if (!b) continue;
+    // Reach back to the trunk so the district starts where its feeder leaves.
+    if (h.side > 0) b.x0 = Math.min(b.x0, h.x + 10); else b.x1 = Math.max(b.x1, h.x - 10);
+    b.y0 = Math.min(b.y0, h.y - 22); b.y1 = Math.max(b.y1, h.y + 22);
+  }
+  const districts = [...boxes.values()];
+
+  const layout: MetroLayout = { pos, parent, seg, side, color, hubs, hubPos, rails, bounds, districts };
   cache.byCap.set(cap, layout);
   return layout;
 }

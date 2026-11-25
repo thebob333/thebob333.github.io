@@ -4,7 +4,8 @@
  * new state goes out. Tested in engine.test.ts.
  */
 import type { AreaId, AreteNode, AreteState } from '@/types/arete';
-import { AREAS, CORE_NODES, LADDER_BY_ID } from './tree';
+import { AREAS, CORE_NODES, LADDERS, LADDER_BY_ID, type LadderInfo } from './tree';
+import { slug } from './tree/dsl';
 import { parseResult } from './metric';
 
 export interface Graph {
@@ -12,17 +13,78 @@ export interface Graph {
   byId: Map<string, AreteNode>;
   /** Everything that lists this node in `requires`. */
   dependents: Map<string, string[]>;
+  /** Every rung of each line, in order, including never-ending extensions that have appeared. */
+  rungs: Map<string, string[]>;
 }
 
 const AREA_IDS = new Set<string>(AREAS.map(a => a.id));
 const clampTier = (t: unknown) => Math.min(10, Math.max(0, Math.round(Number(t) || 0)));
+const CORE_BY_ID = new Map(CORE_NODES.map(n => [n.id, n]));
 
-let cache: { grown: AreteNode[]; graph: Graph } | null = null;
+// ─── Lines that never end ──────────────────────────────────────────────────
 
-/** The core tree plus the nodes you or the AI added (ones pointing at nothing are dropped). */
-export function buildGraph(grown: AreteNode[] = []): Graph {
-  if (cache && cache.grown === grown) return cache.graph;
+/** The next round number past v: 1, 2.5, 5 × 10ⁿ. */
+export function nextNice(v: number): number {
+  let p = 10 ** Math.floor(Math.log10(Math.max(1, v)));
+  for (;;) {
+    for (const s of [1, 2.5, 5]) if (s * p > v * 1.0001) return s * p;
+    p *= 10;
+  }
+}
+
+const trim = (x: number) => String(Math.round(x * 10) / 10);
+/** A number written the way the line's own labels are ("$2.5M", "25,000", "1B"). */
+export function formatLike(labels: string[], v: number): string {
+  const money = labels.some(l => l.includes('$'));
+  const compact = money || labels.some(l => /\d[kKMB]$/.test(l.trim()));
+  const pre = money ? '$' : '';
+  if (compact && v >= 1e9) return `${pre}${trim(v / 1e9)}B`;
+  if (compact && v >= 1e6) return `${pre}${trim(v / 1e6)}M`;
+  if (money && v >= 1e3) return `${pre}${trim(v / 1e3)}k`;
+  return `${pre}${Math.round(v).toLocaleString('en-US')}`;
+}
+
+/** The rung after `prev` on a never-ending line (null if the line has a cap, or isn't never-ending). */
+export function nextRung(info: LadderInfo, prev: AreteNode): AreteNode | null {
+  if (!info.extend || prev.value === undefined) return null;
+  const v = nextNice(prev.value);
+  if (info.max !== undefined && v > info.max) return null;
+  const labels = info.rungs.map(id => CORE_BY_ID.get(id)?.short ?? '');
+  const label = formatLike(labels, v);
+  return {
+    id: `${info.id}@${slug(label)}`, area: prev.area, branch: prev.branch, title: info.title(label), detail: prev.detail,
+    tier: prev.tier, requires: [prev.id], ladder: info.id, value: v, short: label, source: 'core',
+  };
+}
+
+/** Extension rungs that exist for these claims: every one you've reached, plus the next. */
+function extensions(claims: AreteState['claims']): AreteNode[] {
+  const out: AreteNode[] = [];
+  for (const info of LADDERS) {
+    if (!info.extend) continue;
+    let prev = CORE_BY_ID.get(info.rungs[info.rungs.length - 1]);
+    for (let i = 0; i < 40 && prev && claims[prev.id]; i++) {
+      const nx = nextRung(info, prev);
+      if (!nx) break;
+      out.push(nx);
+      prev = nx;
+    }
+  }
+  return out;
+}
+
+let cache: { grown: AreteNode[]; sig: string; graph: Graph } | null = null;
+
+/**
+ * The core tree, plus the stations that appeared at the end of never-ending
+ * lines, plus the nodes you or the AI added (ones pointing at nothing are dropped).
+ */
+export function buildGraph(grown: AreteNode[] = [], claims: AreteState['claims'] = {}): Graph {
+  const ext = extensions(claims);
+  const sig = ext.map(n => n.id).join('|');
+  if (cache && (cache.grown === grown || (!cache.grown.length && !grown.length)) && cache.sig === sig) return cache.graph;
   const byId = new Map<string, AreteNode>(CORE_NODES.map(n => [n.id, n]));
+  for (const n of ext) byId.set(n.id, n);
   let pending = grown.filter(n => !byId.has(n.id) && AREA_IDS.has(n.area) && n.requires.length > 0);
   // Grown nodes can hang off other grown nodes: add in passes until nothing new fits.
   for (let pass = 0; pass < 50 && pending.length; pass++) {
@@ -37,8 +99,10 @@ export function buildGraph(grown: AreteNode[] = []): Graph {
   const nodes = [...byId.values()];
   const dependents = new Map<string, string[]>(nodes.map(n => [n.id, []]));
   for (const n of nodes) for (const r of n.requires) dependents.get(r)?.push(n.id);
-  const graph = { nodes, byId, dependents };
-  cache = { grown, graph };
+  const rungs = new Map(LADDERS.map(l => [l.id, [...l.rungs]]));
+  for (const n of ext) rungs.get(n.ladder!)!.push(n.id);
+  const graph = { nodes, byId, dependents, rungs };
+  cache = { grown, sig, graph };
   return graph;
 }
 
@@ -117,27 +181,54 @@ export function claimNode(g: Graph, state: AreteState, id: string, at: string, r
   return { state: changed ? { ...state, claims } : state, unlocked };
 }
 
-/** Which rungs of a node's ladder a typed result reaches. Null if it isn't a ladder or the text can't be read. */
-export function ladderHits(g: Graph, node: AreteNode, text: string, bodyweightLb?: number): { value: number; ids: string[]; top: AreteNode | null; reached: boolean } | null {
+/**
+ * Which rungs of a node's line a typed result reaches. On a never-ending line
+ * this can go past the stations that exist yet (they're made on the fly).
+ * Null if it isn't a line or the text can't be read.
+ */
+export function ladderHits(g: Graph, node: AreteNode, text: string, bodyweightLb?: number): { value: number; rungs: AreteNode[]; top: AreteNode | null; reached: boolean } | null {
   const info = node.ladder ? LADDER_BY_ID.get(node.ladder) : undefined;
   if (!info) return null;
-  const value = parseResult(info.kind, text, bodyweightLb);
+  const line = (g.rungs.get(info.id) ?? info.rungs).map(id => g.byId.get(id)).filter((n): n is AreteNode => !!n);
+  // On lines measured in seconds (sprints), a bare "11.5" means seconds, not minutes.
+  const short = info.kind === 'time' && Math.max(0, ...line.map(r => r.value ?? 0)) <= 120;
+  const value = parseResult(info.kind, text, bodyweightLb, short);
   if (value === null || !Number.isFinite(value) || value < 0) return null;
-  const ids = info.rungs.filter(id => {
-    const v = g.byId.get(id)?.value;
-    return v !== undefined && (info.lowerIsBetter ? value <= v : value >= v);
-  });
-  return { value, ids, top: ids.length ? g.byId.get(ids[ids.length - 1])! : null, reached: ids.includes(node.id) };
+  if (info.extend && line.length) {
+    for (let last = line[line.length - 1], i = 0; i < 40 && last.value !== undefined && last.value < value; i++) {
+      const nx = nextRung(info, last);
+      if (!nx || nx.value! > value) break;
+      line.push(nx);
+      last = nx;
+    }
+  }
+  const rungs = line.filter(r => r.value !== undefined && (info.lowerIsBetter ? value <= r.value : value >= r.value));
+  const top = rungs.length ? rungs[rungs.length - 1] : null;
+  return { value, rungs, top, reached: rungs.some(r => r.id === node.id) };
 }
 
-/** Claim as far up a ladder as a result reaches (e.g. "7:12" unlocks every mile time down to 7:30). */
+/** Claim as far up a line as a result reaches (e.g. "7:12" unlocks every mile time down to 7:30). */
 export function claimLadder(g: Graph, state: AreteState, ladderId: string, text: string, at: string, bodyweightLb?: number): ClaimResult {
   const info = LADDER_BY_ID.get(ladderId);
   const first = info && g.byId.get(info.rungs[0]);
   if (!info || !first) return { state, unlocked: [] };
   const hits = ladderHits(g, first, text, bodyweightLb);
   if (!hits?.top) return { state, unlocked: [] };
-  return claimNode(g, state, hits.top.id, at, text);
+  if (g.byId.has(hits.top.id)) return claimNode(g, state, hits.top.id, at, text);
+  // Past the stations that exist yet: claim the last real one, then the new ones up to the result.
+  const known = hits.rungs.filter(r => g.byId.has(r.id));
+  const fresh = hits.rungs.filter(r => !g.byId.has(r.id));
+  const lastKnown = known[known.length - 1].id;
+  const base = claimNode(g, state, lastKnown, at);
+  const claims = { ...base.state.claims };
+  const unlocked = [...base.unlocked];
+  if (base.unlocked.includes(lastKnown)) claims[lastKnown] = { at, implied: true }; // reached on the way
+  fresh.forEach((r, i) => {
+    const isTop = i === fresh.length - 1;
+    if (!claims[r.id]) unlocked.push(r.id);
+    claims[r.id] = isTop ? { at, result: text.trim() } : claims[r.id] && !claims[r.id].implied ? claims[r.id] : { at, implied: true };
+  });
+  return { state: { ...state, claims }, unlocked };
 }
 
 /** Remove a claim, and anything beyond it that depended on it. */

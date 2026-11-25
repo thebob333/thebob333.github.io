@@ -2,33 +2,52 @@ import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { stores } from '@/lib/storage';
 import { useStore } from '@/hooks/useStore';
+import { useTodayKey } from '@/hooks/useToday';
 import { todayKey } from '@/lib/dates';
 import {
-  addGrown, buildGraph, claimLadder, claimNode, placement, removeGrown, summarize, togglePin, unclaimNode, visibilityMap, xpFor,
-  type ClaimResult, type Graph,
+  addGrown, buildGraph, claimLadder, claimNode, placement, removeGrown, togglePin, unclaimNode, visibilityMap,
+  type ClaimResult,
 } from '@/lib/arete/engine';
 import { layoutMetro, SLIM, WIDE } from '@/lib/arete/layout';
+import { profileOf } from '@/lib/arete/progress';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { AreteNode, AreteState } from '@/types/arete';
 
 const A = stores.ARETE;
-const graph = () => buildGraph(A.get().grown);
+const graphOf = (s: AreteState) => buildGraph(s.grown, s.claims);
+const graph = () => graphOf(A.get());
 const bodyweight = () => stores.SETTINGS.get().bodyweight;
+const MEDAL_NAME = { bronze: 'Bronze', silver: 'Silver', gold: 'Gold', diamond: 'Diamond' } as const;
 
-/** Save a claim and celebrate it: what unlocked, the XP, a level-up if there was one — with Undo. */
-function commit(before: AreteState, g: Graph, r: ClaimResult): string[] {
+/**
+ * Save a claim and celebrate it: what unlocked, the XP, and anything it set
+ * off — a level-up, a new medal, a finished quest — with Undo.
+ */
+function commit(before: AreteState, r: ClaimResult, headline?: string): string[] {
   if (r.state === before) return [];
   A.set(r.state);
   if (!r.unlocked.length) return [];
-  const xp = r.unlocked.reduce((n, id) => n + xpFor(g.byId.get(id)!.tier), 0);
-  const was = summarize(g, before).level;
-  const now = summarize(g, r.state).level;
-  const top = g.byId.get(r.unlocked[0])!;
+  const today = todayKey();
+  const was = profileOf(graphOf(before), before, today);
+  const g = graphOf(r.state);
+  const now = profileOf(g, r.state, today);
+  const gained = now.summary.xp - was.summary.xp;
+  const top = g.byId.get(r.unlocked[0]);
   const more = r.unlocked.length - 1;
-  toast.success(now > was ? `Level ${now}! ${top.title}` : `Unlocked: ${top.title}`, {
-    description: `+${xp} XP${more > 0 ? ` · ${more} more node${more === 1 ? '' : 's'} unlocked on the way` : ''}`,
+
+  const medals = now.badges.filter(b => b.medal && was.badges.find(x => x.id === b.id)?.medal !== b.medal);
+  const quests = now.season.quests.filter(q => q.done && !was.season.quests.find(x => x.id === q.id)?.done);
+  const extras = [
+    ...medals.slice(0, 2).map(b => `${MEDAL_NAME[b.medal!]}: ${b.name}`),
+    ...quests.map(q => `Quest done: ${q.title}`),
+    now.season.complete && !was.season.complete ? 'Season complete!' : '',
+  ].filter(Boolean);
+
+  const title = headline ?? (now.summary.level > was.summary.level ? `Level ${now.summary.level}! ${top?.title ?? ''}` : `Unlocked: ${top?.title ?? ''}`);
+  toast.success(title, {
+    description: [`+${gained} XP`, more > 0 && !headline ? `${more} more station${more === 1 ? '' : 's'} on the way` : '', ...extras].filter(Boolean).join(' · '),
     action: { label: 'Undo', onClick: () => A.set(before) },
-    duration: 6000,
+    duration: extras.length ? 8000 : 6000,
   });
   return r.unlocked;
 }
@@ -36,38 +55,29 @@ function commit(before: AreteState, g: Graph, r: ClaimResult): string[] {
 export const areteActions = {
   /** "I did this." Returns the ids that just unlocked. */
   claim(id: string, at: string = todayKey(), result?: string): string[] {
-    const g = graph();
     const before = A.get();
-    return commit(before, g, claimNode(g, before, id, at, result));
+    return commit(before, claimNode(graph(), before, id, at, result));
   },
 
-  /** Claim as far up a ladder as a result reaches. */
+  /** Claim as far up a line as a result reaches. */
   claimLadder(ladderId: string, result: string, at: string = todayKey()): string[] {
-    const g = graph();
     const before = A.get();
-    return commit(before, g, claimLadder(g, before, ladderId, result, at, bodyweight()));
+    return commit(before, claimLadder(graph(), before, ladderId, result, at, bodyweight()));
   },
 
-  /** Quick placement: one answer per ladder. Returns how many nodes unlocked. */
+  /** Quick placement: one answer per line. Returns how many stations unlocked. */
   place(answers: Record<string, string>): number {
-    const g = graph();
     const before = A.get();
-    const r = placement(g, before, answers, todayKey(), bodyweight());
+    const r = placement(graph(), before, answers, todayKey(), bodyweight());
     if (r.state === before) return 0;
-    A.set({ ...r.state, started: true });
-    const xp = r.unlocked.reduce((n, id) => n + xpFor(g.byId.get(id)!.tier), 0);
-    toast.success(`${r.unlocked.length} nodes unlocked`, {
-      description: `+${xp} XP · you're level ${summarize(g, r.state).level}`,
-      action: { label: 'Undo', onClick: () => A.set(before) },
-      duration: 7000,
-    });
+    const after = { ...r.state, started: true };
+    commit(before, { state: after, unlocked: r.unlocked }, `${r.unlocked.length} stations unlocked`);
     return r.unlocked.length;
   },
 
   unclaim(id: string) {
-    const g = graph();
     const before = A.get();
-    const next = unclaimNode(g, before, id);
+    const next = unclaimNode(graph(), before, id);
     if (next === before) return;
     A.set(next);
     const n = Object.keys(before.claims).length - Object.keys(next.claims).length;
@@ -83,15 +93,14 @@ export const areteActions = {
   },
 
   remove(id: string) {
-    const g = graph();
     const before = A.get();
-    const next = removeGrown(g, before, id);
+    const next = removeGrown(graph(), before, id);
     if (next === before) return;
     A.set(next);
-    toast.success('Node removed', { action: { label: 'Undo', onClick: () => A.set(before) } });
+    toast.success('Station removed', { action: { label: 'Undo', onClick: () => A.set(before) } });
   },
 
-  /** Remember which goal is chasing a node ("Go for this"), and pin the node. */
+  /** Remember which goal is chasing a station ("Go for this"), and pin it. */
   link(nodeId: string, goalId: string) {
     A.update(s => ({ ...s, goalLinks: { ...s.goalLinks, [nodeId]: goalId }, pinned: s.pinned.includes(nodeId) ? s.pinned : [...s.pinned, nodeId] }));
   },
@@ -101,14 +110,20 @@ export const areteActions = {
   },
 };
 
-/** Everything a screen needs: the tree, where it sits (shaped for this screen), what you can see, and your totals. */
+/**
+ * Everything a screen needs: the tree (with any new stops at the end of
+ * never-ending lines), where it sits (shaped for this screen), what you can
+ * see, and your profile — totals, class, season, badges.
+ */
 export function useArete() {
   const state = useStore(A);
   const slim = useIsMobile();
+  const today = useTodayKey();
   return useMemo(() => {
-    const g = buildGraph(state.grown);
-    return { state, graph: g, map: layoutMetro(g, slim ? SLIM : WIDE), vis: visibilityMap(g, state), summary: summarize(g, state) };
-  }, [state, slim]);
+    const g = graphOf(state);
+    const profile = profileOf(g, state, today);
+    return { state, graph: g, map: layoutMetro(g, slim ? SLIM : WIDE), vis: visibilityMap(g, state), profile, summary: profile.summary };
+  }, [state, slim, today]);
 }
 
 export { bodyweight as areteBodyweight };

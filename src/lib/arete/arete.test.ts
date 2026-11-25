@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AREAS, CORE_NODES, LADDERS, LADDER_BY_ID } from './tree';
+import { AREAS, CORE_NODES, GUIDES, LADDERS, LADDER_BY_ID } from './tree';
+import { disciplineKey } from './tree/dsl';
 import { parseAmount, parseResult, parseTime } from './metric';
 import {
   addGrown, ancestorsOf, buildGraph, claimLadder, claimNode, customNode, discoveredToNodes, ladderHits, levelFor, placement,
@@ -19,10 +20,10 @@ const MILE = 'body.running.mile-time';
 
 describe('the core tree', () => {
   it('is big, covers every area and starts from basics', () => {
-    expect(CORE_NODES.length).toBeGreaterThan(550);
+    expect(CORE_NODES.length).toBeGreaterThan(2000);
     for (const a of AREAS) {
       const mine = CORE_NODES.filter(n => n.area === a.id);
-      expect(mine.length).toBeGreaterThan(50);
+      expect(mine.length).toBeGreaterThan(200);
       expect(mine.some(n => n.requires.length === 0 && n.tier === 0)).toBe(true);
       expect(mine.some(n => n.tier === 10)).toBe(true);
     }
@@ -39,6 +40,20 @@ describe('the core tree', () => {
       }
       expect(ancestorsOf(g, n.id)).not.toContain(n.id);
     }
+  });
+
+  it('every discipline explains itself, and names are short and unique', () => {
+    const disciplines = new Set(CORE_NODES.map(n => disciplineKey(n.area, n.branch)));
+    for (const d of disciplines) expect(GUIDES.has(d), `${d} has no guide`).toBe(true);
+    for (const gd of GUIDES.values()) expect(gd.how.length > 20 && gd.stops.length > 15).toBe(true);
+    const seen = new Set<string>();
+    for (const n of CORE_NODES) {
+      expect(n.title.length, n.title).toBeLessThanOrEqual(80);
+      const k = `${n.area}/${n.branch}/${n.title.toLowerCase()}`;
+      expect(seen.has(k), `duplicate title: ${n.title}`).toBe(false);
+      seen.add(k);
+    }
+    for (const l of LADDERS) expect(l.name.length, l.id).toBeGreaterThan(0);
   });
 
   it('ladders have readable, ordered thresholds', () => {
@@ -60,6 +75,9 @@ describe('reading results', () => {
     expect(parseTime('1:45:30')).toBe(6330);
     expect(parseTime('25')).toBe(1500);
     expect(parseTime('7:75')).toBeNull();
+    expect(parseTime('0:11.5')).toBe(11.5);
+    expect(parseTime('11.5', true)).toBe(11.5);
+    expect(parseTime('11.5s', true)).toBe(11.5);
     expect(parseAmount('1,000')).toBe(1000);
     expect(parseAmount('$10k')).toBe(10000);
     expect(parseAmount('$2.5M')).toBe(2500000);
@@ -187,7 +205,7 @@ describe('levels', () => {
     const all: AreteState = { ...fresh(), claims: Object.fromEntries(CORE_NODES.map(n => [n.id, { at: '2026-01-01' }])) };
     const top = summarize(g, all);
     expect(top.level).toBeGreaterThan(50);
-    expect(top.level).toBeLessThan(120);
+    expect(top.level).toBeLessThan(200);
   });
 });
 

@@ -5,6 +5,10 @@ import { ListRow } from '@/components/app/ListRow';
 import { MetroMap, type FlyTarget } from '@/components/arete/MetroMap';
 import { NodeSheet } from '@/components/arete/NodeSheet';
 import { PlacementSheet } from '@/components/arete/PlacementSheet';
+import { CharacterSheet } from '@/components/arete/CharacterSheet';
+import { SeasonCard } from '@/components/arete/SeasonCard';
+import { Radar } from '@/components/arete/Radar';
+import { useTodayKey } from '@/hooks/useToday';
 import { areteActions, useArete } from '@/hooks/useArete';
 import { useStore } from '@/hooks/useStore';
 import { stores } from '@/lib/storage';
@@ -22,7 +26,10 @@ const DayZeroSheet = lazy(() => import('@/components/dayzero/DayZeroSheet').then
  * from goals. Follow the lines, claim what you've done, chase what's next.
  */
 export default function AretePage() {
-  const { state, graph, map, vis, summary } = useArete();
+  const { state, graph, map, vis, summary, profile } = useArete();
+  const today = useTodayKey();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const wonCount = profile.badges.filter(b => b.medal).length;
   const goals = useStore(stores.GOALS);
   const [selected, setSelected] = useState<string | null>(null); // open in the sheet
   const [spot, setSpot] = useState<string | null>(null); // ringed on the map by "Next up"
@@ -134,19 +141,29 @@ export default function AretePage() {
     <div className="mx-auto max-w-3xl space-y-5 pb-24">
       <PageHeader title="Arete" actions={<HeaderButton label="Where are you already?" onClick={() => setPlacing(true)}><Compass className="h-[18px] w-[18px]" /></HeaderButton>} />
 
-      {/* You */}
+      {/* You: level, class, the six areas at a glance */}
       <section className="surface p-4">
-        <div className="flex items-center gap-3.5">
-          <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-full bg-primary text-primary-foreground">
-            <span className="text-[9px] font-bold uppercase leading-none tracking-wider opacity-80">Level</span>
-            <span className="text-[20px] font-extrabold leading-6 tabular-nums">{summary.level}</span>
+        <button type="button" onClick={() => setSheetOpen(true)} className="pressable -m-1 flex w-[calc(100%+0.5rem)] items-center gap-3.5 rounded-2xl p-1 text-left">
+          <div className="relative h-16 w-16 shrink-0">
+            <svg viewBox="0 0 64 64" className="absolute inset-0 -rotate-90" aria-hidden>
+              <circle cx="32" cy="32" r="29" fill="none" stroke="hsl(var(--secondary))" strokeWidth="5" />
+              <circle cx="32" cy="32" r="29" fill="none" stroke="hsl(var(--primary))" strokeWidth="5" strokeLinecap="round"
+                strokeDasharray={`${(pct / 100) * 182.2} 182.2`} className="transition-[stroke-dasharray] duration-700" />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-[9px] font-bold uppercase leading-none tracking-wider text-muted-foreground">Level</span>
+              <span className="text-[21px] font-extrabold leading-6 tabular-nums">{summary.level}</span>
+            </div>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-headline">{summary.rank}</p>
-            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-secondary"><div className="h-full rounded-full bg-primary transition-[width] duration-700" style={{ width: `${pct}%` }} /></div>
-            <p className="mt-1 text-footnote tabular-nums text-muted-foreground">{summary.need - summary.into} XP to level {summary.level + 1} · {summary.claimed} of {summary.total} unlocked</p>
+            <p className="truncate text-headline">{profile.character.title}</p>
+            <p className="text-footnote tabular-nums text-muted-foreground">{(summary.need - summary.into).toLocaleString()} XP to level {summary.level + 1} · {summary.claimed} of {summary.total.toLocaleString()} stations</p>
+            <p className="mt-0.5 flex items-center gap-1 text-footnote font-semibold text-primary">
+              Character sheet{wonCount ? ` · ${wonCount} medal${wonCount === 1 ? '' : 's'}` : ''} <ChevronRight className="h-3.5 w-3.5" />
+            </p>
           </div>
-        </div>
+          <div className="hidden shrink-0 min-[380px]:block"><Radar radar={profile.character.radar} size={76} labels={false} /></div>
+        </button>
         <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4">
           {AREAS.map(a => {
             const s = summary.areas[a.id];
@@ -173,6 +190,8 @@ export default function AretePage() {
           </div>
         </section>
       )}
+
+      {state.started && <SeasonCard season={profile.season} today={today} onFeatured={() => pickArea(profile.season.featured)} />}
 
       {/* Find anything */}
       <div className="relative">
@@ -286,6 +305,7 @@ export default function AretePage() {
         <NodeSheet nodeId={selected} onClose={() => setSelected(null)} onSelect={open} onUnlocked={celebrate}
           onGoFor={n => { setSelected(null); setGoFor(n); }} />
       )}
+      <CharacterSheet open={sheetOpen} profile={profile} onClose={() => setSheetOpen(false)} onOpenStation={id => { mapRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); open(id); }} />
       <PlacementSheet open={placing} onClose={() => { setPlacing(false); areteActions.start(); }} />
       {goFor && (
         <Suspense fallback={null}>

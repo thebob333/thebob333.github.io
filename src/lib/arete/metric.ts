@@ -1,15 +1,18 @@
 /** Reading results the way people type them: "7:42", "1:45:30", "1,000", "$10k", "1.5×", "V5". */
 import type { MetricKind } from '@/types/arete';
 
-/** "7:42" → 462 s, "1:45:30" → 6330 s. A bare number means minutes ("25" → 25:00). */
-export function parseTime(text: string): number | null {
-  const t = text.trim().toLowerCase().replace(/\s+/g, '');
+/**
+ * "7:42" → 462 s, "1:45:30" → 6330 s, "0:11.5" → 11.5 s. A bare number means
+ * minutes ("25" → 25:00), or seconds on short lines like sprints ("11.5").
+ */
+export function parseTime(text: string, bareIsSeconds = false): number | null {
+  const t = text.trim().toLowerCase().replace(/\s+/g, '').replace(/s$/, '');
   if (!t) return null;
-  if (/^\d+(\.\d+)?$/.test(t)) return Math.round(parseFloat(t) * 60);
-  const m = t.match(/^(\d+):(\d{1,2})(?::(\d{1,2}))?$/);
+  if (/^\d+(\.\d+)?$/.test(t)) return bareIsSeconds ? parseFloat(t) : Math.round(parseFloat(t) * 60);
+  const m = t.match(/^(\d+):(\d{1,2}(?:\.\d+)?)(?::(\d{1,2}(?:\.\d+)?))?$/);
   if (!m) return null;
   const [a, b, c] = [Number(m[1]), Number(m[2]), m[3] === undefined ? null : Number(m[3])];
-  if (b > 59 || (c !== null && c > 59)) return null;
+  if (b >= 60 || (c !== null && (c >= 60 || !Number.isInteger(b)))) return null;
   return c === null ? a * 60 + b : a * 3600 + b * 60 + c;
 }
 
@@ -32,8 +35,8 @@ export function parseAmount(text: string): number | null {
  * A typed result as a number for a ladder. For bodyweight-multiple lifts you can
  * type the weight in lb (anything over 10) and it's divided by your bodyweight.
  */
-export function parseResult(kind: MetricKind, text: string, bodyweightLb?: number): number | null {
-  if (kind === 'time') return parseTime(text);
+export function parseResult(kind: MetricKind, text: string, bodyweightLb?: number, shortTimes = false): number | null {
+  if (kind === 'time') return parseTime(text, shortTimes);
   const v = parseAmount(text);
   if (v === null) return null;
   if (kind === 'bwx' && v > 10) return bodyweightLb && bodyweightLb > 0 ? v / bodyweightLb : null;
